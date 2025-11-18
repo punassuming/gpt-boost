@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Lag Fixer",
+  "name": "ChatGPT Lag Fixer – Speed Up Long Conversations",
   "version": "1.0.0",
   "description": "Supercharge ChatGPT performance by only renderering visible messages while keeping full conversation context.",
   "permissions": [
