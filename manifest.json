@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Lag Fixer – Speed Up Long Conversations",
+  "name": "ChatGPT Speed Booster – Fix Lag & Freezing in Long Chats",
   "version": "1.0.0",
-  "description": "Supercharge ChatGPT performance by only renderering visible messages while keeping full conversation context.",
+  "description": "Stop browser freezing and lag in long ChatGPT conversations. Instantly speeds up the entire UI and reduces memory usage.",
   "permissions": [
     "storage",
     "activeTab"
