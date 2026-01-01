@@ -26,8 +26,16 @@
     const badge = document.createElement("div");
     badge.setAttribute(BADGE_ATTRIBUTE, "1");
 
-    // Little icon + text
-    badge.innerHTML = `<span style="margin-right:4px">⚡</span><span>Lag Fixer active</span>`;
+    // Create icon and text elements safely
+    const iconSpan = document.createElement("span");
+    iconSpan.style.marginRight = "4px";
+    iconSpan.textContent = "⚡";
+    
+    const textSpan = document.createElement("span");
+    textSpan.textContent = "Lag Fixer active";
+    
+    badge.appendChild(iconSpan);
+    badge.appendChild(textSpan);
 
     Object.assign(badge.style, {
       position: "fixed",
