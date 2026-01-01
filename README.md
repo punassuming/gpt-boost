@@ -2,6 +2,10 @@
 
 **The ultimate performance booster for long ChatGPT conversations**
 
+[![Security Audit](https://img.shields.io/badge/security-audited-brightgreen.svg)](SECURITY-EVALUATION.md)
+[![No Data Collection](https://img.shields.io/badge/data%20collection-none-brightgreen.svg)](SECURITY-EVALUATION.md)
+[![Privacy](https://img.shields.io/badge/privacy-100%25%20local-brightgreen.svg)](privacy-policy.md)
+
 ChatGPT Lag Fixer is a **Chrome and Firefox** extension that uses intelligent virtual scrolling to keep your ChatGPT tabs lightning-fast, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
 
 **🔐 Remain full privacy**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
@@ -129,7 +133,7 @@ The popup includes an optional "Debug mode" that logs internal states such as:
 - Mutation observer triggers
 
 
-## 🔐 Privacy
+## 🔐 Privacy & Security
 
 This extension:
 - Collects **no data**
@@ -138,6 +142,8 @@ This extension:
 - Runs **only** on ChatGPT domains (`chat.openai.com` / `chatgpt.com`)
 
 All processing happens **fully locally** in your browser.
+
+**Security Audit:** This extension has undergone a comprehensive security evaluation. See [SECURITY-EVALUATION.md](SECURITY-EVALUATION.md) for the full security audit report.
 
 ## Usage
 
@@ -202,6 +208,7 @@ Contributions are welcome! Here's how you can help:
 This extension is built with **Manifest V3**, ensuring:
 - Service worker instead of background pages
 - Minimal permissions
+- Explicit Content Security Policy (CSP)
 - No remotely hosted code
 - Content Security Policy compliant
 - Future-proof for Chrome/Firefox updates
