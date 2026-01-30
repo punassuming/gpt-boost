@@ -6,75 +6,6 @@
   const log = scroller.log;
 
   // ---------------------------------------------------------------------------
-  // Small activation badge
-  // ---------------------------------------------------------------------------
-
-  const BADGE_ATTRIBUTE = "data-chatgpt-virtual-scroller-badge";
-
-  // Tracks whether we've already shown the activation badge for this chat
-  let hasShownBadgeForCurrentChat = false;
-
-  /**
-   * Show a small fancy badge near the chat input for ~2 seconds.
-   * Used to indicate that virtualization is active for this chat.
-   */
-  function showActiveBadge() {
-    // Remove previous badge if any
-    const existingBadge = document.querySelector(`[${BADGE_ATTRIBUTE}]`);
-    if (existingBadge) existingBadge.remove();
-
-    const badge = document.createElement("div");
-    badge.setAttribute(BADGE_ATTRIBUTE, "1");
-
-    // Little icon + text
-    badge.innerHTML = `<span style="margin-right:4px">⚡</span><span>Lag Fixer active</span>`;
-
-    Object.assign(badge.style, {
-      position: "fixed",
-      right: "50px",
-      bottom: "50px", // roughly above the input bar
-      zIndex: "9999",
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "4px",
-
-      // Fancy pill look
-      padding: "5px 12px",
-      borderRadius: "999px",
-      fontSize: "16px",
-      fontWeight: "500",
-      color: "#ffffff",
-      background:
-        "linear-gradient(135deg, rgba(108,92,231,0.92), rgba(142,68,173,0.96))",
-      boxShadow: "0 6px 18px rgba(15, 23, 42, 0.35)",
-      backdropFilter: "blur(8px)",
-      WebkitBackdropFilter: "blur(8px)",
-
-      pointerEvents: "none",
-      opacity: "0",
-      transform: "translateY(6px) scale(0.98)",
-      transition:
-        "opacity 180ms ease-out, transform 180ms ease-out, filter 180ms ease-out"
-    });
-
-    document.body.appendChild(badge);
-
-    // Fade in on the next frame
-    requestAnimationFrame(() => {
-      badge.style.opacity = "1";
-      badge.style.transform = "translateY(0) scale(1)";
-    });
-
-    // After 2 seconds, fade out and remove
-    setTimeout(() => {
-      badge.style.opacity = "0";
-      badge.style.transform = "translateY(6px) scale(0.98)";
-      setTimeout(() => badge.remove(), 250);
-    }, 5000);
-  }
-
-  // ---------------------------------------------------------------------------
   // Selectors
   // ---------------------------------------------------------------------------
 
@@ -290,16 +221,6 @@
     log(
       `virtualize: total=${state.stats.totalMessages}, rendered=${state.stats.renderedMessages}`
     );
-
-    // Show activation badge only once per chat,
-    // and only after we know there are messages and virtualization has run.
-    if (
-      !hasShownBadgeForCurrentChat &&
-      state.stats.totalMessages > 0
-    ) {
-      hasShownBadgeForCurrentChat = true;
-      showActiveBadge();
-    }
   }
 
   function scheduleVirtualization() {
@@ -448,8 +369,6 @@
 
     state.articleMap.clear();
     state.nextVirtualId = 1;
-
-    hasShownBadgeForCurrentChat = false;
 
     document
       .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')
