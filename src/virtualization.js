@@ -143,7 +143,7 @@
     }
 
     const element = document.createElement("div");
-    element.dataset.chatgptVirtualIndicator = "1";
+    element.setAttribute("data-chatgpt-virtual-indicator", "1");
     element.style.position = "fixed";
     element.style.right = "12px";
     element.style.bottom = "12px";
@@ -162,6 +162,7 @@
     element.style.pointerEvents = "none";
     element.style.userSelect = "none";
     element.style.whiteSpace = "nowrap";
+    element.setAttribute("aria-label", "Virtualizing messages");
     document.body.appendChild(element);
     indicatorElement = element;
     return element;
@@ -186,9 +187,13 @@
     }
 
     const element = ensureIndicatorElement();
-    element.textContent = `⚡ Virtualizing ${hidden} message${
+    element.textContent = `Virtualizing ${hidden} message${
       hidden === 1 ? "" : "s"
     }`;
+    element.setAttribute(
+      "aria-label",
+      `Virtualizing ${hidden} message${hidden === 1 ? "" : "s"}`
+    );
     element.style.display = "inline-flex";
   }
 
