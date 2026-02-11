@@ -350,7 +350,8 @@
     }
 
     const element = ensureIndicatorElement();
-    const ratio = Math.min(1, hidden / Math.max(1, totalMessages));
+    const ratio =
+      totalMessages > 0 ? Math.min(1, hidden / totalMessages) : 0;
     const height =
       INDICATOR_MIN_HEIGHT_PX +
       ratio * (INDICATOR_MAX_HEIGHT_PX - INDICATOR_MIN_HEIGHT_PX);
@@ -358,7 +359,6 @@
       INDICATOR_MIN_OPACITY +
       ratio * (INDICATOR_MAX_OPACITY - INDICATOR_MIN_OPACITY);
 
-    element.textContent = "";
     element.style.height = `${Math.round(height)}px`;
     element.style.opacity = String(opacity);
     element.setAttribute(
