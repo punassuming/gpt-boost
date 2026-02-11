@@ -6,26 +6,27 @@
   const virtualizer = scroller.virtualizer;
   const config = scroller.config;
   let promoInterval = null;
-  const MIN_MARGIN_PX = 500;
-  const MAX_MARGIN_PX = 5000;
 
   function normalizeMargin(value) {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return config.MARGIN_PX;
-    return Math.min(MAX_MARGIN_PX, Math.max(MIN_MARGIN_PX, Math.round(parsed)));
+    if (!Number.isFinite(parsed)) return config.DEFAULT_MARGIN_PX;
+    return Math.min(
+      config.MAX_MARGIN_PX,
+      Math.max(config.MIN_MARGIN_PX, Math.round(parsed))
+    );
   }
 
   // ---- Storage: enabled + debug flags -----------------------------------
 
   function initializeStorageListeners() {
     chrome.storage.sync.get(
-      { enabled: true, debug: false, marginPx: config.MARGIN_PX },
+      { enabled: true, debug: false, marginPx: config.DEFAULT_MARGIN_PX },
       (data) => {
-      state.enabled = data.enabled;
-      state.debug = data.debug;
-      config.MARGIN_PX = normalizeMargin(data.marginPx);
+        state.enabled = data.enabled;
+        state.debug = data.debug;
+        config.MARGIN_PX = normalizeMargin(data.marginPx);
 
-      startPromoLogging();
+        startPromoLogging();
       }
     );
 

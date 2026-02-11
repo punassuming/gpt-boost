@@ -12,6 +12,8 @@
   const SCROLL_BUTTON_GAP_PX = 10;
   const INDICATOR_OFFSET_PX =
     SCROLL_BUTTON_OFFSET_PX + SCROLL_BUTTON_SIZE_PX + SCROLL_BUTTON_GAP_PX;
+  const MAX_SCROLL_ATTEMPTS = 2;
+  const SCROLL_RETRY_DELAY_MS = 300;
   // 10px buffer prevents flicker from tiny overflow rounding differences.
   const SCROLL_BUFFER_PX = 10;
 
@@ -227,7 +229,7 @@
       const targetTop = position === "top" ? 0 : maxScrollTop;
       scrollTarget.scrollTo({ top: targetTop, behavior: "smooth" });
 
-      if (attempt < 2) {
+      if (attempt < MAX_SCROLL_ATTEMPTS) {
         setTimeout(() => {
           const updatedTarget = getScrollTarget();
           if (!updatedTarget) return;
@@ -238,7 +240,7 @@
               : updatedTarget.scrollTop >= updatedMax - SCROLL_BUFFER_PX;
 
           if (!atEdge) attemptScroll(attempt + 1);
-        }, 300);
+        }, SCROLL_RETRY_DELAY_MS);
       }
     };
 

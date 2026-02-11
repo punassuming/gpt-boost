@@ -16,6 +16,13 @@ window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
     /** CSS selector for conversation messages */
     ARTICLE_SELECTOR: 'article[data-testid^="conversation-turn-"]',
 
+    /** Default virtualization buffer (px) */
+    DEFAULT_MARGIN_PX: 2000,
+    /** Minimum allowed virtualization buffer (px) */
+    MIN_MARGIN_PX: 500,
+    /** Maximum allowed virtualization buffer (px) */
+    MAX_MARGIN_PX: 5000,
+
     /** Extra area above/below the viewport where messages stay mounted */
     MARGIN_PX: 2000,
 
