@@ -7,16 +7,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggleEnabledElement = document.getElementById("toggleEnabled");
   const toggleDebugElement = document.getElementById("toggleDebug");
   const bufferSizeElement = document.getElementById("bufferSize");
-  // Fallback values should stay in sync with constants.js defaults.
-  const config = window.ChatGPTVirtualScroller?.config ?? {
-    MIN_MARGIN_PX: 500,
-    MAX_MARGIN_PX: 5000,
-    DEFAULT_MARGIN_PX: 2000
-  };
+  const config = window.ChatGPTVirtualScroller?.config;
 
-  const MIN_BUFFER_PX = config.MIN_MARGIN_PX;
-  const MAX_BUFFER_PX = config.MAX_MARGIN_PX;
-  const DEFAULT_BUFFER_PX = config.DEFAULT_MARGIN_PX;
+  if (config?.MIN_MARGIN_PX != null) {
+    bufferSizeElement.min = String(config.MIN_MARGIN_PX);
+  }
+  if (config?.MAX_MARGIN_PX != null) {
+    bufferSizeElement.max = String(config.MAX_MARGIN_PX);
+  }
+
+  const fallbackMin = Number(bufferSizeElement.min);
+  const fallbackMax = Number(bufferSizeElement.max);
+  const fallbackDefault =
+    Number(bufferSizeElement.value) || Number(bufferSizeElement.min);
+
+  const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? fallbackMin;
+  const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? fallbackMax;
+  const DEFAULT_BUFFER_PX = config?.DEFAULT_MARGIN_PX ?? fallbackDefault;
 
   function normalizeBufferSize(value) {
     const parsed = Number(value);
