@@ -9,9 +9,6 @@
   let scrollToBottomButton = null;
   const SCROLL_BUTTON_SIZE_PX = 30;
   const SCROLL_BUTTON_OFFSET_PX = 12;
-  const SCROLL_BUTTON_GAP_PX = 10;
-  const INDICATOR_OFFSET_PX =
-    SCROLL_BUTTON_OFFSET_PX + SCROLL_BUTTON_SIZE_PX + SCROLL_BUTTON_GAP_PX;
   const MAX_SCROLL_ATTEMPTS = 2;
   const SCROLL_RETRY_DELAY_MS = 300;
   // 10px buffer prevents flicker from tiny overflow rounding differences.
@@ -180,24 +177,18 @@
     const element = document.createElement("div");
     element.setAttribute("data-chatgpt-virtual-indicator", "1");
     element.style.position = "fixed";
-    element.style.right = `${SCROLL_BUTTON_OFFSET_PX}px`;
-    // Offset above the bottom scroll button; keep aligned with button size + spacing.
-    element.style.bottom = `${INDICATOR_OFFSET_PX}px`;
+    element.style.right = "6px";
+    element.style.top = "50%";
+    element.style.transform = "translateY(-50%)";
     element.style.zIndex = "9999";
     element.style.display = "none";
-    element.style.padding = "4px 10px";
+    element.style.width = "6px";
+    element.style.height = "48px";
     element.style.borderRadius = "999px";
-    element.style.background = "rgba(17, 24, 39, 0.75)";
-    element.style.color = "#f9fafb";
-    element.style.fontSize = "11px";
-    element.style.fontWeight = "600";
-    element.style.fontFamily =
-      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    element.style.letterSpacing = "0.02em";
-    element.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+    element.style.background = "rgba(17, 24, 39, 0.6)";
+    element.style.boxShadow = "0 4px 10px rgba(15, 23, 42, 0.18)";
     element.style.pointerEvents = "none";
     element.style.userSelect = "none";
-    element.style.whiteSpace = "nowrap";
     element.setAttribute("aria-label", "Virtualizing messages");
     document.body.appendChild(element);
     indicatorElement = element;
@@ -352,16 +343,14 @@
     }
 
     const element = ensureIndicatorElement();
-    element.textContent = `Virtualizing ${hidden} message${
-      hidden === 1 ? "" : "s"
-    } - Buffer: ${config.MARGIN_PX}px`;
+    element.textContent = "";
     element.setAttribute(
       "aria-label",
       `Virtualizing ${hidden} message${
         hidden === 1 ? "" : "s"
       } with ${config.MARGIN_PX}px buffer`
     );
-    element.style.display = "inline-flex";
+    element.style.display = "block";
     updateScrollButtons(totalMessages);
   }
 
