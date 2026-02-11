@@ -209,6 +209,7 @@
   }
 
   function setButtonVisibility(button, shouldShow) {
+    if (!button) return;
     button.style.display = shouldShow ? "flex" : "none";
   }
 
@@ -305,10 +306,6 @@
 
     const topButton = ensureScrollButton("top");
     const bottomButton = ensureScrollButton("bottom");
-    if (!topButton || !bottomButton) {
-      hideScrollButtons();
-      return;
-    }
 
     const maxScrollTop = getMaxScrollTop(scrollTarget);
     setButtonVisibility(topButton, scrollTarget.scrollTop > SCROLL_BUFFER_PX);
