@@ -7,6 +7,7 @@
   let indicatorElement = null;
   let scrollTopButton = null;
   let scrollBottomButton = null;
+  // Small buffer to ignore tiny overflow differences when checking scrollability.
   const SCROLL_BUFFER_PX = 10;
 
   // ---------------------------------------------------------------------------
