@@ -174,7 +174,7 @@
     element.setAttribute("data-chatgpt-virtual-indicator", "1");
     element.style.position = "fixed";
     element.style.right = "12px";
-    // Offset above the bottom scroll button.
+    // Offset above the bottom scroll button (12px margin + 30px button + 10px gap).
     element.style.bottom = "52px";
     element.style.zIndex = "9999";
     element.style.display = "none";
@@ -209,6 +209,7 @@
   }
 
   function setButtonVisibility(button, shouldShow) {
+    if (!button) return;
     button.style.display = shouldShow ? "flex" : "none";
   }
 
