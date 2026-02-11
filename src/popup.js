@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggleEnabledElement = document.getElementById("toggleEnabled");
   const toggleDebugElement = document.getElementById("toggleDebug");
   const bufferSizeElement = document.getElementById("bufferSize");
-  const config = window.ChatGPTVirtualScroller?.config;
+  const config = window.ChatGPTVirtualScroller?.config ?? {};
 
   const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? 500;
   const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? 5000;
