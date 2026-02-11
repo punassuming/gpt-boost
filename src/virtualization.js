@@ -155,6 +155,10 @@
     return scrollElement instanceof HTMLElement ? scrollElement : null;
   }
 
+  function getMaxScrollTop(scrollTarget) {
+    return Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight);
+  }
+
   function ensureIndicatorElement() {
     if (indicatorElement && indicatorElement.isConnected) {
       return indicatorElement;
@@ -241,10 +245,7 @@
       if (position === "top") {
         scrollTarget.scrollTo({ top: 0, behavior: "smooth" });
       } else {
-        const maxScrollTop = Math.max(
-          0,
-          scrollTarget.scrollHeight - scrollTarget.clientHeight
-        );
+        const maxScrollTop = getMaxScrollTop(scrollTarget);
         scrollTarget.scrollTo({
           top: maxScrollTop,
           behavior: "smooth"
@@ -282,7 +283,7 @@
     }
 
     const isScrollable =
-      scrollTarget.scrollHeight - scrollTarget.clientHeight > SCROLL_BUFFER_PX;
+      scrollTarget.scrollHeight - scrollTarget.clientHeight >= SCROLL_BUFFER_PX;
     if (!isScrollable) {
       hideScrollButtons();
       return;
@@ -295,7 +296,7 @@
       return;
     }
 
-    const maxScrollTop = scrollTarget.scrollHeight - scrollTarget.clientHeight;
+    const maxScrollTop = getMaxScrollTop(scrollTarget);
     topButton.style.display =
       scrollTarget.scrollTop > SCROLL_BUFFER_PX ? "flex" : "none";
     bottomButton.style.display =
