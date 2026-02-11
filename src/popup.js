@@ -9,23 +9,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const bufferSizeElement = document.getElementById("bufferSize");
   const config = window.ChatGPTVirtualScroller?.config;
 
-  if (config?.MIN_MARGIN_PX != null) {
-    bufferSizeElement.min = String(config.MIN_MARGIN_PX);
-  }
-  if (config?.MAX_MARGIN_PX != null) {
-    bufferSizeElement.max = String(config.MAX_MARGIN_PX);
-  }
+  // Fallback values should stay in sync with constants.js defaults.
+  const FALLBACK_MIN_PX = 500;
+  const FALLBACK_MAX_PX = 5000;
+  const FALLBACK_DEFAULT_PX = 2000;
 
-  const fallbackMin = Number(bufferSizeElement.min);
-  const fallbackMax = Number(bufferSizeElement.max);
-  const rawDefault = Number(bufferSizeElement.value);
-  const fallbackDefault = Number.isFinite(rawDefault)
-    ? rawDefault
-    : Number(bufferSizeElement.min);
+  const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? FALLBACK_MIN_PX;
+  const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? FALLBACK_MAX_PX;
+  const DEFAULT_BUFFER_PX = config?.DEFAULT_MARGIN_PX ?? FALLBACK_DEFAULT_PX;
 
-  const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? fallbackMin;
-  const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? fallbackMax;
-  const DEFAULT_BUFFER_PX = config?.DEFAULT_MARGIN_PX ?? fallbackDefault;
+  bufferSizeElement.min = String(MIN_BUFFER_PX);
+  bufferSizeElement.max = String(MAX_BUFFER_PX);
 
   function normalizeBufferSize(value) {
     const parsed = Number(value);
