@@ -9,8 +9,12 @@
   let scrollToBottomButton = null;
   const SCROLL_BUTTON_SIZE_PX = 30;
   const SCROLL_BUTTON_OFFSET_PX = 12;
+  // Keep the indicator close to the scrollbar without overlapping it.
   const INDICATOR_RIGHT_OFFSET_PX = 6;
-  const INDICATOR_HEIGHT_PX = 48;
+  const INDICATOR_MIN_HEIGHT_PX = 28;
+  const INDICATOR_MAX_HEIGHT_PX = 96;
+  const INDICATOR_MIN_OPACITY = 0.4;
+  const INDICATOR_MAX_OPACITY = 0.95;
   const MAX_SCROLL_ATTEMPTS = 2;
   const SCROLL_RETRY_DELAY_MS = 300;
   // 10px buffer prevents flicker from tiny overflow rounding differences.
@@ -185,10 +189,11 @@
     element.style.zIndex = "9999";
     element.style.display = "none";
     element.style.width = "6px";
-    element.style.height = `${INDICATOR_HEIGHT_PX}px`;
+    element.style.height = `${INDICATOR_MIN_HEIGHT_PX}px`;
     element.style.borderRadius = "999px";
     element.style.background = "rgba(17, 24, 39, 0.6)";
     element.style.boxShadow = "0 4px 10px rgba(15, 23, 42, 0.18)";
+    element.style.opacity = String(INDICATOR_MIN_OPACITY);
     element.style.pointerEvents = "none";
     element.style.userSelect = "none";
     element.setAttribute("aria-label", "Virtualizing messages");
@@ -345,7 +350,17 @@
     }
 
     const element = ensureIndicatorElement();
+    const ratio = Math.min(1, hidden / Math.max(1, totalMessages));
+    const height =
+      INDICATOR_MIN_HEIGHT_PX +
+      ratio * (INDICATOR_MAX_HEIGHT_PX - INDICATOR_MIN_HEIGHT_PX);
+    const opacity =
+      INDICATOR_MIN_OPACITY +
+      ratio * (INDICATOR_MAX_OPACITY - INDICATOR_MIN_OPACITY);
+
     element.textContent = "";
+    element.style.height = `${Math.round(height)}px`;
+    element.style.opacity = String(opacity);
     element.setAttribute(
       "aria-label",
       `Virtualizing ${hidden} message${
