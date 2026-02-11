@@ -18,8 +18,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const fallbackMin = Number(bufferSizeElement.min);
   const fallbackMax = Number(bufferSizeElement.max);
-  const fallbackDefault =
-    Number(bufferSizeElement.value) || Number(bufferSizeElement.min);
+  const rawDefault = Number(bufferSizeElement.value);
+  const fallbackDefault = Number.isFinite(rawDefault)
+    ? rawDefault
+    : Number(bufferSizeElement.min);
 
   const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? fallbackMin;
   const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? fallbackMax;
