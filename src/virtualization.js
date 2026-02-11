@@ -4,6 +4,7 @@
   const config = scroller.config;
   const state = scroller.state;
   const log = scroller.log;
+  let indicatorElement = null;
 
   // ---------------------------------------------------------------------------
   // Selectors
@@ -136,6 +137,63 @@
     return { top: 0, height: window.innerHeight };
   }
 
+  function ensureIndicatorElement() {
+    if (indicatorElement && indicatorElement.isConnected) {
+      return indicatorElement;
+    }
+
+    const element = document.createElement("div");
+    element.dataset.chatgptVirtualIndicator = "1";
+    element.style.position = "fixed";
+    element.style.right = "12px";
+    element.style.bottom = "12px";
+    element.style.zIndex = "9999";
+    element.style.display = "none";
+    element.style.padding = "4px 10px";
+    element.style.borderRadius = "999px";
+    element.style.background = "rgba(17, 24, 39, 0.75)";
+    element.style.color = "#f9fafb";
+    element.style.fontSize = "11px";
+    element.style.fontWeight = "600";
+    element.style.fontFamily =
+      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    element.style.letterSpacing = "0.02em";
+    element.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+    element.style.pointerEvents = "none";
+    element.style.userSelect = "none";
+    element.style.whiteSpace = "nowrap";
+    element.title = "Virtualization is active to keep ChatGPT fast.";
+
+    document.body.appendChild(element);
+    indicatorElement = element;
+    return element;
+  }
+
+  function hideIndicator() {
+    if (indicatorElement) {
+      indicatorElement.style.display = "none";
+    }
+  }
+
+  function updateIndicator(totalMessages, renderedMessages) {
+    if (!state.enabled) {
+      hideIndicator();
+      return;
+    }
+
+    const hidden = totalMessages - renderedMessages;
+    if (totalMessages === 0 || hidden <= 0) {
+      hideIndicator();
+      return;
+    }
+
+    const element = ensureIndicatorElement();
+    element.textContent = `⚡ Virtualizing ${hidden} message${
+      hidden === 1 ? "" : "s"
+    }`;
+    element.style.display = "inline-flex";
+  }
+
   function convertArticleToSpacer(articleElement) {
     const id = articleElement.dataset.virtualId;
     if (!id || !articleElement.isConnected) return;
@@ -182,10 +240,14 @@
 
     state.stats.totalMessages = total;
     state.stats.renderedMessages = rendered;
+    updateIndicator(total, rendered);
   }
 
   function virtualizeNow() {
-    if (!state.enabled) return;
+    if (!state.enabled) {
+      hideIndicator();
+      return;
+    }
 
     ensureVirtualIds();
 
@@ -373,6 +435,11 @@
     document
       .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')
       .forEach((spacer) => spacer.remove());
+
+    if (indicatorElement && indicatorElement.isConnected) {
+      indicatorElement.remove();
+    }
+    indicatorElement = null;
   }
 
   function startUrlWatcher() {

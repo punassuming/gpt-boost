@@ -18,7 +18,10 @@
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== "sync") return;
-      if (changes.enabled) state.enabled = changes.enabled.newValue;
+      if (changes.enabled) {
+        state.enabled = changes.enabled.newValue;
+        virtualizer.handleResize();
+      }
       if (changes.debug) {
         state.debug = changes.debug.newValue;
         scroller.logPromoMessage();
