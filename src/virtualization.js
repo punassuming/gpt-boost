@@ -162,8 +162,6 @@
     element.style.pointerEvents = "none";
     element.style.userSelect = "none";
     element.style.whiteSpace = "nowrap";
-    element.title = "Virtualization is active to keep ChatGPT fast.";
-
     document.body.appendChild(element);
     indicatorElement = element;
     return element;
