@@ -6,6 +6,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const toggleEnabledElement = document.getElementById("toggleEnabled");
   const toggleDebugElement = document.getElementById("toggleDebug");
+  const bufferSizeElement = document.getElementById("bufferSize");
+  const config = window.ChatGPTVirtualScroller?.config;
+
+  // Fallback values should stay in sync with constants.js defaults.
+  const FALLBACK_MIN_PX = 500;
+  const FALLBACK_MAX_PX = 5000;
+  const FALLBACK_DEFAULT_PX = 2000;
+
+  const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? FALLBACK_MIN_PX;
+  const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? FALLBACK_MAX_PX;
+  const DEFAULT_BUFFER_PX = config?.DEFAULT_MARGIN_PX ?? FALLBACK_DEFAULT_PX;
+
+  bufferSizeElement.min = String(MIN_BUFFER_PX);
+  bufferSizeElement.max = String(MAX_BUFFER_PX);
+
+  function normalizeBufferSize(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return DEFAULT_BUFFER_PX;
+    return Math.min(MAX_BUFFER_PX, Math.max(MIN_BUFFER_PX, Math.round(parsed)));
+  }
 
   // Helper: Update status text immediately
   function updateStatusText(enabled) {
@@ -15,12 +35,16 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Initial loading of stored settings
-  chrome.storage.sync.get({ enabled: true, debug: false }, (data) => {
-    toggleEnabledElement.checked = data.enabled;
-    toggleDebugElement.checked = data.debug;
+  chrome.storage.sync.get(
+    { enabled: true, debug: false, marginPx: DEFAULT_BUFFER_PX },
+    (data) => {
+      toggleEnabledElement.checked = data.enabled;
+      toggleDebugElement.checked = data.debug;
+      bufferSizeElement.value = String(normalizeBufferSize(data.marginPx));
 
-    updateStatusText(data.enabled);
-  });
+      updateStatusText(data.enabled);
+    }
+  );
 
   // On change → update immediately AND save
   toggleEnabledElement.addEventListener("change", () => {
@@ -34,6 +58,12 @@ document.addEventListener("DOMContentLoaded", () => {
   toggleDebugElement.addEventListener("change", () => {
     const newValue = toggleDebugElement.checked;
     chrome.storage.sync.set({ debug: newValue });
+  });
+
+  bufferSizeElement.addEventListener("change", () => {
+    const normalized = normalizeBufferSize(bufferSizeElement.value);
+    bufferSizeElement.value = String(normalized);
+    chrome.storage.sync.set({ marginPx: normalized });
   });
 
   // Fetch stats from content script

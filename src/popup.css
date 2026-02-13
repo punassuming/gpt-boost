@@ -115,6 +115,27 @@ body {
   padding-top: 8px;
 }
 
+.buffer-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.buffer-control input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid #e0e3f0;
+  border-radius: 8px;
+  font-size: 12px;
+  text-align: right;
+  color: #2c3e50;
+}
+
+.buffer-unit {
+  font-size: 11px;
+  color: #7f8c8d;
+}
+
 /* iOS-style toggle */
 .switch {
   position: relative;

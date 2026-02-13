@@ -4,6 +4,21 @@
   const config = scroller.config;
   const state = scroller.state;
   const log = scroller.log;
+  let indicatorElement = null;
+  let scrollToTopButton = null;
+  let scrollToBottomButton = null;
+  const SCROLL_BUTTON_SIZE_PX = 30;
+  const SCROLL_BUTTON_OFFSET_PX = 12;
+  // Keep the indicator close to the scrollbar without overlapping it.
+  const INDICATOR_RIGHT_OFFSET_PX = 6;
+  const INDICATOR_MIN_HEIGHT_PX = 28;
+  const INDICATOR_MAX_HEIGHT_PX = 96;
+  const INDICATOR_MIN_OPACITY = 0.4;
+  const INDICATOR_MAX_OPACITY = 0.95;
+  const MAX_SCROLL_ATTEMPTS = 2;
+  const SCROLL_RETRY_DELAY_MS = 300;
+  // 10px buffer prevents flicker from tiny overflow rounding differences.
+  const SCROLL_BUFFER_PX = 10;
 
   // ---------------------------------------------------------------------------
   // Selectors
@@ -136,6 +151,226 @@
     return { top: 0, height: window.innerHeight };
   }
 
+  function getScrollTarget() {
+    const scrollElement = state.scrollElement;
+
+    if (
+      scrollElement === window ||
+      scrollElement === document.body ||
+      scrollElement === document.documentElement
+    ) {
+      return document.scrollingElement || document.documentElement;
+    }
+
+    return scrollElement instanceof HTMLElement ? scrollElement : null;
+  }
+
+  function getMaxScrollTop(scrollTarget) {
+    if (!scrollTarget) return 0;
+    return Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight);
+  }
+
+  function isScrollable(scrollTarget) {
+    if (!scrollTarget) return false;
+    return getMaxScrollTop(scrollTarget) >= SCROLL_BUFFER_PX;
+  }
+
+  function ensureIndicatorElement() {
+    if (indicatorElement && indicatorElement.isConnected) {
+      return indicatorElement;
+    }
+
+    const element = document.createElement("div");
+    element.setAttribute("data-chatgpt-virtual-indicator", "1");
+    element.style.position = "fixed";
+    element.style.right = `${INDICATOR_RIGHT_OFFSET_PX}px`;
+    element.style.top = "50%";
+    element.style.transform = "translateY(-50%)";
+    element.style.zIndex = "9999";
+    element.style.display = "none";
+    element.style.width = "6px";
+    element.style.height = `${INDICATOR_MIN_HEIGHT_PX}px`;
+    element.style.borderRadius = "999px";
+    element.style.background = "rgba(17, 24, 39, 0.6)";
+    element.style.boxShadow = "0 4px 10px rgba(15, 23, 42, 0.18)";
+    element.style.opacity = String(INDICATOR_MIN_OPACITY);
+    element.style.pointerEvents = "none";
+    element.style.userSelect = "none";
+    element.setAttribute("aria-label", "Virtualizing messages");
+    document.body.appendChild(element);
+    indicatorElement = element;
+    return element;
+  }
+
+  function hideIndicator() {
+    if (indicatorElement) {
+      indicatorElement.style.display = "none";
+    }
+  }
+
+  function hideAllUiElements() {
+    hideIndicator();
+    hideScrollButtons();
+  }
+
+  function setButtonVisibility(button, shouldShow) {
+    if (!button) return;
+    button.style.display = shouldShow ? "flex" : "none";
+  }
+
+  function scrollToEdge(position) {
+    const attemptScroll = (attempt) => {
+      const scrollTarget = getScrollTarget();
+      if (!scrollTarget) return;
+
+      const maxScrollTop = getMaxScrollTop(scrollTarget);
+      const targetTop = position === "top" ? 0 : maxScrollTop;
+      scrollTarget.scrollTo({ top: targetTop, behavior: "smooth" });
+
+      if (attempt < MAX_SCROLL_ATTEMPTS) {
+        setTimeout(() => {
+          const updatedTarget = getScrollTarget();
+          if (!updatedTarget) return;
+          const updatedMax = getMaxScrollTop(updatedTarget);
+          const atEdge =
+            position === "top"
+              ? updatedTarget.scrollTop <= SCROLL_BUFFER_PX
+              : updatedTarget.scrollTop >= updatedMax - SCROLL_BUFFER_PX;
+
+          if (!atEdge) attemptScroll(attempt + 1);
+        }, SCROLL_RETRY_DELAY_MS);
+      }
+    };
+
+    attemptScroll(0);
+  }
+
+  function ensureScrollButton(position) {
+    const existingButton = position === "top" ? scrollToTopButton : scrollToBottomButton;
+    if (existingButton && existingButton.isConnected) {
+      return existingButton;
+    }
+
+    if (!document.body) {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("data-chatgpt-virtual-scroll", position);
+    button.style.position = "fixed";
+    button.style.right = `${SCROLL_BUTTON_OFFSET_PX}px`;
+    button.style.zIndex = "9999";
+    button.style.width = `${SCROLL_BUTTON_SIZE_PX}px`;
+    button.style.height = `${SCROLL_BUTTON_SIZE_PX}px`;
+    button.style.borderRadius = "999px";
+    button.style.border = "none";
+    button.style.cursor = "pointer";
+    button.style.background = "rgba(17, 24, 39, 0.7)";
+    button.style.color = "#f9fafb";
+    button.style.fontSize = "16px";
+    button.style.fontWeight = "600";
+    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+    button.style.display = "none";
+    button.style.alignItems = "center";
+    button.style.justifyContent = "center";
+    button.style.padding = "0";
+
+    if (position === "top") {
+      button.style.top = `${SCROLL_BUTTON_OFFSET_PX}px`;
+      button.textContent = "↑";
+      button.setAttribute("aria-label", "Scroll to top");
+    } else {
+      button.style.bottom = `${SCROLL_BUTTON_OFFSET_PX}px`;
+      button.textContent = "↓";
+      button.setAttribute("aria-label", "Scroll to bottom");
+    }
+
+    button.addEventListener("click", () => {
+      // Use latest scroll target in case the container changes.
+      scrollToEdge(position);
+    });
+
+    document.body.appendChild(button);
+
+    if (position === "top") {
+      scrollToTopButton = button;
+    } else {
+      scrollToBottomButton = button;
+    }
+
+    return button;
+  }
+
+  function hideScrollButtons() {
+    if (scrollToTopButton) scrollToTopButton.style.display = "none";
+    if (scrollToBottomButton) scrollToBottomButton.style.display = "none";
+  }
+
+  function updateScrollButtons(totalMessages) {
+    if (!state.enabled || totalMessages === 0) {
+      hideScrollButtons();
+      return;
+    }
+
+    const scrollTarget = getScrollTarget();
+
+    if (!scrollTarget) {
+      hideScrollButtons();
+      return;
+    }
+
+    if (!isScrollable(scrollTarget)) {
+      hideScrollButtons();
+      return;
+    }
+
+    const topButton = ensureScrollButton("top");
+    const bottomButton = ensureScrollButton("bottom");
+
+    const maxScrollTop = getMaxScrollTop(scrollTarget);
+    setButtonVisibility(topButton, scrollTarget.scrollTop > SCROLL_BUFFER_PX);
+    setButtonVisibility(
+      bottomButton,
+      scrollTarget.scrollTop < maxScrollTop - SCROLL_BUFFER_PX
+    );
+  }
+
+  function updateIndicator(totalMessages, renderedMessages) {
+    if (!state.enabled) {
+      hideAllUiElements();
+      return;
+    }
+
+    const hidden = totalMessages - renderedMessages;
+    if (totalMessages === 0 || hidden <= 0) {
+      hideIndicator();
+      updateScrollButtons(totalMessages);
+      return;
+    }
+
+    const element = ensureIndicatorElement();
+    const clampedHiddenCount = Math.min(totalMessages, Math.max(0, hidden));
+    const ratio = totalMessages > 0 ? clampedHiddenCount / totalMessages : 0;
+    const height =
+      INDICATOR_MIN_HEIGHT_PX +
+      ratio * (INDICATOR_MAX_HEIGHT_PX - INDICATOR_MIN_HEIGHT_PX);
+    const opacity =
+      INDICATOR_MIN_OPACITY +
+      ratio * (INDICATOR_MAX_OPACITY - INDICATOR_MIN_OPACITY);
+
+    element.style.height = `${Math.round(height)}px`;
+    element.style.opacity = String(opacity);
+    element.setAttribute(
+      "aria-label",
+      `Virtualizing ${hidden} message${
+        hidden === 1 ? "" : "s"
+      } with ${config.MARGIN_PX}px buffer`
+    );
+    element.style.display = "block";
+    updateScrollButtons(totalMessages);
+  }
+
   function convertArticleToSpacer(articleElement) {
     const id = articleElement.dataset.virtualId;
     if (!id || !articleElement.isConnected) return;
@@ -182,10 +417,14 @@
 
     state.stats.totalMessages = total;
     state.stats.renderedMessages = rendered;
+    updateIndicator(total, rendered);
   }
 
   function virtualizeNow() {
-    if (!state.enabled) return;
+    if (!state.enabled) {
+      hideAllUiElements();
+      return;
+    }
 
     ensureVirtualIds();
 
@@ -194,6 +433,7 @@
     );
     if (!nodes.length) {
       log("virtualize: no messages yet");
+      hideAllUiElements();
       return;
     }
 
@@ -373,6 +613,20 @@
     document
       .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')
       .forEach((spacer) => spacer.remove());
+
+    if (indicatorElement && indicatorElement.isConnected) {
+      indicatorElement.remove();
+    }
+    indicatorElement = null;
+
+    if (scrollToTopButton && scrollToTopButton.isConnected) {
+      scrollToTopButton.remove();
+    }
+    if (scrollToBottomButton && scrollToBottomButton.isConnected) {
+      scrollToBottomButton.remove();
+    }
+    scrollToTopButton = null;
+    scrollToBottomButton = null;
   }
 
   function startUrlWatcher() {

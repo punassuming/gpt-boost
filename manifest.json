@@ -12,7 +12,8 @@
     "https://chatgpt.com/*"
   ],
   "background": {
-    "service_worker": "src/background.js"
+    "service_worker": "src/background.js",
+    "scripts": ["src/background.js"]
   },
   "content_scripts": [
     {
@@ -35,6 +36,10 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
+  },
+  "options_ui": {
+    "page": "src/popup.html",
+    "open_in_tab": false
   },
   "icons": {
     "16": "icons/icon16.png",
