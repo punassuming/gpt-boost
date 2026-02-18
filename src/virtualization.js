@@ -7,8 +7,11 @@
   let indicatorElement = null;
   let scrollToTopButton = null;
   let scrollToBottomButton = null;
+  let deferredVirtualizationTimer = null;
   const SCROLL_BUTTON_SIZE_PX = 30;
   const SCROLL_BUTTON_OFFSET_PX = 12;
+  const DEFERRED_VIRTUALIZATION_DELAY_MS = 120;
+  const MAX_EMPTY_RETRY_COUNT = 8;
   // Keep the indicator close to the scrollbar without overlapping it.
   const INDICATOR_RIGHT_OFFSET_PX = 6;
   const INDICATOR_MIN_HEIGHT_PX = 28;
@@ -145,10 +148,30 @@
       scrollElement instanceof HTMLElement
     ) {
       const rect = scrollElement.getBoundingClientRect();
-      return { top: rect.top, height: scrollElement.clientHeight };
+      const containerHeight = scrollElement.clientHeight;
+
+      if (containerHeight > 0) {
+        return { top: rect.top, height: containerHeight };
+      }
     }
 
     return { top: 0, height: window.innerHeight };
+  }
+
+  function scheduleDeferredVirtualization() {
+    if (deferredVirtualizationTimer !== null) return false;
+    deferredVirtualizationTimer = setTimeout(() => {
+      deferredVirtualizationTimer = null;
+      scheduleVirtualization();
+    }, DEFERRED_VIRTUALIZATION_DELAY_MS);
+    return true;
+  }
+
+  function queueDeferredVirtualizationRetry() {
+    if (state.emptyVirtualizationRetryCount >= MAX_EMPTY_RETRY_COUNT) return;
+    if (scheduleDeferredVirtualization()) {
+      state.emptyVirtualizationRetryCount += 1;
+    }
   }
 
   function getScrollTarget() {
@@ -434,10 +457,17 @@
     if (!nodes.length) {
       log("virtualize: no messages yet");
       hideAllUiElements();
+      queueDeferredVirtualizationRetry();
       return;
     }
 
     const viewport = getViewportMetrics();
+    if (viewport.height <= 0) {
+      log("virtualize: skipped due to unavailable viewport height");
+      queueDeferredVirtualizationRetry();
+      return;
+    }
+    state.emptyVirtualizationRetryCount = 0;
 
     nodes.forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
@@ -569,6 +599,7 @@
   }
 
   function handleResize() {
+    attachOrUpdateScrollListener();
     scheduleVirtualization();
   }
 
@@ -601,6 +632,10 @@
   function teardownVirtualizer() {
     if (state.observer) state.observer.disconnect();
     if (state.cleanupScrollListener) state.cleanupScrollListener();
+    if (deferredVirtualizationTimer !== null) {
+      clearTimeout(deferredVirtualizationTimer);
+      deferredVirtualizationTimer = null;
+    }
 
     state.scrollElement = null;
     state.observer = null;
@@ -609,6 +644,7 @@
 
     state.articleMap.clear();
     state.nextVirtualId = 1;
+    state.emptyVirtualizationRetryCount = 0;
 
     document
       .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')

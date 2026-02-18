@@ -47,6 +47,7 @@ window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
     enabled: true,
     debug: false,
     requestAnimationScheduled: false,
+    emptyVirtualizationRetryCount: 0,
 
     /** @type {HTMLElement | Window | null} */
     scrollElement: null,
