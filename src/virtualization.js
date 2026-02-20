@@ -1333,6 +1333,7 @@
 
     const totalChars = Array.from(state.articleMap.values())
       .reduce((sum, node) => sum + (node.textContent || "").length, 0);
+    // Rough approximation: 1 token ≈ 4 characters (OpenAI rule of thumb)
     const estimatedTokens = totalChars / 4;
     const ratio = Math.min(1, estimatedTokens / TOKEN_GAUGE_MAX_TOKENS);
 
@@ -1507,7 +1508,7 @@
     const textSource = article.querySelector("[data-message-author-role]") || article;
     const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
     snippet.textContent = rawText.length > ARTICLE_SNIPPET_LENGTH
-      ? rawText.slice(0, ARTICLE_SNIPPET_LENGTH) + "\u2026"
+      ? rawText.slice(0, ARTICLE_SNIPPET_LENGTH) + "…"
       : rawText;
 
     article.appendChild(snippet);
@@ -1581,7 +1582,7 @@
 
       const textSource = article.querySelector("[data-message-author-role]") || article;
       const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-      const snippet = rawText.length > 80 ? rawText.slice(0, 80) + "\u2026" : rawText;
+      const snippet = rawText.length > 80 ? rawText.slice(0, 80) + "…" : rawText;
 
       const item = document.createElement("div");
       item.style.display = "flex";
@@ -1596,7 +1597,7 @@
       item.style.border = `1px solid ${theme.panelBorder}`;
 
       const textEl = document.createElement("span");
-      textEl.textContent = "\uD83D\uDCCC " + snippet;
+      textEl.textContent = "📌 " + snippet;
       textEl.style.overflow = "hidden";
       textEl.style.whiteSpace = "nowrap";
       textEl.style.textOverflow = "ellipsis";
@@ -1604,7 +1605,7 @@
 
       const unpinBtn = document.createElement("button");
       unpinBtn.type = "button";
-      unpinBtn.textContent = "\u00D7";
+      unpinBtn.textContent = "×";
       unpinBtn.setAttribute("aria-label", "Unpin message");
       unpinBtn.style.background = "none";
       unpinBtn.style.border = "none";
@@ -1658,7 +1659,8 @@
         const text = (el.textContent || "").trim();
         if (!text) return;
         const rawClass = el.className || "";
-        const lang = rawClass.replace(/.*language-(\S+).*/, "$1").split(" ")[0] || "";
+        const langMatch = rawClass.match(/\blanguage-(\S+)/);
+        const lang = langMatch ? langMatch[1] : "";
         snippets.push({ text, messageId: id, index: i, lang });
       });
     });
@@ -1710,7 +1712,7 @@
       header.style.color = theme.mutedText;
 
       const langLabel = document.createElement("span");
-      langLabel.textContent = lang ? `#${idx + 1} \u00B7 ${lang}` : `#${idx + 1}`;
+      langLabel.textContent = lang ? `#${idx + 1} · ${lang}` : `#${idx + 1}`;
 
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
@@ -1726,7 +1728,7 @@
       copyBtn.style.fontFamily = "inherit";
       copyBtn.addEventListener("click", () => {
         navigator.clipboard.writeText(text).then(() => {
-          copyBtn.textContent = "\u2713 Copied";
+          copyBtn.textContent = "✓ Copied";
           setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
         }).catch(() => {
           copyBtn.textContent = "Error";
@@ -1752,7 +1754,7 @@
 
       const jumpBtn = document.createElement("button");
       jumpBtn.type = "button";
-      jumpBtn.textContent = "\u2197 Jump to message";
+      jumpBtn.textContent = "↗ Jump to message";
       jumpBtn.style.display = "block";
       jumpBtn.style.width = "100%";
       jumpBtn.style.fontSize = "10px";
@@ -1872,7 +1874,7 @@
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
-    closeBtn.textContent = "\u00D7";
+    closeBtn.textContent = "×";
     closeBtn.setAttribute("aria-label", "Close code snippets panel");
     styleSearchButton(closeBtn, 22);
     closeBtn.style.display = "flex";
@@ -1937,7 +1939,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `chatgpt-${Date.now()}.md`;
+    a.download = `chatgpt-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2051,7 +2053,7 @@
       const textSource = article.querySelector("[data-message-author-role]") || article;
       const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
       const snippet = rawText.length > MINIMAP_PROMPT_SNIPPET_LENGTH
-        ? rawText.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "\u2026"
+        ? rawText.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "…"
         : rawText;
 
       const item = document.createElement("button");
@@ -2174,7 +2176,7 @@
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
-    closeBtn.textContent = "\u00D7";
+    closeBtn.textContent = "×";
     closeBtn.setAttribute("aria-label", "Close bookmarks");
     styleSearchButton(closeBtn, 22);
     closeBtn.style.display = "flex";
