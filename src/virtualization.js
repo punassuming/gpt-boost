@@ -9,6 +9,8 @@
   let scrollToBottomButton = null;
   let searchButton = null;
   let searchPanel = null;
+  let minimapButton = null;
+  let minimapPanel = null;
   let searchInput = null;
   let searchPrevButton = null;
   let searchNextButton = null;
@@ -57,6 +59,18 @@
   const SEARCH_PANEL_TOP_OFFSET_PX = SEARCH_BUTTON_TOP_OFFSET_PX;
   const SEARCH_PANEL_WIDTH_PX = 280;
   const SEARCH_DEBOUNCE_MS = 200;
+  const MINIMAP_BUTTON_SIZE_PX = 30;
+  const MINIMAP_BUTTON_GAP_PX = 8;
+  const MINIMAP_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
+  const MINIMAP_BUTTON_TOP_OFFSET_PX =
+    SCROLL_BUTTON_TOP_OFFSET_PX +
+    SCROLL_BUTTON_SIZE_PX +
+    MINIMAP_BUTTON_GAP_PX;
+  const MINIMAP_PANEL_RIGHT_OFFSET_PX =
+    MINIMAP_BUTTON_RIGHT_OFFSET_PX + MINIMAP_BUTTON_SIZE_PX + MINIMAP_BUTTON_GAP_PX;
+  const MINIMAP_PANEL_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
+  const MINIMAP_PANEL_WIDTH_PX = 280;
+  const MINIMAP_PROMPT_SNIPPET_LENGTH = 60;
 
   // ---------------------------------------------------------------------------
   // Selectors
@@ -322,6 +336,7 @@
     hideIndicator();
     hideScrollButtons();
     hideSearchUi();
+    hideMinimapUi();
   }
 
   function setButtonVisibility(button, shouldShow) {
@@ -461,7 +476,7 @@
       indicatorElement.style.boxShadow = theme.indicatorShadow;
     }
 
-    const buttons = [scrollToTopButton, scrollToBottomButton, searchButton];
+    const buttons = [scrollToTopButton, scrollToBottomButton, searchButton, minimapButton];
     buttons.forEach((button) => {
       if (!button) return;
       button.style.background = theme.buttonBg;
@@ -496,6 +511,13 @@
     }
     if (searchCountSecondaryLabel) {
       searchCountSecondaryLabel.style.color = theme.mutedText;
+    }
+
+    if (minimapPanel) {
+      minimapPanel.style.background = theme.panelBg;
+      minimapPanel.style.boxShadow = theme.panelShadow;
+      minimapPanel.style.border = `1px solid ${theme.panelBorder}`;
+      minimapPanel.style.color = theme.text;
     }
   }
 
@@ -985,6 +1007,235 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Minimap (conversation outline)
+  // ---------------------------------------------------------------------------
+
+  function hideMinimapPanel() {
+    if (minimapPanel) minimapPanel.style.display = "none";
+  }
+
+  function hideMinimapUi() {
+    if (minimapButton) minimapButton.style.display = "none";
+    hideMinimapPanel();
+  }
+
+  function buildMinimapItems() {
+    const items = [];
+    const sortedEntries = Array.from(state.articleMap.entries())
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
+
+    for (const [id, node] of sortedEntries) {
+      const userEl = node.querySelector('[data-message-author-role="user"]');
+      if (!userEl) {
+        const testId = node.getAttribute("data-testid") || "";
+        const match = testId.match(/conversation-turn-(\d+)/);
+        if (!match || Number(match[1]) % 2 === 0) continue;
+      }
+      const textSource = userEl || node;
+      const text = (textSource.textContent || "").trim().replace(/\s+/g, " ");
+      if (!text) continue;
+      const snippet = text.length > MINIMAP_PROMPT_SNIPPET_LENGTH
+        ? text.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "…"
+        : text;
+      items.push({ id, snippet });
+    }
+    return items;
+  }
+
+  function scrollToMinimapItem(virtualId) {
+    hideMinimapPanel();
+    const selectorId = escapeSelectorValue(virtualId);
+    const target = document.querySelector(`[data-virtual-id="${selectorId}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    scheduleVirtualization();
+  }
+
+  function populateMinimapPanel(panel) {
+    const listContainer = panel.querySelector(
+      '[data-chatgpt-minimap="list"]'
+    );
+    if (!listContainer) return;
+
+    listContainer.innerHTML = "";
+    const items = buildMinimapItems();
+    const theme = getThemeTokens();
+
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.style.fontSize = "12px";
+      empty.style.opacity = "0.6";
+      empty.style.padding = "4px 2px";
+      empty.textContent = "No user prompts found.";
+      listContainer.appendChild(empty);
+      return;
+    }
+
+    items.forEach(({ id, snippet }, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = `${index + 1}. ${snippet}`;
+      item.style.display = "block";
+      item.style.width = "100%";
+      item.style.textAlign = "left";
+      item.style.background = "transparent";
+      item.style.border = "none";
+      item.style.borderRadius = "8px";
+      item.style.padding = "6px 8px";
+      item.style.fontSize = "12px";
+      item.style.lineHeight = "1.4";
+      item.style.cursor = "pointer";
+      item.style.color = theme.text;
+      item.style.wordBreak = "break-word";
+      item.style.fontFamily = "inherit";
+      item.addEventListener("mouseenter", () => {
+        item.style.background = theme.buttonMutedBg;
+      });
+      item.addEventListener("mouseleave", () => {
+        item.style.background = "transparent";
+      });
+      item.addEventListener("click", () => scrollToMinimapItem(id));
+      listContainer.appendChild(item);
+    });
+  }
+
+  function showMinimapPanel() {
+    const panel = ensureMinimapPanel();
+    if (!panel) return;
+    populateMinimapPanel(panel);
+    panel.style.display = "flex";
+  }
+
+  function toggleMinimapPanel() {
+    const panel = ensureMinimapPanel();
+    if (!panel) return;
+    const isVisible = panel.style.display !== "none";
+    if (isVisible) {
+      hideMinimapPanel();
+    } else {
+      showMinimapPanel();
+    }
+  }
+
+  function ensureMinimapButton() {
+    if (minimapButton && minimapButton.isConnected) {
+      return minimapButton;
+    }
+    if (!document.body) return null;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("data-chatgpt-minimap", "toggle");
+    button.style.position = "fixed";
+    button.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX}px`;
+    button.style.top = `${MINIMAP_BUTTON_TOP_OFFSET_PX}px`;
+    button.style.zIndex = "9999";
+    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.style.width = "14px";
+    icon.style.height = "14px";
+    icon.style.fill = "currentColor";
+
+    const lines = [
+      "M3 6h18v2H3zm0 5h18v2H3zm0 5h12v2H3z"
+    ];
+    lines.forEach((d) => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      icon.appendChild(path);
+    });
+
+    button.appendChild(icon);
+    button.setAttribute("aria-label", "Open conversation outline");
+    styleSearchButton(button, MINIMAP_BUTTON_SIZE_PX);
+    button.style.display = "none";
+    button.addEventListener("click", toggleMinimapPanel);
+
+    document.body.appendChild(button);
+    minimapButton = button;
+    applyThemeToUi();
+    return button;
+  }
+
+  function ensureMinimapPanel() {
+    if (minimapPanel && minimapPanel.isConnected) {
+      return minimapPanel;
+    }
+    if (!document.body) return null;
+
+    const panel = document.createElement("div");
+    panel.setAttribute("data-chatgpt-minimap", "panel");
+    panel.style.position = "fixed";
+    panel.style.top = `${MINIMAP_PANEL_TOP_OFFSET_PX}px`;
+    panel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX}px`;
+    panel.style.zIndex = "9999";
+    panel.style.width = `${MINIMAP_PANEL_WIDTH_PX}px`;
+    panel.style.maxHeight = `calc(100vh - ${MINIMAP_PANEL_TOP_OFFSET_PX + 16}px)`;
+    panel.style.display = "none";
+    panel.style.flexDirection = "column";
+    panel.style.gap = "8px";
+    panel.style.padding = "10px";
+    panel.style.borderRadius = "14px";
+    panel.style.background = "rgba(15, 23, 42, 0.92)";
+    panel.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.28)";
+    panel.style.color = "#f9fafb";
+    panel.style.backdropFilter = "blur(6px)";
+    panel.style.boxSizing = "border-box";
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.alignItems = "center";
+    header.style.justifyContent = "space-between";
+    header.style.gap = "8px";
+
+    const title = document.createElement("span");
+    title.textContent = "Conversation Outline";
+    title.style.fontSize = "12px";
+    title.style.fontWeight = "600";
+    title.style.lineHeight = "1.2";
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.textContent = "×";
+    closeButton.setAttribute("aria-label", "Close outline");
+    styleSearchButton(closeButton, 22);
+    closeButton.style.display = "flex";
+    closeButton.style.background = "rgba(148, 163, 184, 0.2)";
+    closeButton.addEventListener("click", hideMinimapPanel);
+
+    header.appendChild(title);
+    header.appendChild(closeButton);
+
+    const listContainer = document.createElement("div");
+    listContainer.setAttribute("data-chatgpt-minimap", "list");
+    listContainer.style.overflowY = "auto";
+    listContainer.style.display = "flex";
+    listContainer.style.flexDirection = "column";
+    listContainer.style.gap = "2px";
+
+    panel.appendChild(header);
+    panel.appendChild(listContainer);
+
+    document.body.appendChild(panel);
+    minimapPanel = panel;
+    applyThemeToUi();
+    return panel;
+  }
+
+  function updateMinimapVisibility(totalMessages) {
+    const shouldShow = state.enabled && totalMessages > 0;
+    const button = ensureMinimapButton();
+    if (!button) return;
+    button.style.display = shouldShow ? "flex" : "none";
+    if (!shouldShow) {
+      hideMinimapPanel();
+    }
+  }
+
   function updateIndicator(totalMessages, renderedMessages) {
     if (!state.enabled) {
       hideAllUiElements();
@@ -992,6 +1243,7 @@
     }
 
     updateSearchVisibility(totalMessages);
+    updateMinimapVisibility(totalMessages);
 
     const hidden = totalMessages - renderedMessages;
     if (totalMessages === 0 || hidden <= 0) {
@@ -1338,6 +1590,15 @@
     searchState.indexedTotal = 0;
     searchState.matchCount = 0;
     clearSearchHighlight();
+
+    if (minimapButton && minimapButton.isConnected) {
+      minimapButton.remove();
+    }
+    if (minimapPanel && minimapPanel.isConnected) {
+      minimapPanel.remove();
+    }
+    minimapButton = null;
+    minimapPanel = null;
   }
 
   function startUrlWatcher() {
