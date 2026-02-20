@@ -1,12 +1,12 @@
-# Privacy Policy for ChatGPT Lag Fixer
+# Privacy Policy for GPT Boost
 
-_Last updated: Nov. 18th 2025_
+_Last updated: February 20, 2026_
 
-ChatGPT Lag Fixer is designed with privacy as a top priority.  
+GPT Boost is designed with privacy as a top priority.  
 This extension does **not** collect, store, transmit, or share any personal data.
 
 ## 🔒 Data Collection
-ChatGPT Lag Fixer collects **no data whatsoever**, including:
+GPT Boost collects **no data whatsoever**, including:
 
 - No personal information  
 - No browsing history  
@@ -44,12 +44,12 @@ Required to modify the ChatGPT page’s DOM for performance optimization.
 No data is collected or transmitted.
 
 ## 🌐 Data Transfer
-ChatGPT Lag Fixer does **not** send any data to any server.  
+GPT Boost does **not** send any data to any server.  
 There are **no** external APIs, remote code, or cloud services.
 
 ## 🧱 Open Source
 The full source code is available on GitHub:  
-https://github.com/YOUR_USERNAME/chatgpt-lag-fixer
+https://github.com/YOUR_USERNAME/gpt-boost
 
 Anyone may review, audit, or fork the code.
 

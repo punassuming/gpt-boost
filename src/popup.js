@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggleDebugElement = document.getElementById("toggleDebug");
   const bufferSizeElement = document.getElementById("bufferSize");
   const config = window.ChatGPTVirtualScroller?.config;
+  const storageArea = chrome.storage?.sync ?? chrome.storage?.local;
 
   // Fallback values should stay in sync with constants.js defaults.
   const FALLBACK_MIN_PX = 500;
@@ -17,6 +18,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const MIN_BUFFER_PX = config?.MIN_MARGIN_PX ?? FALLBACK_MIN_PX;
   const MAX_BUFFER_PX = config?.MAX_MARGIN_PX ?? FALLBACK_MAX_PX;
   const DEFAULT_BUFFER_PX = config?.DEFAULT_MARGIN_PX ?? FALLBACK_DEFAULT_PX;
+  const settingsState = {
+    enabled: true,
+    debug: false,
+    marginPx: DEFAULT_BUFFER_PX
+  };
 
   bufferSizeElement.min = String(MIN_BUFFER_PX);
   bufferSizeElement.max = String(MAX_BUFFER_PX);
@@ -35,87 +41,95 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Initial loading of stored settings
-  chrome.storage.sync.get(
+  storageArea.get(
     { enabled: true, debug: false, marginPx: DEFAULT_BUFFER_PX },
     (data) => {
-      toggleEnabledElement.checked = data.enabled;
-      toggleDebugElement.checked = data.debug;
-      bufferSizeElement.value = String(normalizeBufferSize(data.marginPx));
+      settingsState.enabled = data.enabled;
+      settingsState.debug = data.debug;
+      settingsState.marginPx = data.marginPx;
 
-      updateStatusText(data.enabled);
+      toggleEnabledElement.checked = settingsState.enabled;
+      toggleDebugElement.checked = settingsState.debug;
+      bufferSizeElement.value = String(normalizeBufferSize(settingsState.marginPx));
+
+      updateStatusText(settingsState.enabled);
     }
   );
 
   // On change → update immediately AND save
   toggleEnabledElement.addEventListener("change", () => {
     const newValue = toggleEnabledElement.checked;
+    settingsState.enabled = newValue;
 
     updateStatusText(newValue);
 
-    chrome.storage.sync.set({ enabled: newValue });
+    storageArea.set({ enabled: newValue });
   });
 
   toggleDebugElement.addEventListener("change", () => {
     const newValue = toggleDebugElement.checked;
-    chrome.storage.sync.set({ debug: newValue });
+    settingsState.debug = newValue;
+    storageArea.set({ debug: newValue });
   });
 
   bufferSizeElement.addEventListener("change", () => {
     const normalized = normalizeBufferSize(bufferSizeElement.value);
     bufferSizeElement.value = String(normalized);
-    chrome.storage.sync.set({ marginPx: normalized });
+    settingsState.marginPx = normalized;
+    storageArea.set({ marginPx: normalized });
   });
 
   // Fetch stats from content script
-function updateStatsUI() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const activeTab = tabs[0];
-    if (!activeTab || activeTab.id == null) return;
+  function updateStatsUI() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const activeTab = tabs[0];
+      if (!activeTab || activeTab.id == null) return;
 
-    const url = activeTab.url || "";
-    const isChatGPTTab =
-      url.startsWith("https://chat.openai.com/") ||
-      url.startsWith("https://chatgpt.com/");
+      const url = activeTab.url || "";
+      const isChatGPTTab =
+        url.startsWith("https://chat.openai.com/") ||
+        url.startsWith("https://chatgpt.com/");
 
-    // Don't try to talk to tabs where our content script doesn't run
-    if (!isChatGPTTab) {
-      // Optionally show "N/A" or "Disabled" when not on ChatGPT
-      totalMessagesElement.textContent = "0";
-      renderedMessagesElement.textContent = "0";
-      memorySavedElement.textContent = "0%";
-      updateStatusText(false);
-      return;
-    }
-
-    chrome.tabs.sendMessage(
-      activeTab.id,
-      { type: "getStats" },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          // Content script not injected yet or tab reloaded; just ignore
-          console.debug(
-            "[ChatGPT LagFix] No stats available:", chrome.runtime.lastError.message
-          );
-          return;
-        }
-
-        if (!response) return;
-
-        const {
-          totalMessages,
-          renderedMessages,
-          memorySavedPercent,
-          enabled
-        } = response;
-
-        totalMessagesElement.textContent = String(totalMessages);
-        renderedMessagesElement.textContent = String(renderedMessages);
-        memorySavedElement.textContent = `${memorySavedPercent}%`;
-        updateStatusText(enabled);
+      // Don't try to talk to tabs where our content script doesn't run
+      if (!isChatGPTTab) {
+        // Keep settings state, but avoid showing misleading stats.
+        totalMessagesElement.textContent = "N/A";
+        renderedMessagesElement.textContent = "N/A";
+        memorySavedElement.textContent = "N/A";
+        updateStatusText(settingsState.enabled);
+        return;
       }
-    );
-  });
-}
+
+      chrome.tabs.sendMessage(
+        activeTab.id,
+        { type: "getStats" },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            // Content script not injected yet or tab reloaded; just ignore
+            console.debug(
+              "[GPT Boost] No stats available:", chrome.runtime.lastError.message
+            );
+            return;
+          }
+
+          if (!response) return;
+
+          const {
+            totalMessages,
+            renderedMessages,
+            memorySavedPercent,
+            enabled
+          } = response;
+
+          totalMessagesElement.textContent = String(totalMessages);
+          renderedMessagesElement.textContent = String(renderedMessages);
+          memorySavedElement.textContent = `${memorySavedPercent}%`;
+          settingsState.enabled = enabled;
+          updateStatusText(enabled);
+        }
+      );
+    });
+  }
 
   updateStatsUI();
 });

@@ -1,7 +1,7 @@
 // constants.js
 
 /**
- * Global namespace for the ChatGPT Virtual Scroller extension.
+ * Global namespace for the GPT Boost extension.
  */
 /** @type {any} */
 window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
@@ -74,23 +74,24 @@ window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
    */
   scroller.log = function logMessage(...logArguments) {
     if (!scroller.state.debug) return;
-    console.log("[ChatGPT Virtual Scroller]", ...logArguments);
+    console.log("[GPT Boost]", ...logArguments);
   };
 
   scroller.logPromoMessage = function logPromoMessage() {
     if (!scroller.state.debug) return;
     console.log(
       `%c
-┌─────────────────────────────────────────┐
-│  ChatGPT Lag Fixer (debug mode enabled) │
-└─────────────────────────────────────────┘
-Made by Bram van der Giessen
+┌───────────────────────────────────┐
+│  GPT Boost (debug mode enabled)  │
+└───────────────────────────────────┘
+Made by Bram van der Giessen and Rich Alesi
 
-You are seeing this message because debug mode is enabled for the chrome extension.
+You are seeing this message because debug mode is enabled for the extension.
 To disable debug mode, open the extension popup and uncheck "Enable debug mode".
 
 If you enjoy this project, please consider giving it a ⭐ on GitHub:
 https://github.com/bramgiessen
+https://github.com/punassuming
 
 🧑‍💻 If you need a skilled developer, feel free to reach out to me on:
 https://bramgiessen.com

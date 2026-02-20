@@ -91,7 +91,7 @@
   // ---- Entry point -------------------------------------------------------
 
   function initialize() {
-    log("Initializing ChatGPT Virtual Scroller");
+    log("Initializing GPT Boost");
 
     initializeStorageListeners();
     window.addEventListener("resize", virtualizer.handleResize);
