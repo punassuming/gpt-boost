@@ -64,6 +64,18 @@ window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
       renderedMessages: 0
     },
 
+    /** Virtual IDs of messages the user has collapsed */
+    /** @type {Set<string>} */
+    collapsedMessages: new Set(),
+
+    /** Virtual IDs of messages pinned to the top bar */
+    /** @type {Set<string>} */
+    pinnedMessages: new Set(),
+
+    /** Virtual IDs of messages the user has bookmarked */
+    /** @type {Set<string>} */
+    bookmarkedMessages: new Set(),
+
     /** "IDLE" | "OBSERVING" */
     lifecycleStatus: /** @type {"IDLE" | "OBSERVING"} */ ("IDLE")
   };
