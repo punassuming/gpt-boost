@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Speed Booster: Fix Lag in Long Chats",
+  "name": "GPT Boost - Productivity, Speed & Virtualization",
   "version": "1.0.3",
-  "description": "Stop browser freezing and lag in long ChatGPT conversations. Instantly speeds up the entire UI and reduces memory usage.",
+  "description": "Boost productivity in long ChatGPT threads with smart message virtualization for faster scrolling and lower memory use.",
   "permissions": [
     "storage",
     "activeTab"
@@ -47,7 +47,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "chatgpt-lag-fixer@bramgiessen.com",
+      "id": "gpt-boost@eieio.cc",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": ["none"]

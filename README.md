@@ -1,10 +1,10 @@
-# ChatGPT Lag Fixer (Virtual Scroller)
+# GPT Boost (Message Virtualization)
 
-**The ultimate performance booster for long ChatGPT conversations**
+**Productivity-first speed for long ChatGPT conversations**
 
-ChatGPT Lag Fixer is a **Chrome and Firefox** extension that uses intelligent virtual scrolling to keep your ChatGPT tabs lightning-fast, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
+GPT Boost is a **Chrome and Firefox** extension that uses intelligent message virtualization to keep your ChatGPT tabs fast and responsive, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
 
-**🔐 Remain full privacy**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
+**🔐 Remain fully private**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
 
 ## 📥 Download
 
@@ -50,7 +50,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 📦 For Google Chrome (and Edge/Brave)
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
+   git clone https://github.com/yourusername/gpt-boost.git
    ```
 2. Open Chrome and navigate to:
     ```bash
@@ -65,7 +65,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 🦊 For Mozilla Firefox
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
+   git clone https://github.com/yourusername/gpt-boost.git
    ```
 2. Open Firefox and navigate to:
     ```bash
@@ -74,7 +74,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 3. Click Load Temporary Add-on...
 4. Navigate to your project folder and select the manifest.json file
 
-You're now running ChatGPT Lag Fixer locally, and you can make changes in the code!
+You're now running GPT Boost locally, and you can make changes in the code!
 
 
 ## Technical Architecture
@@ -229,6 +229,6 @@ MIT License - feel free to use, modify, and distribute!
 
 ---
 
-**Made with ❤️ by [Bram van der Giessen](https://bramgiessen.com)**
+**Made with ❤️ by [Bram van der Giessen](https://bramgiessen.com) and [Rich Alesi](https://github.com/punassuming)**
 
 ⭐ **If you find this useful, please star the repository!**

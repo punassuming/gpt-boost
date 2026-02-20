@@ -7,12 +7,12 @@ chrome.runtime.onInstalled.addListener((details) => {
       debug: false
     });
 
-    console.log("ChatGPT Virtual Scroller installed.");
+    console.log("GPT Boost installed.");
   }
 
   if (details.reason === "update") {
     console.log(
-      "ChatGPT Virtual Scroller updated to version",
+      "GPT Boost updated to version",
       chrome.runtime.getManifest().version
     );
   }

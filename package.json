@@ -1,13 +1,15 @@
 {
-  "name": "chatgpt-lag-fixer",
+  "name": "gpt-boost",
   "version": "1.0.0",
-  "description": "Chrome extension for intelligent virtual scrolling in ChatGPT conversations to reduce lag and improve performance.",
+  "description": "Productivity-focused virtualization for faster, lighter ChatGPT conversations.",
   "scripts": {
+    "build:firefox": "rm -rf dist/firefox dist/gpt-boost-firefox.xpi && mkdir -p dist/firefox && cp manifest_firefox.json dist/firefox/manifest.json && cp -R src icons dist/firefox/ && (cd dist/firefox && zip -r ../gpt-boost-firefox.xpi .)",
+    "sign:firefox": "npm run build:firefox && web-ext sign --source-dir dist/firefox --channel=unlisted --api-key=$AMO_JWT_ISSUER --api-secret=$AMO_JWT_SECRET",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/chatgpt-virtual-scroller.git"
+    "url": "https://github.com/yourusername/gpt-boost.git"
   },
   "keywords": [
     "chatgpt",
@@ -17,7 +19,7 @@
     "optimization",
     "dom-virtualization"
   ],
-  "author": "Your Name",
+  "author": "Bram van der Giessen, Rich Alesi (punassuming)",
   "license": "MIT",
   "devDependencies": {}
 }
