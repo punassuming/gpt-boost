@@ -1,4 +1,4 @@
-name: PR CI
+name: PR Build Checks
 
 on:
   pull_request:
@@ -8,37 +8,15 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
-      - unlabeled
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
-  validate-semver-label:
-    name: Validate Semver Label
+  validate-version-lockstep:
+    name: Validate Version Lockstep
     runs-on: ubuntu-latest
     steps:
-      - name: Ensure exactly one semver label
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const labels = (context.payload.pull_request.labels || []).map((l) => l.name);
-            const hasMajor = labels.includes('semver:major');
-            const hasMinor = labels.includes('semver:minor');
-
-            if (hasMajor && hasMinor) {
-              core.setFailed('PR has both semver:major and semver:minor labels. Keep exactly one.');
-              return;
-            }
-
-            if (!hasMajor && !hasMinor) {
-              core.setFailed('PR must include exactly one label: semver:major or semver:minor.');
-              return;
-            }
-
-            core.info(`Semver label valid: ${hasMajor ? 'semver:major' : 'semver:minor'}`);
       - name: Checkout
         uses: actions/checkout@v4
       - name: Validate version lock-step
@@ -65,7 +43,7 @@ jobs:
   build-firefox:
     name: Build Firefox Package
     runs-on: ubuntu-latest
-    needs: validate-semver-label
+    needs: validate-version-lockstep
     steps:
       - name: Checkout
         uses: actions/checkout@v4

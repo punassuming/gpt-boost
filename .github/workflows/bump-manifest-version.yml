@@ -14,11 +14,7 @@ jobs:
   release-on-merge:
     runs-on: ubuntu-latest
     if: |
-      github.event.pull_request.merged == true &&
-      (
-        contains(github.event.pull_request.labels.*.name, 'semver:major') ||
-        contains(github.event.pull_request.labels.*.name, 'semver:minor')
-      )
+      github.event.pull_request.merged == true
     concurrency:
       group: release-main-pipeline
       cancel-in-progress: false
@@ -47,8 +43,10 @@ jobs:
 
           if [[ "$has_major" == "true" ]]; then
             echo "type=major" >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "$has_minor" == "true" ]]; then
             echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Bump manifest versions
@@ -80,6 +78,7 @@ jobs:
           function bump(v, type) {
             if (type === 'major') return { major: v.major + 1, minor: 0, patch: 0 };
             if (type === 'minor') return { major: v.major, minor: v.minor + 1, patch: 0 };
+            if (type === 'patch') return { major: v.major, minor: v.minor, patch: v.patch + 1 };
             throw new Error(`Unsupported bump type: ${type}`);
           }
 

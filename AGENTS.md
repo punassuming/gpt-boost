@@ -29,12 +29,12 @@
 ## CI/CD Automation
 - PR CI workflow: `.github/workflows/pr-ci.yml`
   - Runs on PRs targeting `main`.
-  - Enforces exactly one semver label on the PR: `semver:minor` or `semver:major`.
+  - Workflow name in GitHub Actions UI: `PR Build Checks`.
   - Enforces version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`.
   - Runs Firefox build validation with `npm run build:firefox`.
 - Merge-to-main release pipeline: `.github/workflows/bump-manifest-version.yml`
   - Runs when PRs to `main` are merged.
-  - Requires exactly one semver label (`semver:minor` or `semver:major`) on the merged PR.
+  - Auto-bumps on merge: default is patch; optional labels at merge-time can set `semver:minor` or `semver:major`.
   - Bumps `package.json`, `manifest.json`, and `manifest_firefox.json` in lock-step, commits to `main`, creates tag `v<version>`, builds/signs Firefox extension, and publishes a GitHub Release with signed XPI.
 - Tag/manual release workflow: `.github/workflows/release-firefox.yml`
   - Runs on tag push `v*` or manual dispatch.

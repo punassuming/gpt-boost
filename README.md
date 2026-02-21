@@ -136,21 +136,21 @@ It makes massive message lists behave like small ones.
 ### Merge-to-main automated release pipeline
 - Workflow: `.github/workflows/bump-manifest-version.yml`
 - Trigger: when a PR targeting `main` is closed and merged.
-- Add one of these labels to the PR:
-  - `semver:minor` -> bumps manifests to the next minor (e.g. `1.2.3` -> `1.3.0`)
-  - `semver:major` -> bumps manifests to the next major (e.g. `1.2.3` -> `2.0.0`)
+- Version bump behavior on merge:
+  - default: patch bump (e.g. `1.2.3` -> `1.2.4`)
+  - optional label `semver:minor`: minor bump (e.g. `1.2.3` -> `1.3.0`)
+  - optional label `semver:major`: major bump (e.g. `1.2.3` -> `2.0.0`)
 - It performs this chain automatically after merge:
-  - bumps `manifest.json` and `manifest_firefox.json`
+  - bumps `package.json`, `manifest.json`, and `manifest_firefox.json`
   - commits the bump to `main`
   - creates and pushes tag `v<new-version>`
   - builds/signs the Firefox extension
   - creates/updates the GitHub Release and uploads the signed `.xpi`
 
 ### PR CI checks on `main`
-- Workflow: `.github/workflows/pr-ci.yml`
-- Trigger: PR opened/updated/reopened/labeled/unlabeled against `main`.
+- Workflow: `.github/workflows/pr-ci.yml` (`PR Build Checks`)
+- Trigger: PR opened/updated/reopened against `main`.
 - Checks:
-  - validates exactly one semver label is present (`semver:minor` or `semver:major`)
   - validates version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`
   - installs dependencies
   - runs `npm run build:firefox`
