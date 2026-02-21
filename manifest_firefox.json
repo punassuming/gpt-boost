@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "GPT Boost - Productivity, Speed & Virtualization",
-  "version": "1.0.3",
+  "name": "GPT Boost - Faster ChatGPT Scrolling",
+  "version": "1.0.5",
   "description": "Boost productivity in long ChatGPT threads with smart message virtualization for faster scrolling and lower memory use.",
   "permissions": [
     "storage",
@@ -12,7 +12,9 @@
     "https://chatgpt.com/*"
   ],
   "background": {
-    "scripts": ["src/background.js"]
+    "scripts": [
+      "src/background.js"
+    ]
   },
   "content_scripts": [
     {
@@ -48,10 +50,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "gpt-boost@eieio.cc",
-      "strict_min_version": "128.0",
-      "data_collection_permissions": {
-        "required": ["none"]
-      }
+      "strict_min_version": "128.0"
     }
   }
 }

@@ -21,6 +21,14 @@
   let searchDebounceTimer = null;
   let highlightedSearchElement = null;
   let themeObserver = null;
+  let sidebarToggleButton = null;
+  let sidebarPanel = null;
+  let sidebarContentContainer = null;
+  let activeSidebarTab = "search";
+  let sidebarExpanded = false;
+  let settingsEnabledInput = null;
+  let settingsDebugInput = null;
+  let settingsMarginInput = null;
   const searchState = {
     query: "",
     results: [],
@@ -79,7 +87,7 @@
   const CODE_PANEL_PANEL_RIGHT_OFFSET_PX =
     CODE_PANEL_BUTTON_RIGHT_OFFSET_PX + CODE_PANEL_BUTTON_SIZE_PX + CODE_PANEL_BUTTON_GAP_PX;
   const CODE_PANEL_PANEL_TOP_OFFSET_PX = CODE_PANEL_BUTTON_TOP_OFFSET_PX;
-  const CODE_PANEL_PANEL_WIDTH_PX = 320;
+  const CODE_PANEL_PANEL_WIDTH_PX = 520;
   const DOWNLOAD_BUTTON_SIZE_PX = 30;
   const DOWNLOAD_BUTTON_GAP_PX = 8;
   const DOWNLOAD_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
@@ -111,6 +119,146 @@
   const SEARCH_PANEL_TOP_OFFSET_PX = SEARCH_BUTTON_TOP_OFFSET_PX;
   const SEARCH_PANEL_WIDTH_PX = 280;
   const SEARCH_DEBOUNCE_MS = 200;
+  const MESSAGE_RAIL_OUTSIDE_LEFT_PX = -32;
+  const MESSAGE_RAIL_INSIDE_LEFT_PX = 6;
+  const MESSAGE_RAIL_INSIDE_PADDING_PX = 34;
+  const MESSAGE_RAIL_LEFT_GUTTER_THRESHOLD_PX = 72;
+  const SIDEBAR_TOGGLE_SIZE_PX = 30;
+  const SIDEBAR_TOGGLE_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
+  const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
+  const SIDEBAR_PANEL_WIDTH_PX = 380;
+  const SIDEBAR_PANEL_EXPANDED_WIDTH_PX = 560;
+  const SIDEBAR_PANEL_TOP_OFFSET_PX = SIDEBAR_TOGGLE_TOP_OFFSET_PX;
+  const SIDEBAR_PANEL_RIGHT_OFFSET_PX = SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + SIDEBAR_TOGGLE_SIZE_PX + 8;
+  const MESSAGE_FLAGS_STORAGE_KEY = "messageFlagsByConversation";
+  const MESSAGE_FLAGS_SAVE_DEBOUNCE_MS = 200;
+  const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "inset 0 0 0 1px rgba(59,130,246,0.35)";
+  let currentConversationKey = "";
+  let persistedPinnedMessageKeys = new Set();
+  let persistedBookmarkedMessageKeys = new Set();
+  let saveFlagsTimer = null;
+  let flagsStoreCache = null;
+
+  function getExtensionStorageArea() {
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      return chrome.storage.local || chrome.storage.sync || null;
+    }
+    return null;
+  }
+
+  function extensionStorageGet(key) {
+    const area = getExtensionStorageArea();
+    if (!area) return Promise.resolve({});
+    return new Promise((resolve) => {
+      area.get(key, (result) => resolve(result || {}));
+    });
+  }
+
+  function extensionStorageSet(payload) {
+    const area = getExtensionStorageArea();
+    if (!area) return Promise.resolve();
+    return new Promise((resolve) => {
+      area.set(payload, () => resolve());
+    });
+  }
+
+  async function loadFlagsStore() {
+    if (flagsStoreCache) return flagsStoreCache;
+    const result = await extensionStorageGet(MESSAGE_FLAGS_STORAGE_KEY);
+    const store = result[MESSAGE_FLAGS_STORAGE_KEY];
+    flagsStoreCache = store && typeof store === "object" ? store : {};
+    return flagsStoreCache;
+  }
+
+  function getConversationStorageKey() {
+    const match = window.location.pathname.match(/\/c\/([^/?#]+)/);
+    if (match && match[1]) return `chat:${match[1]}`;
+    return "";
+  }
+
+  function getArticleMessageKey(article, virtualId) {
+    if (article.dataset.gptBoostMessageKey) {
+      return article.dataset.gptBoostMessageKey;
+    }
+
+    const nestedMessageEl = article.querySelector("[data-message-id]");
+    const candidate = (
+      article.getAttribute("data-message-id") ||
+      article.getAttribute("id") ||
+      article.getAttribute("data-testid") ||
+      (nestedMessageEl && nestedMessageEl.getAttribute("data-message-id")) ||
+      `virtual:${virtualId}`
+    ).trim();
+
+    article.dataset.gptBoostMessageKey = candidate;
+    return candidate;
+  }
+
+  function syncFlagsFromPersistedKeys() {
+    const nextPinned = new Set();
+    const nextBookmarked = new Set();
+
+    state.articleMap.forEach((article, virtualId) => {
+      if (!(article instanceof HTMLElement)) return;
+      const key = getArticleMessageKey(article, virtualId);
+      if (persistedPinnedMessageKeys.has(key)) nextPinned.add(virtualId);
+      if (persistedBookmarkedMessageKeys.has(key)) nextBookmarked.add(virtualId);
+    });
+
+    state.pinnedMessages = nextPinned;
+    state.bookmarkedMessages = nextBookmarked;
+    updatePinnedBar();
+    if (bookmarksPanel && bookmarksPanel.style.display !== "none") {
+      populateBookmarksPanel(bookmarksPanel);
+    }
+    state.articleMap.forEach((article, virtualId) => {
+      updatePinButtonAppearance(article, virtualId);
+      updateBookmarkButtonAppearance(article, virtualId);
+    });
+    refreshSidebarTab();
+  }
+
+  async function loadPersistedFlagsForConversation() {
+    currentConversationKey = getConversationStorageKey();
+    if (!currentConversationKey) {
+      persistedPinnedMessageKeys = new Set();
+      persistedBookmarkedMessageKeys = new Set();
+      syncFlagsFromPersistedKeys();
+      return;
+    }
+    const store = await loadFlagsStore();
+    const conversationFlags = store[currentConversationKey] || {};
+    const pinned = Array.isArray(conversationFlags.pinned) ? conversationFlags.pinned : [];
+    const bookmarked = Array.isArray(conversationFlags.bookmarked) ? conversationFlags.bookmarked : [];
+    persistedPinnedMessageKeys = new Set(pinned);
+    persistedBookmarkedMessageKeys = new Set(bookmarked);
+    syncFlagsFromPersistedKeys();
+  }
+
+  async function saveFlagsToStorage() {
+    if (!currentConversationKey) return;
+    const store = await loadFlagsStore();
+    const pinned = Array.from(persistedPinnedMessageKeys);
+    const bookmarked = Array.from(persistedBookmarkedMessageKeys);
+
+    if (!pinned.length && !bookmarked.length) {
+      delete store[currentConversationKey];
+    } else {
+      store[currentConversationKey] = { pinned, bookmarked };
+    }
+
+    await extensionStorageSet({ [MESSAGE_FLAGS_STORAGE_KEY]: store });
+  }
+
+  function scheduleFlagsSave() {
+    if (saveFlagsTimer !== null) {
+      clearTimeout(saveFlagsTimer);
+    }
+    saveFlagsTimer = setTimeout(() => {
+      saveFlagsTimer = null;
+      saveFlagsToStorage().catch(() => {});
+    }, MESSAGE_FLAGS_SAVE_DEBOUNCE_MS);
+  }
 
   // ---------------------------------------------------------------------------
   // Selectors
@@ -265,15 +413,18 @@
         const newId = String(state.nextVirtualId++);
         node.dataset.virtualId = newId;
         state.articleMap.set(newId, node);
+        getArticleMessageKey(node, newId);
         injectArticleUi(node, newId);
       } else {
         const id = node.dataset.virtualId;
         if (id && !state.articleMap.has(id)) {
           state.articleMap.set(id, node);
+          getArticleMessageKey(node, id);
           injectArticleUi(node, id);
         }
       }
     });
+    syncFlagsFromPersistedKeys();
   }
 
   /**
@@ -381,6 +532,7 @@
     hideMinimapUi();
     hideCodePanelUi();
     hideBookmarksUi();
+    hideSidebar();
     if (downloadButton) downloadButton.style.display = "none";
   }
 
@@ -522,7 +674,7 @@
     }
 
     const buttons = [scrollToTopButton, scrollToBottomButton, searchButton, minimapButton,
-      codePanelButton, downloadButton, bookmarksButton];
+      codePanelButton, downloadButton, bookmarksButton, sidebarToggleButton];
     buttons.forEach((button) => {
       if (!button) return;
       button.style.background = theme.buttonBg;
@@ -578,6 +730,13 @@
       bookmarksPanel.style.boxShadow = theme.panelShadow;
       bookmarksPanel.style.border = `1px solid ${theme.panelBorder}`;
       bookmarksPanel.style.color = theme.text;
+    }
+
+    if (sidebarPanel) {
+      sidebarPanel.style.background = theme.panelBg;
+      sidebarPanel.style.boxShadow = theme.panelShadow;
+      sidebarPanel.style.border = `1px solid ${theme.panelBorder}`;
+      sidebarPanel.style.color = theme.text;
     }
 
     if (pinnedBarElement) {
@@ -738,6 +897,26 @@
     return entries;
   }
 
+  function getSearchResultSummary(id, index, total) {
+    const node = state.articleMap.get(id);
+    if (!(node instanceof HTMLElement)) {
+      return {
+        title: `Result ${index + 1}`,
+        subtitle: `Message ${id} • ${index + 1}/${total}`
+      };
+    }
+    const textSource = node.querySelector("[data-message-author-role]") || node;
+    const role = textSource instanceof HTMLElement
+      ? (textSource.getAttribute("data-message-author-role") || "message")
+      : "message";
+    const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
+    const snippet = raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
+    return {
+      title: snippet || `Message ${id}`,
+      subtitle: `${role} • #${id} • ${index + 1}/${total}`
+    };
+  }
+
   function focusSearchResult(id) {
     const selectorId = escapeSelectorValue(id);
     const target = document.querySelector(
@@ -794,11 +973,10 @@
     searchState.matchCount = matchCount;
 
     updateSearchCountLabel();
-    if (results.length) {
-      focusSearchResult(results[0]);
-    } else {
+    if (!results.length) {
       clearSearchHighlight();
     }
+    refreshSidebarTab();
   }
 
   function scheduleSearch(query) {
@@ -850,6 +1028,11 @@
   }
 
   function toggleSearchPanel() {
+    const sidebarVisible = !!(sidebarPanel && sidebarPanel.style.display !== "none");
+    if (sidebarVisible) {
+      openSidebar("search");
+      return;
+    }
     const panel = ensureSearchPanel();
     if (!panel) return;
     const isVisible = panel.style.display !== "none";
@@ -873,6 +1056,553 @@
     button.style.alignItems = "center";
     button.style.justifyContent = "center";
     button.style.padding = "0";
+  }
+
+  function getSettingsStorageArea() {
+    return (typeof chrome !== "undefined" && chrome.storage)
+      ? (chrome.storage.sync || chrome.storage.local || null)
+      : null;
+  }
+
+  function normalizeMargin(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return config.DEFAULT_MARGIN_PX;
+    return Math.min(config.MAX_MARGIN_PX, Math.max(config.MIN_MARGIN_PX, Math.round(parsed)));
+  }
+
+  function refreshSidebarTab() {
+    if (!sidebarContentContainer || !sidebarPanel || sidebarPanel.style.display === "none") return;
+    renderSidebarTab(activeSidebarTab);
+  }
+
+  function createSidebarTabButton(tabId, label) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.style.border = "none";
+    btn.style.borderRadius = "8px";
+    btn.style.padding = "6px 8px";
+    btn.style.fontSize = "11px";
+    btn.style.cursor = "pointer";
+    btn.style.fontFamily = "inherit";
+    btn.style.background = "transparent";
+    btn.style.color = "inherit";
+    btn.dataset.gptBoostSidebarTab = tabId;
+    btn.addEventListener("click", () => openSidebar(tabId));
+    return btn;
+  }
+
+  function renderSearchTabContent(container) {
+    const theme = getThemeTokens();
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.gap = "6px";
+    row.style.alignItems = "center";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Search chat...";
+    input.setAttribute("aria-label", "Search chat");
+    input.style.flex = "1";
+    input.style.minWidth = "0";
+    input.style.height = "32px";
+    input.style.borderRadius = "8px";
+    input.style.padding = "0 10px";
+    input.style.fontSize = "12px";
+    input.style.fontFamily = "inherit";
+    input.style.background = theme.inputBg;
+    input.style.border = `1px solid ${theme.inputBorder}`;
+    input.style.color = theme.text;
+    input.value = searchState.query || "";
+    input.addEventListener("input", (event) => scheduleSearch(event.target.value));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        navigateSearch(event.shiftKey ? -1 : 1);
+      }
+    });
+
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.textContent = "↑";
+    styleSearchButton(prevBtn, 24);
+    prevBtn.style.display = "flex";
+    prevBtn.style.background = theme.buttonMutedBg;
+    prevBtn.style.color = theme.buttonMutedText;
+    prevBtn.addEventListener("click", () => navigateSearch(-1));
+
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.textContent = "↓";
+    styleSearchButton(nextBtn, 24);
+    nextBtn.style.display = "flex";
+    nextBtn.style.background = theme.buttonMutedBg;
+    nextBtn.style.color = theme.buttonMutedText;
+    nextBtn.addEventListener("click", () => navigateSearch(1));
+
+    row.appendChild(input);
+    row.appendChild(prevBtn);
+    row.appendChild(nextBtn);
+
+    const count = document.createElement("div");
+    count.style.fontSize = "11px";
+    count.style.opacity = "0.8";
+    count.style.padding = "2px 2px 6px";
+
+    const totalSections = searchState.results.length;
+    const active = totalSections && searchState.activeIndex >= 0 ? searchState.activeIndex + 1 : 0;
+    count.textContent = `${active}/${totalSections} sections • ${searchState.matchCount} matches`;
+
+    container.appendChild(row);
+    container.appendChild(count);
+
+    const resultsList = document.createElement("div");
+    resultsList.style.display = "flex";
+    resultsList.style.flexDirection = "column";
+    resultsList.style.gap = "6px";
+    resultsList.style.overflowY = "auto";
+    resultsList.style.minHeight = "0";
+    resultsList.style.flex = "1";
+
+    if (!searchState.results.length) {
+      const empty = document.createElement("div");
+      empty.style.fontSize = "12px";
+      empty.style.opacity = "0.7";
+      empty.style.padding = "4px 2px";
+      empty.textContent = searchState.query ? "No matches found." : "Type to search the conversation.";
+      resultsList.appendChild(empty);
+    } else {
+      const total = searchState.results.length;
+      searchState.results.forEach((id, idx) => {
+        const summary = getSearchResultSummary(id, idx, total);
+        const item = document.createElement("button");
+        item.type = "button";
+        item.style.textAlign = "left";
+        item.style.border = `1px solid ${theme.panelBorder}`;
+        item.style.borderRadius = "10px";
+        item.style.padding = "8px";
+        item.style.background = idx === searchState.activeIndex ? theme.buttonMutedBg : "transparent";
+        item.style.color = theme.text;
+        item.style.cursor = "pointer";
+        item.style.fontFamily = "inherit";
+        item.style.display = "flex";
+        item.style.flexDirection = "column";
+        item.style.gap = "4px";
+        item.addEventListener("click", () => {
+          searchState.activeIndex = idx;
+          updateSearchCountLabel();
+          focusSearchResult(id);
+          renderSidebarTab("search");
+        });
+
+        const title = document.createElement("div");
+        title.textContent = summary.title;
+        title.style.fontSize = "12px";
+        title.style.lineHeight = "1.35";
+        title.style.wordBreak = "break-word";
+
+        const subtitle = document.createElement("div");
+        subtitle.textContent = summary.subtitle;
+        subtitle.style.fontSize = "10px";
+        subtitle.style.opacity = "0.72";
+
+        item.appendChild(title);
+        item.appendChild(subtitle);
+        resultsList.appendChild(item);
+      });
+    }
+
+    container.appendChild(resultsList);
+
+    searchInput = input;
+    searchPrevButton = prevBtn;
+    searchNextButton = nextBtn;
+    searchCountLabel = count;
+    searchCountPrimaryLabel = null;
+    searchCountSecondaryLabel = null;
+    searchCloseButton = null;
+    setTimeout(() => input.focus(), 0);
+  }
+
+  function renderBookmarksTabContent(container) {
+    const list = document.createElement("div");
+    list.style.display = "flex";
+    list.style.flexDirection = "column";
+    list.style.gap = "2px";
+    list.style.overflowY = "auto";
+    list.style.minHeight = "0";
+    list.style.flex = "1";
+    list.setAttribute("data-chatgpt-bookmarks", "list");
+    container.appendChild(list);
+    populateBookmarksPanel(container);
+  }
+
+  function collapseAllMessages() {
+    ensureVirtualIds();
+    state.articleMap.forEach((_article, id) => state.collapsedMessages.add(id));
+    state.articleMap.forEach((article, id) => applyCollapseState(article, id));
+  }
+
+  function expandAllMessages() {
+    ensureVirtualIds();
+    state.collapsedMessages.clear();
+    state.articleMap.forEach((article, id) => applyCollapseState(article, id));
+  }
+
+  function renderOutlineTabContent(container) {
+    const theme = getThemeTokens();
+    const controls = document.createElement("div");
+    controls.style.display = "flex";
+    controls.style.gap = "6px";
+    controls.style.marginBottom = "8px";
+
+    const collapseAllBtn = document.createElement("button");
+    collapseAllBtn.type = "button";
+    collapseAllBtn.textContent = "Collapse All";
+    collapseAllBtn.style.padding = "4px 8px";
+    collapseAllBtn.style.fontSize = "11px";
+    collapseAllBtn.style.border = "none";
+    collapseAllBtn.style.borderRadius = "8px";
+    collapseAllBtn.style.cursor = "pointer";
+    collapseAllBtn.style.background = theme.buttonMutedBg;
+    collapseAllBtn.style.color = theme.buttonMutedText;
+    collapseAllBtn.addEventListener("click", () => {
+      collapseAllMessages();
+      renderSidebarTab("outline");
+    });
+
+    const expandAllBtn = document.createElement("button");
+    expandAllBtn.type = "button";
+    expandAllBtn.textContent = "Expand All";
+    expandAllBtn.style.padding = "4px 8px";
+    expandAllBtn.style.fontSize = "11px";
+    expandAllBtn.style.border = "none";
+    expandAllBtn.style.borderRadius = "8px";
+    expandAllBtn.style.cursor = "pointer";
+    expandAllBtn.style.background = theme.buttonMutedBg;
+    expandAllBtn.style.color = theme.buttonMutedText;
+    expandAllBtn.addEventListener("click", () => {
+      expandAllMessages();
+      renderSidebarTab("outline");
+    });
+
+    controls.appendChild(collapseAllBtn);
+    controls.appendChild(expandAllBtn);
+    container.appendChild(controls);
+
+    const list = document.createElement("div");
+    list.style.display = "flex";
+    list.style.flexDirection = "column";
+    list.style.gap = "6px";
+    list.style.overflowY = "auto";
+    list.style.minHeight = "0";
+    list.style.flex = "1";
+    container.appendChild(list);
+
+    const entries = Array.from(state.articleMap.entries()).sort((a, b) => Number(a[0]) - Number(b[0]));
+    entries.forEach(([id, article], index) => {
+      if (!(article instanceof HTMLElement)) return;
+      const textSource = article.querySelector("[data-message-author-role]") || article;
+      const text = (textSource.textContent || "").trim().replace(/\s+/g, " ");
+      if (!text) return;
+
+      const item = document.createElement("div");
+      item.style.border = `1px solid ${theme.panelBorder}`;
+      item.style.borderRadius = "10px";
+      item.style.padding = "6px 8px";
+      item.style.display = "flex";
+      item.style.flexDirection = "column";
+      item.style.gap = "6px";
+      item.style.background = "rgba(148,163,184,0.06)";
+
+      const title = document.createElement("button");
+      title.type = "button";
+      title.textContent = `${index + 1}. ${text.slice(0, 90)}${text.length > 90 ? "…" : ""}`;
+      title.style.textAlign = "left";
+      title.style.border = "none";
+      title.style.background = "transparent";
+      title.style.padding = "0";
+      title.style.cursor = "pointer";
+      title.style.fontSize = "12px";
+      title.style.color = theme.text;
+      title.style.fontFamily = "inherit";
+      title.addEventListener("click", () => scrollToVirtualId(id));
+
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "6px";
+
+      const mkBtn = (label, onClick) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.style.border = "none";
+        b.style.borderRadius = "6px";
+        b.style.padding = "2px 6px";
+        b.style.fontSize = "10px";
+        b.style.cursor = "pointer";
+        b.style.background = theme.buttonMutedBg;
+        b.style.color = theme.buttonMutedText;
+        b.addEventListener("click", onClick);
+        return b;
+      };
+
+      actions.appendChild(mkBtn(state.pinnedMessages.has(id) ? "Unpin" : "Pin", () => {
+        togglePin(id);
+        renderSidebarTab("outline");
+      }));
+      actions.appendChild(mkBtn(state.bookmarkedMessages.has(id) ? "Unbookmark" : "Bookmark", () => {
+        toggleBookmark(id);
+        renderSidebarTab("outline");
+      }));
+      actions.appendChild(mkBtn(state.collapsedMessages.has(id) ? "Expand" : "Collapse", () => {
+        toggleCollapse(id);
+        renderSidebarTab("outline");
+      }));
+
+      item.appendChild(title);
+      item.appendChild(actions);
+      list.appendChild(item);
+    });
+  }
+
+  function renderSettingsTabContent(container) {
+    const storage = getSettingsStorageArea();
+    const row = (labelText, inputEl) => {
+      const wrap = document.createElement("label");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.justifyContent = "space-between";
+      wrap.style.gap = "10px";
+      wrap.style.fontSize = "12px";
+      wrap.style.padding = "6px 0";
+      const txt = document.createElement("span");
+      txt.textContent = labelText;
+      wrap.appendChild(txt);
+      wrap.appendChild(inputEl);
+      return wrap;
+    };
+
+    const enabledInput = document.createElement("input");
+    enabledInput.type = "checkbox";
+    enabledInput.checked = !!state.enabled;
+    enabledInput.addEventListener("change", () => {
+      state.enabled = enabledInput.checked;
+      if (storage) storage.set({ enabled: state.enabled });
+      scheduleVirtualization();
+      updateSidebarVisibility(state.stats.totalMessages);
+    });
+
+    const debugInput = document.createElement("input");
+    debugInput.type = "checkbox";
+    debugInput.checked = !!state.debug;
+    debugInput.addEventListener("change", () => {
+      state.debug = debugInput.checked;
+      if (storage) storage.set({ debug: state.debug });
+    });
+
+    const marginInput = document.createElement("input");
+    marginInput.type = "number";
+    marginInput.min = String(config.MIN_MARGIN_PX);
+    marginInput.max = String(config.MAX_MARGIN_PX);
+    marginInput.value = String(config.MARGIN_PX);
+    marginInput.style.width = "110px";
+    marginInput.addEventListener("change", () => {
+      const next = normalizeMargin(marginInput.value);
+      marginInput.value = String(next);
+      config.MARGIN_PX = next;
+      if (storage) storage.set({ marginPx: next });
+      scheduleVirtualization();
+    });
+
+    settingsEnabledInput = enabledInput;
+    settingsDebugInput = debugInput;
+    settingsMarginInput = marginInput;
+
+    container.appendChild(row("Enable Virtual Scrolling", enabledInput));
+    container.appendChild(row("Debug Mode", debugInput));
+    container.appendChild(row("Virtualization Margin", marginInput));
+  }
+
+  function renderSidebarTab(tabId) {
+    if (!sidebarContentContainer) return;
+    activeSidebarTab = tabId;
+    sidebarContentContainer.innerHTML = "";
+
+    const tabs = sidebarPanel ? sidebarPanel.querySelectorAll("[data-gpt-boost-sidebar-tab]") : [];
+    tabs.forEach((tab) => {
+      if (!(tab instanceof HTMLElement)) return;
+      const isActive = tab.dataset.gptBoostSidebarTab === tabId;
+      tab.style.opacity = isActive ? "1" : "0.72";
+      tab.style.background = isActive ? getThemeTokens().buttonMutedBg : "transparent";
+    });
+
+    if (tabId === "search") renderSearchTabContent(sidebarContentContainer);
+    else if (tabId === "bookmarks") renderBookmarksTabContent(sidebarContentContainer);
+    else if (tabId === "outline") renderOutlineTabContent(sidebarContentContainer);
+    else renderSettingsTabContent(sidebarContentContainer);
+  }
+
+  function hideSidebar() {
+    if (!sidebarPanel) return;
+    sidebarPanel.style.display = "none";
+    clearSearchHighlight();
+  }
+
+  function applySidebarSize() {
+    if (!sidebarPanel) return;
+    const width = sidebarExpanded ? SIDEBAR_PANEL_EXPANDED_WIDTH_PX : SIDEBAR_PANEL_WIDTH_PX;
+    sidebarPanel.style.width = `${width}px`;
+    const expandBtn = sidebarPanel.querySelector('[data-gpt-boost-sidebar-action="expand"]');
+    if (expandBtn instanceof HTMLElement) {
+      expandBtn.textContent = sidebarExpanded ? "↤" : "↔";
+      expandBtn.setAttribute("aria-label", sidebarExpanded ? "Collapse sidebar width" : "Expand sidebar width");
+    }
+  }
+
+  function openSidebar(tabId) {
+    const panel = ensureSidebarPanel();
+    if (!panel) return;
+    hideSearchPanel();
+    panel.style.display = "flex";
+    renderSidebarTab(tabId || activeSidebarTab);
+    applyThemeToUi();
+  }
+
+  function toggleSidebar(tabId) {
+    const panel = ensureSidebarPanel();
+    if (!panel) return;
+    const requested = tabId || activeSidebarTab;
+    if (panel.style.display !== "none" && requested === activeSidebarTab) {
+      hideSidebar();
+      return;
+    }
+    openSidebar(requested);
+  }
+
+  function ensureSidebarToggleButton() {
+    if (sidebarToggleButton && sidebarToggleButton.isConnected) return sidebarToggleButton;
+    if (!document.body) return null;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "Open tools sidebar");
+    button.style.position = "fixed";
+    button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
+    button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
+    button.style.zIndex = "9999";
+    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+    styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
+    button.style.display = "none";
+    button.textContent = "☰";
+    button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
+    document.body.appendChild(button);
+    sidebarToggleButton = button;
+    return button;
+  }
+
+  function ensureSidebarPanel() {
+    if (sidebarPanel && sidebarPanel.isConnected) return sidebarPanel;
+    if (!document.body) return null;
+    const theme = getThemeTokens();
+
+    const panel = document.createElement("div");
+    panel.setAttribute("data-gpt-boost-sidebar", "panel");
+    panel.style.position = "fixed";
+    panel.style.top = `${SIDEBAR_PANEL_TOP_OFFSET_PX}px`;
+    panel.style.right = `${SIDEBAR_PANEL_RIGHT_OFFSET_PX}px`;
+    panel.style.zIndex = "9999";
+    panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
+    panel.style.maxWidth = "min(92vw, 520px)";
+    panel.style.maxHeight = `calc(100vh - ${SIDEBAR_PANEL_TOP_OFFSET_PX + 16}px)`;
+    panel.style.display = "none";
+    panel.style.flexDirection = "column";
+    panel.style.gap = "8px";
+    panel.style.padding = "10px";
+    panel.style.borderRadius = "14px";
+    panel.style.background = theme.panelBg;
+    panel.style.boxShadow = theme.panelShadow;
+    panel.style.border = `1px solid ${theme.panelBorder}`;
+    panel.style.color = theme.text;
+    panel.style.backdropFilter = "blur(6px)";
+    panel.style.boxSizing = "border-box";
+    panel.style.overflow = "hidden";
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.alignItems = "center";
+    header.style.justifyContent = "space-between";
+    header.style.gap = "8px";
+
+    const title = document.createElement("div");
+    title.textContent = "Tools";
+    title.style.fontSize = "12px";
+    title.style.fontWeight = "600";
+    title.style.opacity = "0.9";
+
+    const headerActions = document.createElement("div");
+    headerActions.style.display = "flex";
+    headerActions.style.gap = "6px";
+
+    const expandBtn = document.createElement("button");
+    expandBtn.type = "button";
+    expandBtn.dataset.gptBoostSidebarAction = "expand";
+    styleSearchButton(expandBtn, 22);
+    expandBtn.style.display = "flex";
+    expandBtn.style.background = "rgba(148, 163, 184, 0.2)";
+    expandBtn.addEventListener("click", () => {
+      sidebarExpanded = !sidebarExpanded;
+      applySidebarSize();
+    });
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.textContent = "×";
+    closeBtn.setAttribute("aria-label", "Close sidebar");
+    styleSearchButton(closeBtn, 22);
+    closeBtn.style.display = "flex";
+    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
+    closeBtn.addEventListener("click", hideSidebar);
+
+    headerActions.appendChild(expandBtn);
+    headerActions.appendChild(closeBtn);
+    header.appendChild(title);
+    header.appendChild(headerActions);
+
+    const tabs = document.createElement("div");
+    tabs.style.display = "grid";
+    tabs.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
+    tabs.style.gap = "6px";
+
+    tabs.appendChild(createSidebarTabButton("search", "Search"));
+    tabs.appendChild(createSidebarTabButton("bookmarks", "Bookmarks"));
+    tabs.appendChild(createSidebarTabButton("outline", "Outline"));
+    tabs.appendChild(createSidebarTabButton("settings", "Settings"));
+
+    const content = document.createElement("div");
+    content.style.display = "flex";
+    content.style.flexDirection = "column";
+    content.style.gap = "8px";
+    content.style.flex = "1";
+    content.style.minHeight = "0";
+    content.style.overflow = "hidden";
+
+    panel.appendChild(header);
+    panel.appendChild(tabs);
+    panel.appendChild(content);
+    document.body.appendChild(panel);
+    sidebarPanel = panel;
+    sidebarContentContainer = content;
+    applySidebarSize();
+    return panel;
+  }
+
+  function updateSidebarVisibility(totalMessages) {
+    const shouldShow = state.enabled && totalMessages > 0;
+    const button = ensureSidebarToggleButton();
+    if (!button) return;
+    button.style.display = shouldShow ? "flex" : "none";
+    if (!shouldShow) hideSidebar();
   }
 
   function ensureSearchButton() {
@@ -1027,6 +1757,18 @@
     closeButton.style.background = "rgba(148, 163, 184, 0.2)";
     closeButton.addEventListener("click", hideSearchPanel);
 
+    const sidebarButton = document.createElement("button");
+    sidebarButton.type = "button";
+    sidebarButton.textContent = "⇱";
+    sidebarButton.setAttribute("aria-label", "Open search in sidebar");
+    styleSearchButton(sidebarButton, 22);
+    sidebarButton.style.display = "flex";
+    sidebarButton.style.background = "rgba(148, 163, 184, 0.2)";
+    sidebarButton.addEventListener("click", () => {
+      hideSearchPanel();
+      openSidebar("search");
+    });
+
     const controlsRow = document.createElement("div");
     controlsRow.style.display = "flex";
     controlsRow.style.alignItems = "center";
@@ -1041,6 +1783,7 @@
     navGroup.appendChild(nextButton);
 
     inputRow.appendChild(input);
+    inputRow.appendChild(sidebarButton);
     inputRow.appendChild(closeButton);
 
     controlsRow.appendChild(count);
@@ -1066,11 +1809,9 @@
   function updateSearchVisibility(totalMessages) {
     const shouldShow = state.enabled && totalMessages > 0;
     const button = ensureSearchButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) {
-      hideSearchPanel();
-    }
+    if (button) button.style.display = shouldShow ? "flex" : "none";
+    if (!shouldShow) hideSearchPanel();
+    updateSidebarVisibility(totalMessages);
   }
 
   // ---------------------------------------------------------------------------
@@ -1167,21 +1908,11 @@
   }
 
   function showMinimapPanel() {
-    const panel = ensureMinimapPanel();
-    if (!panel) return;
-    populateMinimapPanel(panel);
-    panel.style.display = "flex";
+    openSidebar("outline");
   }
 
   function toggleMinimapPanel() {
-    const panel = ensureMinimapPanel();
-    if (!panel) return;
-    const isVisible = panel.style.display !== "none";
-    if (isVisible) {
-      hideMinimapPanel();
-    } else {
-      showMinimapPanel();
-    }
+    toggleSidebar("outline");
   }
 
   function ensureMinimapButton() {
@@ -1293,13 +2024,8 @@
   }
 
   function updateMinimapVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
-    const button = ensureMinimapButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) {
-      hideMinimapPanel();
-    }
+    if (minimapButton) minimapButton.style.display = "none";
+    updateSidebarVisibility(totalMessages);
   }
 
   // ---------------------------------------------------------------------------
@@ -1372,16 +2098,42 @@
   // Per-article UI (Collapse, Pin, Bookmark)
   // ---------------------------------------------------------------------------
 
-  function createArticleActionButton(icon, label) {
+  function setArticleActionIcon(btn, iconName) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.style.width = "13px";
+    svg.style.height = "13px";
+    svg.style.fill = "none";
+    svg.style.stroke = "currentColor";
+    svg.style.strokeWidth = "2";
+    svg.style.strokeLinecap = "round";
+    svg.style.strokeLinejoin = "round";
+
+    const path = document.createElementNS(ns, "path");
+    if (iconName === "collapse") {
+      path.setAttribute("d", "M6 9l6 6 6-6");
+    } else if (iconName === "expand") {
+      path.setAttribute("d", "M6 15l6-6 6 6");
+    } else if (iconName === "pin") {
+      path.setAttribute("d", "M12 17v5M8 3l8 8M6 5l5 5-6 4 4-6 5 5");
+    } else if (iconName === "bookmark") {
+      path.setAttribute("d", "M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z");
+    }
+    svg.appendChild(path);
+    btn.replaceChildren(svg);
+  }
+
+  function createArticleActionButton(iconName, label) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.setAttribute("aria-label", label);
-    btn.style.width = "22px";
-    btn.style.height = "22px";
+    btn.style.width = "24px";
+    btn.style.height = "24px";
     btn.style.borderRadius = "6px";
     btn.style.border = "none";
     btn.style.cursor = "pointer";
-    btn.style.fontSize = "11px";
     btn.style.display = "flex";
     btn.style.alignItems = "center";
     btn.style.justifyContent = "center";
@@ -1390,7 +2142,7 @@
     btn.style.background = "rgba(17,24,39,0.7)";
     btn.style.color = "#f9fafb";
     btn.style.transition = "opacity 0.15s, background 0.15s";
-    btn.textContent = icon;
+    setArticleActionIcon(btn, iconName);
     btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
     btn.addEventListener("mouseleave", () => { btn.style.opacity = "0.85"; });
     return btn;
@@ -1410,9 +2162,12 @@
       snippet.style.display = isCollapsed ? "block" : "none";
     }
     if (collapseBtn) {
-      collapseBtn.textContent = isCollapsed ? "▶" : "▼";
+      setArticleActionIcon(collapseBtn, isCollapsed ? "expand" : "collapse");
       collapseBtn.setAttribute("aria-label", isCollapsed ? "Expand message" : "Collapse message");
     }
+    article.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
+    article.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
+    article.style.borderRadius = isCollapsed ? "10px" : "";
   }
 
   function toggleCollapse(virtualId) {
@@ -1423,11 +2178,11 @@
     }
     const article = state.articleMap.get(virtualId);
     if (article) applyCollapseState(article, virtualId);
+    refreshSidebarTab();
   }
 
   function updatePinButtonAppearance(article, virtualId) {
-    const overlay = article.querySelector("[data-gpt-boost-overlay]");
-    const pinBtn = overlay && overlay.querySelector("[data-gpt-boost-pin-btn]");
+    const pinBtn = article.querySelector("[data-gpt-boost-pin-btn]");
     if (!pinBtn) return;
     const isPinned = state.pinnedMessages.has(virtualId);
     pinBtn.style.opacity = isPinned ? "1" : "0.85";
@@ -1436,8 +2191,7 @@
   }
 
   function updateBookmarkButtonAppearance(article, virtualId) {
-    const overlay = article.querySelector("[data-gpt-boost-overlay]");
-    const bookmarkBtn = overlay && overlay.querySelector("[data-gpt-boost-bookmark-btn]");
+    const bookmarkBtn = article.querySelector("[data-gpt-boost-bookmark-btn]");
     if (!bookmarkBtn) return;
     const isBookmarked = state.bookmarkedMessages.has(virtualId);
     bookmarkBtn.style.opacity = isBookmarked ? "1" : "0.85";
@@ -1452,6 +2206,11 @@
     if (getComputedStyle(article).position === "static") {
       article.style.position = "relative";
     }
+    if (!article.dataset.gptBoostOrigPaddingLeft) {
+      article.dataset.gptBoostOrigPaddingLeft = article.style.paddingLeft || "";
+    }
+    article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft;
+    article.style.transition = "box-shadow 0.15s ease";
 
     const overlay = document.createElement("div");
     overlay.setAttribute("data-gpt-boost-overlay", "1");
@@ -1464,34 +2223,64 @@
     overlay.style.zIndex = "100";
     overlay.style.alignItems = "center";
 
-    const collapseBtn = createArticleActionButton("▼", "Collapse message");
+    const collapseBtn = createArticleActionButton("collapse", "Collapse message");
     collapseBtn.setAttribute("data-gpt-boost-collapse-btn", "1");
     collapseBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleCollapse(virtualId);
     });
 
-    const pinBtn = createArticleActionButton("📌", "Pin message to top");
+    overlay.appendChild(collapseBtn);
+    article.appendChild(overlay);
+
+    const sideRail = document.createElement("div");
+    sideRail.setAttribute("data-gpt-boost-side-rail", "1");
+    sideRail.style.position = "absolute";
+    sideRail.style.left = `${MESSAGE_RAIL_OUTSIDE_LEFT_PX}px`;
+    sideRail.style.top = "50%";
+    sideRail.style.transform = "translateY(-50%)";
+    sideRail.style.display = "flex";
+    sideRail.style.flexDirection = "column";
+    sideRail.style.gap = "4px";
+    sideRail.style.zIndex = "101";
+    sideRail.style.alignItems = "center";
+    sideRail.style.padding = "2px";
+    sideRail.style.borderRadius = "8px";
+    sideRail.style.background = "rgba(15,23,42,0.15)";
+    sideRail.style.opacity = "0.92";
+    sideRail.style.transition = "background 0.15s ease, opacity 0.15s ease";
+
+    const pinBtn = createArticleActionButton("pin", "Pin message to top");
     pinBtn.setAttribute("data-gpt-boost-pin-btn", "1");
     pinBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       togglePin(virtualId);
     });
 
-    const bookmarkBtn = createArticleActionButton("🔖", "Bookmark message");
+    const bookmarkBtn = createArticleActionButton("bookmark", "Bookmark message");
     bookmarkBtn.setAttribute("data-gpt-boost-bookmark-btn", "1");
     bookmarkBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleBookmark(virtualId);
     });
 
-    overlay.appendChild(collapseBtn);
-    overlay.appendChild(pinBtn);
-    overlay.appendChild(bookmarkBtn);
-    article.appendChild(overlay);
+    sideRail.appendChild(pinBtn);
+    sideRail.appendChild(bookmarkBtn);
+    article.appendChild(sideRail);
+    updateArticleSideRailLayout(article, sideRail);
 
-    article.addEventListener("mouseenter", () => { overlay.style.display = "flex"; });
-    article.addEventListener("mouseleave", () => { overlay.style.display = "none"; });
+    article.addEventListener("mouseenter", () => {
+      overlay.style.display = "flex";
+      article.style.boxShadow = ARTICLE_HOVER_HIGHLIGHT_SHADOW;
+      sideRail.style.background = "rgba(59,130,246,0.2)";
+      sideRail.style.opacity = "1";
+    });
+    article.addEventListener("mouseleave", () => {
+      overlay.style.display = "none";
+      article.style.boxShadow = "";
+      sideRail.style.background = "rgba(15,23,42,0.15)";
+      sideRail.style.opacity = "0.92";
+    });
 
     const snippet = document.createElement("div");
     snippet.setAttribute("data-gpt-boost-snippet", "1");
@@ -1512,6 +2301,29 @@
       : rawText;
 
     article.appendChild(snippet);
+  }
+
+  function updateArticleSideRailLayout(article, sideRail) {
+    if (!(article instanceof HTMLElement) || !(sideRail instanceof HTMLElement)) return;
+    const rect = article.getBoundingClientRect();
+    const hasLeftGutter = rect.left >= MESSAGE_RAIL_LEFT_GUTTER_THRESHOLD_PX;
+    if (hasLeftGutter) {
+      sideRail.style.left = `${MESSAGE_RAIL_OUTSIDE_LEFT_PX}px`;
+      article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft || "";
+    } else {
+      sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
+      article.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+    }
+  }
+
+  function refreshArticleSideRailLayout() {
+    document.querySelectorAll('[data-gpt-boost-ui-injected="1"]').forEach((el) => {
+      if (!(el instanceof HTMLElement)) return;
+      const sideRail = el.querySelector("[data-gpt-boost-side-rail]");
+      if (sideRail instanceof HTMLElement) {
+        updateArticleSideRailLayout(el, sideRail);
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1631,14 +2443,22 @@
   }
 
   function togglePin(virtualId) {
+    if (!currentConversationKey) {
+      currentConversationKey = getConversationStorageKey();
+    }
+    const article = state.articleMap.get(virtualId);
+    const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : "";
     if (state.pinnedMessages.has(virtualId)) {
       state.pinnedMessages.delete(virtualId);
+      if (key) persistedPinnedMessageKeys.delete(key);
     } else {
       state.pinnedMessages.add(virtualId);
+      if (key) persistedPinnedMessageKeys.add(key);
     }
+    scheduleFlagsSave();
     updatePinnedBar();
-    const article = state.articleMap.get(virtualId);
     if (article) updatePinButtonAppearance(article, virtualId);
+    refreshSidebarTab();
   }
 
   // ---------------------------------------------------------------------------
@@ -1742,12 +2562,13 @@
       const pre = document.createElement("pre");
       pre.style.margin = "0";
       pre.style.padding = "8px";
-      pre.style.fontSize = "11px";
+      pre.style.fontSize = "12px";
       pre.style.overflowX = "auto";
       pre.style.maxHeight = "150px";
       pre.style.overflowY = "auto";
-      pre.style.whiteSpace = "pre-wrap";
-      pre.style.wordBreak = "break-all";
+      pre.style.whiteSpace = "pre";
+      pre.style.wordBreak = "normal";
+      pre.style.lineHeight = "1.45";
       pre.style.background = theme.inputBg;
       pre.style.color = theme.text;
       pre.textContent = text;
@@ -1847,6 +2668,7 @@
     panel.style.right = `${CODE_PANEL_PANEL_RIGHT_OFFSET_PX}px`;
     panel.style.zIndex = "9999";
     panel.style.width = `${CODE_PANEL_PANEL_WIDTH_PX}px`;
+    panel.style.maxWidth = "min(90vw, 720px)";
     panel.style.maxHeight = `calc(100vh - ${CODE_PANEL_PANEL_TOP_OFFSET_PX + 16}px)`;
     panel.style.display = "none";
     panel.style.flexDirection = "column";
@@ -1858,6 +2680,7 @@
     panel.style.color = "#f9fafb";
     panel.style.backdropFilter = "blur(6px)";
     panel.style.boxSizing = "border-box";
+    panel.style.overflow = "hidden";
 
     const header = document.createElement("div");
     header.style.display = "flex";
@@ -1891,6 +2714,7 @@
     listContainer.style.flexDirection = "column";
     listContainer.style.gap = "0";
     listContainer.style.flex = "1";
+    listContainer.style.minHeight = "0";
 
     panel.appendChild(header);
     panel.appendChild(listContainer);
@@ -1929,9 +2753,15 @@
       const roleEl = node.querySelector("[data-message-author-role]");
       const rawRole = roleEl ? (roleEl.getAttribute("data-message-author-role") || "unknown") : "unknown";
       const displayRole = rawRole.charAt(0).toUpperCase() + rawRole.slice(1);
-      const text = ((roleEl || node).textContent || "").trim();
-      if (!text) return;
-      lines.push(`\n## ${displayRole}\n\n${text}\n\n---`);
+      const messageRoot = roleEl || node;
+      if (!(messageRoot instanceof HTMLElement)) return;
+
+      const contentParts = extractMarkdownPartsFromMessage(messageRoot);
+      if (!contentParts.length) return;
+
+      lines.push(`\n## ${displayRole}\n`);
+      lines.push(contentParts.join("\n\n"));
+      lines.push("\n---");
     });
 
     const content = lines.join("\n");
@@ -1944,6 +2774,50 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function toUnixNewlines(text) {
+    return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  }
+
+  function inferCodeLanguage(el) {
+    const classCandidates = [];
+    if (el instanceof HTMLElement && el.className) classCandidates.push(el.className);
+    const nestedCode = el instanceof HTMLElement ? el.querySelector("code") : null;
+    if (nestedCode instanceof HTMLElement && nestedCode.className) {
+      classCandidates.push(nestedCode.className);
+    }
+    const classBlob = classCandidates.join(" ");
+    const match = classBlob.match(/\blanguage-([a-z0-9_+-]+)/i);
+    return match ? match[1].toLowerCase() : "";
+  }
+
+  function extractMarkdownPartsFromMessage(messageRoot) {
+    const parts = [];
+
+    const textClone = messageRoot.cloneNode(true);
+    if (textClone instanceof HTMLElement) {
+      textClone.querySelectorAll("pre").forEach((pre) => pre.remove());
+      const text = toUnixNewlines(textClone.innerText || "")
+        .split("\n")
+        .map((line) => line.trimEnd())
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      if (text) parts.push(text);
+    }
+
+    const preElements = messageRoot.querySelectorAll("pre");
+    preElements.forEach((preEl) => {
+      const codeEl = preEl.querySelector("code");
+      const source = codeEl || preEl;
+      const codeText = toUnixNewlines(source.textContent || "").trimEnd();
+      if (!codeText) return;
+      const lang = inferCodeLanguage(source);
+      parts.push(`\`\`\`${lang}\n${codeText}\n\`\`\``);
+    });
+
+    return parts;
   }
 
   function ensureDownloadButton() {
@@ -2005,16 +2879,24 @@
   // ---------------------------------------------------------------------------
 
   function toggleBookmark(virtualId) {
-    if (state.bookmarkedMessages.has(virtualId)) {
-      state.bookmarkedMessages.delete(virtualId);
-    } else {
-      state.bookmarkedMessages.add(virtualId);
+    if (!currentConversationKey) {
+      currentConversationKey = getConversationStorageKey();
     }
     const article = state.articleMap.get(virtualId);
+    const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : "";
+    if (state.bookmarkedMessages.has(virtualId)) {
+      state.bookmarkedMessages.delete(virtualId);
+      if (key) persistedBookmarkedMessageKeys.delete(key);
+    } else {
+      state.bookmarkedMessages.add(virtualId);
+      if (key) persistedBookmarkedMessageKeys.add(key);
+    }
+    scheduleFlagsSave();
     if (article) updateBookmarkButtonAppearance(article, virtualId);
     if (bookmarksPanel && bookmarksPanel.style.display !== "none") {
       populateBookmarksPanel(bookmarksPanel);
     }
+    refreshSidebarTab();
   }
 
   function hideBookmarksPanel() {
@@ -2084,20 +2966,11 @@
   }
 
   function showBookmarksPanel() {
-    const panel = ensureBookmarksPanel();
-    if (!panel) return;
-    populateBookmarksPanel(panel);
-    panel.style.display = "flex";
+    openSidebar("bookmarks");
   }
 
   function toggleBookmarksPanel() {
-    const panel = ensureBookmarksPanel();
-    if (!panel) return;
-    if (panel.style.display !== "none") {
-      hideBookmarksPanel();
-    } else {
-      showBookmarksPanel();
-    }
+    toggleSidebar("bookmarks");
   }
 
   function ensureBookmarksButton() {
@@ -2203,11 +3076,8 @@
   }
 
   function updateBookmarksVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
-    const button = ensureBookmarksButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) hideBookmarksPanel();
+    if (bookmarksButton) bookmarksButton.style.display = "none";
+    updateSidebarVisibility(totalMessages);
   }
 
   function updateIndicator(totalMessages, renderedMessages) {
@@ -2467,6 +3337,7 @@
 
   function handleResize() {
     attachOrUpdateScrollListener();
+    refreshArticleSideRailLayout();
     scheduleVirtualization();
   }
 
@@ -2498,10 +3369,12 @@
     state.observer = mutationObserver;
 
     log("Virtualizer booted.");
+    currentConversationKey = getConversationStorageKey();
 
     // Ensure we start tracking even if messages already exist
     attachOrUpdateScrollListener();
     scheduleVirtualization();
+    loadPersistedFlagsForConversation().catch(() => {});
   }
 
   function teardownVirtualizer() {
@@ -2510,6 +3383,10 @@
     if (deferredVirtualizationTimer !== null) {
       clearTimeout(deferredVirtualizationTimer);
       deferredVirtualizationTimer = null;
+    }
+    if (saveFlagsTimer !== null) {
+      clearTimeout(saveFlagsTimer);
+      saveFlagsTimer = null;
     }
     if (themeObserver) {
       themeObserver.disconnect();
@@ -2591,6 +3468,15 @@
     bookmarksButton = null;
     bookmarksPanel = null;
 
+    if (sidebarToggleButton && sidebarToggleButton.isConnected) sidebarToggleButton.remove();
+    if (sidebarPanel && sidebarPanel.isConnected) sidebarPanel.remove();
+    sidebarToggleButton = null;
+    sidebarPanel = null;
+    sidebarContentContainer = null;
+    settingsEnabledInput = null;
+    settingsDebugInput = null;
+    settingsMarginInput = null;
+
     if (tokenGaugeElement && tokenGaugeElement.isConnected) tokenGaugeElement.remove();
     tokenGaugeElement = null;
 
@@ -2600,13 +3486,23 @@
     state.collapsedMessages.clear();
     state.pinnedMessages.clear();
     state.bookmarkedMessages.clear();
+    persistedPinnedMessageKeys.clear();
+    persistedBookmarkedMessageKeys.clear();
 
     document.querySelectorAll("[data-gpt-boost-ui-injected]").forEach((el) => {
       el.removeAttribute("data-gpt-boost-ui-injected");
       const overlay = el.querySelector("[data-gpt-boost-overlay]");
       if (overlay) overlay.remove();
+      const sideRail = el.querySelector("[data-gpt-boost-side-rail]");
+      if (sideRail) sideRail.remove();
       const snippet = el.querySelector("[data-gpt-boost-snippet]");
       if (snippet) snippet.remove();
+      if (el instanceof HTMLElement) {
+        el.style.boxShadow = "";
+        const originalPaddingLeft = el.dataset.gptBoostOrigPaddingLeft || "";
+        el.style.paddingLeft = originalPaddingLeft;
+        delete el.dataset.gptBoostOrigPaddingLeft;
+      }
     });
   }
 

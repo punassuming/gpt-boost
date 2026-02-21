@@ -22,3 +22,8 @@ Thumbs.db
 .cache/
 
 dist/
+.env
+web-ext-artifacts/
+.npm-cache/
+.npm-cache-*/
+audit-online.json

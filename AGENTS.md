@@ -12,10 +12,36 @@
 - `README.md` and `privacy-policy.md` document usage and privacy.
 
 ## Build, Test, and Development Commands
-- No build step is configured. Load the repo as an unpacked extension.
-  - Chrome/Edge/Brave: open `chrome://extensions`, enable Developer mode, “Load unpacked”, select the repo root (with `manifest.json`).
-  - Firefox: open `about:debugging#/runtime/this-firefox`, “Load Temporary Add-on…”, pick `manifest.json`.
+- Install dependencies: `npm install` (or `npm ci` when lockfile is present and authoritative).
+- Build Firefox package locally: `npm run build:firefox`.
+  - Produces a build directory and unsigned XPI under `dist/` using timestamped names.
+- Sign Firefox package locally (AMO unlisted flow): `npm run sign:firefox`.
+  - Requires `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` in environment or `.env`.
+  - Signed artifacts are downloaded under `web-ext-artifacts/`.
+- Version bump helpers (lock-step across `package.json`, `manifest.json`, `manifest_firefox.json`):
+  - `npm run version:patch`
+  - `npm run version:minor`
+  - `npm run version:major`
+- Chrome/Edge/Brave local dev: open `chrome://extensions`, enable Developer mode, “Load unpacked”, select repo root (with `manifest.json`).
+- Firefox local dev: open `about:debugging#/runtime/this-firefox`, “Load Temporary Add-on…”, pick `manifest.json`.
 - `npm test` currently exits with an error placeholder; add a test runner before relying on it.
+
+## CI/CD Automation
+- PR CI workflow: `.github/workflows/pr-ci.yml`
+  - Runs on PRs targeting `main`.
+  - Workflow name in GitHub Actions UI: `PR Build Checks`.
+  - Enforces version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`.
+  - Runs Firefox build validation with `npm run build:firefox`.
+- Merge-to-main release pipeline: `.github/workflows/bump-manifest-version.yml`
+  - Runs when PRs to `main` are merged.
+  - Auto-bumps on merge: default is patch; optional labels at merge-time can set `semver:minor` or `semver:major`.
+  - Bumps `package.json`, `manifest.json`, and `manifest_firefox.json` in lock-step, commits to `main`, creates tag `v<version>`, builds/signs Firefox extension, and publishes a GitHub Release with signed XPI.
+- Tag/manual release workflow: `.github/workflows/release-firefox.yml`
+  - Runs on tag push `v*` or manual dispatch.
+  - Builds/signs and publishes signed XPI on the corresponding GitHub Release.
+- Required GitHub secrets for signing workflows:
+  - `AMO_JWT_ISSUER`
+  - `AMO_JWT_SECRET`
 
 ## Coding Style & Naming Conventions
 - JavaScript uses 2-space indentation and semicolons; follow the surrounding file’s string quote style.
@@ -34,7 +60,13 @@
 - Commit history favors short, imperative summaries; occasional conventional prefixes like `fix:` appear. Keep messages concise and scoped.
 - Branch naming in the README uses `feature/your-feature`; follow that pattern for new work.
 - PRs should include a clear description, manual test notes, and screenshots/GIFs for popup/UI changes.
+- When the user explicitly says code is ready to check in, stage intended tracked changes and create a commit in the current branch.
+- Do not commit generated artifacts or local caches unless the user explicitly requests them.
 
 ## Security & Privacy Notes
 - The extension is privacy-first and should avoid remote data collection or external requests.
 - If you change host permissions or data handling, update `privacy-policy.md` and the relevant manifest(s).
+
+## Agent Maintenance Rule
+- Keep `AGENTS.md` up to date whenever agentic workflows, scripts, release automation, CI behavior, or required secrets/labels change.
+- In any PR that changes automation behavior (`scripts/` or `.github/workflows/`), update `AGENTS.md` in the same PR.

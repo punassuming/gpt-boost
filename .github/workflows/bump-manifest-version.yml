@@ -1,0 +1,176 @@
+name: Merge To Main Release Pipeline
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  release-on-merge:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged == true
+    concurrency:
+      group: release-main-pipeline
+      cancel-in-progress: false
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Decide bump type
+        id: bump_type
+        shell: bash
+        run: |
+          has_major="${{ contains(github.event.pull_request.labels.*.name, 'semver:major') }}"
+          has_minor="${{ contains(github.event.pull_request.labels.*.name, 'semver:minor') }}"
+
+          if [[ "$has_major" == "true" && "$has_minor" == "true" ]]; then
+            echo "PR has both semver:major and semver:minor labels. Keep exactly one." >&2
+            exit 1
+          fi
+
+          if [[ "$has_major" == "true" ]]; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif [[ "$has_minor" == "true" ]]; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump manifest versions
+        id: bump
+        env:
+          BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const files = ['package.json', 'manifest.json', 'manifest_firefox.json'];
+
+          function parse(v) {
+            const m = String(v).trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+            if (!m) throw new Error(`Unsupported version format: ${v}`);
+            return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
+          }
+
+          function fmt(v) {
+            return `${v.major}.${v.minor}.${v.patch}`;
+          }
+
+          function cmp(a, b) {
+            if (a.major !== b.major) return a.major - b.major;
+            if (a.minor !== b.minor) return a.minor - b.minor;
+            return a.patch - b.patch;
+          }
+
+          function bump(v, type) {
+            if (type === 'major') return { major: v.major + 1, minor: 0, patch: 0 };
+            if (type === 'minor') return { major: v.major, minor: v.minor + 1, patch: 0 };
+            if (type === 'patch') return { major: v.major, minor: v.minor, patch: v.patch + 1 };
+            throw new Error(`Unsupported bump type: ${type}`);
+          }
+
+          const manifests = files.map((file) => ({ file, data: JSON.parse(fs.readFileSync(file, 'utf8')) }));
+          const versions = manifests.map((m) => parse(m.data.version));
+          const base = versions.reduce((max, current) => (cmp(current, max) > 0 ? current : max));
+          const next = bump(base, process.env.BUMP_TYPE);
+          const nextText = fmt(next);
+
+          for (const m of manifests) {
+            m.data.version = nextText;
+            fs.writeFileSync(m.file, JSON.stringify(m.data, null, 2) + '\n', 'utf8');
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextText}\n`);
+          console.log(`Bumped manifest versions to ${nextText} (${process.env.BUMP_TYPE})`);
+          NODE
+
+      - name: Commit bump and create tag
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          if [ -z "$NEW_VERSION" ]; then
+            echo "Missing NEW_VERSION output" >&2
+            exit 1
+          fi
+
+          tag="v${NEW_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json manifest.json manifest_firefox.json
+          git commit -m "chore: bump manifest version to ${NEW_VERSION} after #${PR_NUMBER}"
+          git push origin main
+
+          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
+            echo "Tag ${tag} already exists on origin" >&2
+            exit 1
+          fi
+
+          git tag "${tag}"
+          git push origin "${tag}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Verify AMO secrets
+        run: |
+          test -n "$AMO_JWT_ISSUER" || { echo "Missing secret: AMO_JWT_ISSUER"; exit 1; }
+          test -n "$AMO_JWT_SECRET" || { echo "Missing secret: AMO_JWT_SECRET"; exit 1; }
+
+      - name: Build and sign Firefox extension
+        run: npm run sign:firefox
+
+      - name: Collect signed artifact path
+        id: artifact
+        shell: bash
+        run: |
+          signed="$(ls -1t web-ext-artifacts/*.xpi | head -n 1 || true)"
+          if [ -z "$signed" ]; then
+            echo "No signed XPI found in web-ext-artifacts" >&2
+            exit 1
+          fi
+          echo "signed_xpi=$signed" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release and upload signed XPI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        shell: bash
+        run: |
+          tag="v${NEW_VERSION}"
+          notes="Automated signed Firefox extension build for ${tag}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${{ steps.artifact.outputs.signed_xpi }}" --clobber
+          else
+            gh release create "$tag" "${{ steps.artifact.outputs.signed_xpi }}" \
+              --title "$tag" \
+              --notes "$notes"
+          fi

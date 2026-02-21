@@ -150,9 +150,26 @@ body {
   background: var(--md-surface);
   border-radius: 14px;
   padding: 10px 10px 8px;
-  margin-top: 8px;
   border: 1px solid rgba(224, 229, 240, 0.9);
   box-shadow: var(--md-shadow-sm);
+}
+
+.advanced-panel {
+  margin-top: 8px;
+}
+
+.advanced-panel summary {
+  font-size: 11px;
+  color: var(--md-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.advanced-section-title {
+  margin-top: 10px;
 }
 
 .setting-row {

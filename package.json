@@ -1,10 +1,14 @@
 {
   "name": "gpt-boost",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Productivity-focused virtualization for faster, lighter ChatGPT conversations.",
   "scripts": {
-    "build:firefox": "rm -rf dist/firefox dist/gpt-boost-firefox.xpi && mkdir -p dist/firefox && cp manifest_firefox.json dist/firefox/manifest.json && cp -R src icons dist/firefox/ && (cd dist/firefox && zip -r ../gpt-boost-firefox.xpi .)",
-    "sign:firefox": "npm run build:firefox && web-ext sign --source-dir dist/firefox --channel=unlisted --api-key=$AMO_JWT_ISSUER --api-secret=$AMO_JWT_SECRET",
+    "build:firefox": "node scripts/build-firefox.js",
+    "amo:login": "node scripts/open-amo-credentials.js",
+    "sign:firefox": "node scripts/sign-firefox.js",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -21,5 +25,8 @@
   ],
   "author": "Bram van der Giessen, Rich Alesi (punassuming)",
   "license": "MIT",
-  "devDependencies": {}
+  "devDependencies": {
+    "archiver": "^7.0.1",
+    "web-ext": "^9.3.0"
+  }
 }
