@@ -120,6 +120,41 @@ It makes massive message lists behave like small ones.
 - Use the popup toggle to enable/disable virtualization
 - When making changes, hit **Reload** on the extension page (for Chrome)
 
+### Firefox signing (unlisted/private)
+- Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).
+- The script will save credentials to `.env` (gitignored), or you can set `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` manually.
+- Ensure dependencies are installed with `npm install` (this provides the local `web-ext` binary).
+
+### Automated Firefox release signing (GitHub Actions)
+- Workflow: `.github/workflows/release-firefox.yml`
+- Trigger: push a tag like `v1.0.4` (also supports manual `workflow_dispatch`).
+- Required repository secrets:
+  - `AMO_JWT_ISSUER`
+  - `AMO_JWT_SECRET`
+- Output: signs via AMO and uploads the signed `.xpi` from `web-ext-artifacts/` to the GitHub Release for that tag.
+
+### Merge-to-main automated release pipeline
+- Workflow: `.github/workflows/bump-manifest-version.yml`
+- Trigger: when a PR targeting `main` is closed and merged.
+- Add one of these labels to the PR:
+  - `semver:minor` -> bumps manifests to the next minor (e.g. `1.2.3` -> `1.3.0`)
+  - `semver:major` -> bumps manifests to the next major (e.g. `1.2.3` -> `2.0.0`)
+- It performs this chain automatically after merge:
+  - bumps `manifest.json` and `manifest_firefox.json`
+  - commits the bump to `main`
+  - creates and pushes tag `v<new-version>`
+  - builds/signs the Firefox extension
+  - creates/updates the GitHub Release and uploads the signed `.xpi`
+
+### PR CI checks on `main`
+- Workflow: `.github/workflows/pr-ci.yml`
+- Trigger: PR opened/updated/reopened/labeled/unlabeled against `main`.
+- Checks:
+  - validates exactly one semver label is present (`semver:minor` or `semver:major`)
+  - validates version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`
+  - installs dependencies
+  - runs `npm run build:firefox`
+
 ### Debug mode
 The popup includes an optional "Debug mode" that logs internal states such as:
 - Scroll container detection

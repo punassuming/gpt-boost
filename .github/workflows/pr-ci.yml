@@ -1,0 +1,89 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-semver-label:
+    name: Validate Semver Label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure exactly one semver label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = (context.payload.pull_request.labels || []).map((l) => l.name);
+            const hasMajor = labels.includes('semver:major');
+            const hasMinor = labels.includes('semver:minor');
+
+            if (hasMajor && hasMinor) {
+              core.setFailed('PR has both semver:major and semver:minor labels. Keep exactly one.');
+              return;
+            }
+
+            if (!hasMajor && !hasMinor) {
+              core.setFailed('PR must include exactly one label: semver:major or semver:minor.');
+              return;
+            }
+
+            core.info(`Semver label valid: ${hasMajor ? 'semver:major' : 'semver:minor'}`);
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate version lock-step
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const chrome = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          const firefox = JSON.parse(fs.readFileSync('manifest_firefox.json', 'utf8'));
+
+          const versions = {
+            'package.json': pkg.version,
+            'manifest.json': chrome.version,
+            'manifest_firefox.json': firefox.version
+          };
+          const unique = [...new Set(Object.values(versions))];
+          if (unique.length !== 1) {
+            console.error('Version mismatch detected:', versions);
+            process.exit(1);
+          }
+          console.log(`Version lock-step valid: ${unique[0]}`);
+          NODE
+
+  build-firefox:
+    name: Build Firefox Package
+    runs-on: ubuntu-latest
+    needs: validate-semver-label
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build Firefox extension package
+        run: npm run build:firefox

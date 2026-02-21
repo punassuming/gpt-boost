@@ -1,0 +1,68 @@
+name: Release Firefox Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-firefox:
+    runs-on: ubuntu-latest
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Verify AMO secrets
+        run: |
+          test -n "$AMO_JWT_ISSUER" || { echo "Missing secret: AMO_JWT_ISSUER"; exit 1; }
+          test -n "$AMO_JWT_SECRET" || { echo "Missing secret: AMO_JWT_SECRET"; exit 1; }
+
+      - name: Build and sign Firefox extension
+        run: npm run sign:firefox
+
+      - name: Collect signed artifact path
+        id: artifact
+        shell: bash
+        run: |
+          signed="$(ls -1t web-ext-artifacts/*.xpi | head -n 1 || true)"
+          if [ -z "$signed" ]; then
+            echo "No signed XPI found in web-ext-artifacts" >&2
+            exit 1
+          fi
+          echo "signed_xpi=$signed" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${{ steps.artifact.outputs.signed_xpi }}" --clobber
+          else
+            gh release create "$tag" "${{ steps.artifact.outputs.signed_xpi }}" \
+              --title "$tag" \
+              --notes "Automated signed Firefox extension build for $tag"
+          fi
