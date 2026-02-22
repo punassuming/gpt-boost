@@ -40,11 +40,12 @@
   - Runs on tag push `v*` or manual dispatch.
   - Builds/signs and publishes signed XPI on the corresponding GitHub Release.
 - Beta PR build workflow: `.github/workflows/beta-pr-build.yml`
-  - Runs on PRs targeting `main` (opened, synchronize, reopened, closed).
   - Workflow name in GitHub Actions UI: `Beta PR Build`.
-  - On each push to a PR branch: patches manifests with a beta version (`{base}.{run_number}`), signs the Firefox extension via AMO, and publishes/updates a GitHub pre-release tagged `beta-pr-{number}`.
+  - Triggered by a PR review **approval** targeting `main` — does NOT fire on every push, preventing unnecessary AMO signing calls.
+  - Can be re-triggered after new commits by adding the `beta-build` label to the PR (remove and re-add to fire again).
+  - On approval or label: patches manifests with a beta version (`{base}.{run_number}`), signs the Firefox extension via AMO, and publishes/updates a GitHub pre-release tagged `beta-pr-{number}`.
   - On PR close/merge: automatically deletes the pre-release and its tag.
-  - Concurrency group `beta-pr-{number}` cancels stale in-progress runs on rapid pushes.
+  - Concurrency group `beta-pr-{number}` cancels stale in-progress runs if multiple triggers arrive rapidly.
   - Requires the same `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` secrets as the release pipelines.
   - Note: fork PRs will not have access to AMO secrets; the signing step will fail for untrusted forks.
 - Required GitHub secrets for signing workflows:

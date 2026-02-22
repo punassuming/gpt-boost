@@ -1,19 +1,23 @@
 name: Beta PR Build
 
 on:
+  # First build: fires when a reviewer approves the PR.
+  pull_request_review:
+    types:
+      - submitted
+  # Re-trigger: adding the `beta-build` label kicks off a new build.
+  # Fires on PR close/merge so we can clean up the pre-release.
   pull_request:
     branches:
       - main
     types:
-      - opened
-      - synchronize
-      - reopened
+      - labeled
       - closed
 
 permissions:
   contents: write
 
-# Cancel any in-progress beta build for the same PR when a new push arrives.
+# Cancel any in-progress beta build for the same PR when a new trigger arrives.
 concurrency:
   group: beta-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -21,7 +25,18 @@ concurrency:
 jobs:
   beta-release:
     name: Build & Publish Beta Pre-release
-    if: github.event.action != 'closed'
+    # Run on PR approval, or when the `beta-build` label is added — both targeting main.
+    if: |
+      (
+        github.event_name == 'pull_request_review' &&
+        github.event.review.state == 'approved' &&
+        github.event.pull_request.base.ref == 'main'
+      ) || (
+        github.event_name == 'pull_request' &&
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'beta-build' &&
+        github.event.pull_request.base.ref == 'main'
+      )
     runs-on: ubuntu-latest
     env:
       AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
@@ -30,6 +45,8 @@ jobs:
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -131,7 +148,7 @@ jobs:
 
   cleanup-beta:
     name: Delete Beta Pre-release on PR Close
-    if: github.event.action == 'closed'
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Delete beta pre-release and tag
