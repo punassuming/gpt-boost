@@ -1,6 +1,6 @@
 {
   "name": "gpt-boost",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Productivity-focused virtualization for faster, lighter ChatGPT conversations.",
   "scripts": {
     "build:firefox": "node scripts/build-firefox.js",
