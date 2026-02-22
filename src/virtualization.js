@@ -24,6 +24,10 @@
   let sidebarToggleButton = null;
   let sidebarPanel = null;
   let sidebarContentContainer = null;
+  const sidebarLayoutMutations = new Map();
+  let sidebarLayoutFallbackBodyUsed = false;
+  let sidebarLayoutFallbackBodyMarginRight = "";
+  let sidebarLayoutFallbackBodyTransition = "";
   let activeSidebarTab = "search";
   let settingsEnabledInput = null;
   let settingsDebugInput = null;
@@ -114,6 +118,16 @@
   const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
   const SIDEBAR_PANEL_WIDTH_PX = 480;
   const SIDEBAR_TRANSITION_MS = 300;
+  const SIDEBAR_LAYOUT_TARGET_SELECTORS = [
+    "main",
+    '[role="main"]',
+    "#__next",
+    'div[id^="__next"]',
+    'div[data-testid="conversation-view"]',
+    'div[class*="conversation" i]',
+    'div[class*="thread" i]'
+  ];
+  const SIDEBAR_SNIPPET_MAX_HEIGHT_PX = 220;
   const MESSAGE_FLAGS_STORAGE_KEY = "messageFlagsByConversation";
   const MESSAGE_FLAGS_SAVE_DEBOUNCE_MS = 200;
   const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "inset 0 0 0 1px rgba(59,130,246,0.35)";
@@ -297,6 +311,174 @@
       indicatorBg: "rgba(15, 23, 42, 0.6)",
       indicatorShadow: "0 4px 10px rgba(15, 23, 42, 0.18)"
     };
+  }
+
+  function isSidebarOpen() {
+    return !!(sidebarPanel && sidebarPanel.style.display !== "none");
+  }
+
+  function getSidebarUiOffsetPx() {
+    return isSidebarOpen() ? SIDEBAR_PANEL_WIDTH_PX : 0;
+  }
+
+  function isGptBoostUiNode(element) {
+    if (!(element instanceof HTMLElement)) return true;
+    return !!element.closest(
+      [
+        '[data-gpt-boost-sidebar="panel"]',
+        '[data-chatgpt-virtual-search]',
+        '[data-chatgpt-minimap]',
+        '[data-chatgpt-bookmarks]',
+        '[data-chatgpt-token-gauge]',
+        '[data-chatgpt-virtual-scroll]',
+        '[data-chatgpt-download]',
+        '[data-chatgpt-virtual-scroll-sidebar]'
+      ].join(",")
+    );
+  }
+
+  function collectSidebarLayoutTargets() {
+    const targets = new Set();
+
+    SIDEBAR_LAYOUT_TARGET_SELECTORS.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((el) => {
+        if (el instanceof HTMLElement && !isGptBoostUiNode(el)) {
+          targets.add(el);
+        }
+      });
+    });
+
+    if (state.conversationRoot instanceof HTMLElement && !isGptBoostUiNode(state.conversationRoot)) {
+      targets.add(state.conversationRoot);
+    }
+
+    document.querySelectorAll("textarea").forEach((textarea) => {
+      if (!(textarea instanceof HTMLTextAreaElement)) return;
+      const form = textarea.closest("form");
+      if (form instanceof HTMLElement && !isGptBoostUiNode(form)) {
+        targets.add(form);
+      }
+
+      let ancestor = textarea.parentElement;
+      while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+        if (isGptBoostUiNode(ancestor)) break;
+        const pos = getComputedStyle(ancestor).position;
+        if (pos === "fixed" || pos === "sticky") {
+          targets.add(ancestor);
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+    });
+
+    return Array.from(targets).filter((el) => el.isConnected);
+  }
+
+  function ensureSidebarLayoutRecord(el) {
+    if (!sidebarLayoutMutations.has(el)) {
+      const computed = getComputedStyle(el);
+      sidebarLayoutMutations.set(el, {
+        paddingRightInline: el.style.paddingRight,
+        rightInline: el.style.right,
+        transitionInline: el.style.transition,
+        boxSizingInline: el.style.boxSizing,
+        computedPaddingRight: computed.paddingRight || "0px",
+        computedRight: computed.right || "0px"
+      });
+    }
+    return sidebarLayoutMutations.get(el);
+  }
+
+  function applySidebarOffsetToElement(el, offsetPx) {
+    const record = ensureSidebarLayoutRecord(el);
+    const position = getComputedStyle(el).position;
+    const hasTextarea = !!el.querySelector("textarea");
+    const shouldAdjustRight =
+      hasTextarea &&
+      (position === "fixed" || position === "sticky" || el.tagName === "FORM");
+
+    if (shouldAdjustRight) {
+      const baseRight = record.computedRight === "auto" ? "0px" : record.computedRight;
+      el.style.right = `calc(${baseRight} + ${offsetPx}px)`;
+    } else {
+      el.style.paddingRight = `calc(${record.computedPaddingRight} + ${offsetPx}px)`;
+      el.style.boxSizing = "border-box";
+    }
+
+    el.style.transition = `padding-right ${SIDEBAR_TRANSITION_MS}ms ease, right ${SIDEBAR_TRANSITION_MS}ms ease`;
+  }
+
+  function clearSidebarLayoutOffset() {
+    sidebarLayoutMutations.forEach((record, el) => {
+      if (!(el instanceof HTMLElement) || !el.isConnected) return;
+      el.style.paddingRight = record.paddingRightInline;
+      el.style.right = record.rightInline;
+      el.style.transition = record.transitionInline;
+      el.style.boxSizing = record.boxSizingInline;
+    });
+    sidebarLayoutMutations.clear();
+    if (sidebarLayoutFallbackBodyUsed) {
+      document.body.style.marginRight = sidebarLayoutFallbackBodyMarginRight;
+      document.body.style.transition = sidebarLayoutFallbackBodyTransition;
+    }
+    sidebarLayoutFallbackBodyUsed = false;
+    sidebarLayoutFallbackBodyMarginRight = "";
+    sidebarLayoutFallbackBodyTransition = "";
+  }
+
+  function setSidebarOffsetPx(offsetPx) {
+    clearSidebarLayoutOffset();
+    if (!offsetPx) return;
+
+    const targets = collectSidebarLayoutTargets();
+    if (!targets.length) {
+      sidebarLayoutFallbackBodyMarginRight = document.body.style.marginRight;
+      sidebarLayoutFallbackBodyTransition = document.body.style.transition;
+      sidebarLayoutFallbackBodyUsed = true;
+      document.body.style.marginRight = `${offsetPx}px`;
+      document.body.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease`;
+      return;
+    }
+
+    targets.forEach((el) => applySidebarOffsetToElement(el, offsetPx));
+  }
+
+  function applyFloatingUiOffsets() {
+    const sidebarOffset = getSidebarUiOffsetPx();
+
+    if (indicatorElement) {
+      indicatorElement.style.right = `${INDICATOR_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (scrollToTopButton) {
+      scrollToTopButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (scrollToBottomButton) {
+      scrollToBottomButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (searchButton) {
+      searchButton.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (searchPanel) {
+      searchPanel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (minimapButton) {
+      minimapButton.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (minimapPanel) {
+      minimapPanel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (downloadButton) {
+      downloadButton.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (bookmarksButton) {
+      bookmarksButton.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (bookmarksPanel) {
+      bookmarksPanel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
+    if (sidebarToggleButton) {
+      sidebarToggleButton.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + sidebarOffset}px`;
+    }
   }
 
   /**
@@ -499,6 +681,7 @@
     element.setAttribute("aria-label", "Virtualizing messages");
     document.body.appendChild(element);
     indicatorElement = element;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return element;
   }
@@ -606,6 +789,7 @@
       scrollToBottomButton = button;
     }
 
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -1418,9 +1602,14 @@
   }
 
     function hideSidebar() {
-      if (!sidebarPanel) return;
+      if (!sidebarPanel) {
+        setSidebarOffsetPx(0);
+        applyFloatingUiOffsets();
+        return;
+      }
       sidebarPanel.style.display = "none";
-      document.body.style.marginRight = "0";
+      setSidebarOffsetPx(0);
+      applyFloatingUiOffsets();
       clearSearchHighlight();
     }
   
@@ -1428,8 +1617,9 @@
       const panel = ensureSidebarPanel();
       if (!panel) return;
       hideSearchPanel();
+      setSidebarOffsetPx(SIDEBAR_PANEL_WIDTH_PX);
       panel.style.display = "flex";
-      document.body.style.marginRight = `${SIDEBAR_PANEL_WIDTH_PX}px`;
+      applyFloatingUiOffsets();
       renderSidebarTab(tabId || activeSidebarTab);
       applyThemeToUi();
     }
@@ -1461,12 +1651,10 @@
       button.style.display = "none";
       button.textContent = "☰";
       button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
-      
-      // Ensure transition
-      document.body.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease`;
-      
+
       document.body.appendChild(button);
       sidebarToggleButton = button;
+      applyFloatingUiOffsets();
       return button;
     }
   
@@ -1545,6 +1733,7 @@
       document.body.appendChild(panel);
       sidebarPanel = panel;
       sidebarContentContainer = content;
+      applyFloatingUiOffsets();
       return panel;
     }
   
@@ -1591,6 +1780,7 @@
 
     document.body.appendChild(button);
     searchButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -1753,6 +1943,7 @@
     searchCountPrimaryLabel = countPrimary;
     searchCountSecondaryLabel = countSecondary;
     searchCloseButton = closeButton;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return panel;
   }
@@ -1905,6 +2096,7 @@
 
     document.body.appendChild(button);
     minimapButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -1970,6 +2162,7 @@
 
     document.body.appendChild(panel);
     minimapPanel = panel;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return panel;
   }
@@ -2424,6 +2617,7 @@
     listContainer.style.flexDirection = "column";
     listContainer.style.gap = "12px";
     listContainer.style.overflowY = "auto";
+    listContainer.style.overflowX = "hidden";
     listContainer.style.flex = "1";
     listContainer.style.minHeight = "0";
     listContainer.style.paddingRight = "4px"; // Scrollbar space
@@ -2440,8 +2634,7 @@
       pres.forEach((pre, i) => {
         const codeEl = pre.querySelector("code");
         const source = codeEl || pre;
-        // Use innerText to preserve formatting
-        const text = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
+        const text = extractCodeSnippetText(pre);
         if (!text) return;
         const lang = inferCodeLanguage(source);
         snippets.push({ text, messageId: id, lang, index: i });
@@ -2468,6 +2661,7 @@
       wrapper.style.background = theme.inputBg;
       wrapper.style.display = "flex";
       wrapper.style.flexDirection = "column";
+      wrapper.style.minWidth = "0";
 
       const header = document.createElement("div");
       header.style.display = "flex";
@@ -2524,14 +2718,26 @@
       header.appendChild(actions);
 
       const pre = document.createElement("pre");
+      pre.style.display = "block";
       pre.style.margin = "0";
       pre.style.padding = "10px";
       pre.style.fontSize = "11px";
+      pre.style.lineHeight = "1.45";
       pre.style.fontFamily = "Consolas, Monaco, 'Andale Mono', monospace";
+      pre.style.overflowY = "auto";
       pre.style.overflowX = "auto";
+      pre.style.maxHeight = `${SIDEBAR_SNIPPET_MAX_HEIGHT_PX}px`;
       pre.style.whiteSpace = "pre";
       pre.style.color = theme.text;
-      pre.textContent = text; // Display textContent is safe for display inside pre
+      pre.style.background = "transparent";
+
+      const code = document.createElement("code");
+      code.style.display = "block";
+      code.style.whiteSpace = "pre";
+      code.style.minWidth = "max-content";
+      code.style.color = "inherit";
+      code.textContent = text;
+      pre.appendChild(code);
 
       wrapper.appendChild(header);
       wrapper.appendChild(pre);
@@ -2539,6 +2745,38 @@
     });
 
     container.appendChild(listContainer);
+  }
+
+  function extractCodeSnippetText(pre) {
+    if (!(pre instanceof HTMLElement)) return "";
+
+    const codeEl = pre.querySelector("code");
+    const codeText = toUnixNewlines(codeEl ? codeEl.textContent || "" : "").trimEnd();
+    if (codeText) return codeText;
+
+    const clone = pre.cloneNode(true);
+    if (clone instanceof HTMLElement) {
+      clone
+        .querySelectorAll(
+          [
+            "button",
+            '[role="button"]',
+            "svg",
+            "path",
+            "use",
+            "input",
+            "textarea",
+            '[aria-label*="copy" i]',
+            '[data-testid*="copy" i]',
+            '[data-testid*="jump" i]'
+          ].join(",")
+        )
+        .forEach((el) => el.remove());
+      const scrubbed = toUnixNewlines(clone.textContent || "").trimEnd();
+      if (scrubbed) return scrubbed;
+    }
+
+    return toUnixNewlines(pre.textContent || "").trimEnd();
   }
 
   // ---------------------------------------------------------------------------
@@ -2719,6 +2957,7 @@
 
     document.body.appendChild(button);
     downloadButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -2864,6 +3103,7 @@
 
     document.body.appendChild(button);
     bookmarksButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -2927,6 +3167,7 @@
 
     document.body.appendChild(panel);
     bookmarksPanel = panel;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return panel;
   }
@@ -3234,6 +3475,8 @@
   }
 
   function teardownVirtualizer() {
+    setSidebarOffsetPx(0);
+
     if (state.observer) state.observer.disconnect();
     if (state.cleanupScrollListener) state.cleanupScrollListener();
     if (deferredVirtualizationTimer !== null) {
