@@ -25,7 +25,6 @@
   let sidebarPanel = null;
   let sidebarContentContainer = null;
   let activeSidebarTab = "search";
-  let sidebarExpanded = false;
   let settingsEnabledInput = null;
   let settingsDebugInput = null;
   let settingsMarginInput = null;
@@ -36,8 +35,6 @@
     indexedTotal: 0,
     matchCount: 0
   };
-  let codePanelButton = null;
-  let codePanelPanel = null;
   let downloadButton = null;
   let bookmarksButton = null;
   let bookmarksPanel = null;
@@ -77,24 +74,13 @@
     MINIMAP_BUTTON_TOP_OFFSET_PX +
     MINIMAP_BUTTON_SIZE_PX +
     MINIMAP_BUTTON_GAP_PX;
-  const CODE_PANEL_BUTTON_SIZE_PX = 30;
-  const CODE_PANEL_BUTTON_GAP_PX = 8;
-  const CODE_PANEL_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
-  const CODE_PANEL_BUTTON_TOP_OFFSET_PX =
-    SEARCH_BUTTON_TOP_OFFSET_PX +
-    SEARCH_BUTTON_SIZE_PX +
-    SEARCH_BUTTON_GAP_PX;
-  const CODE_PANEL_PANEL_RIGHT_OFFSET_PX =
-    CODE_PANEL_BUTTON_RIGHT_OFFSET_PX + CODE_PANEL_BUTTON_SIZE_PX + CODE_PANEL_BUTTON_GAP_PX;
-  const CODE_PANEL_PANEL_TOP_OFFSET_PX = CODE_PANEL_BUTTON_TOP_OFFSET_PX;
-  const CODE_PANEL_PANEL_WIDTH_PX = 520;
   const DOWNLOAD_BUTTON_SIZE_PX = 30;
   const DOWNLOAD_BUTTON_GAP_PX = 8;
   const DOWNLOAD_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const DOWNLOAD_BUTTON_TOP_OFFSET_PX =
-    CODE_PANEL_BUTTON_TOP_OFFSET_PX +
-    CODE_PANEL_BUTTON_SIZE_PX +
-    CODE_PANEL_BUTTON_GAP_PX;
+    SEARCH_BUTTON_TOP_OFFSET_PX +
+    SEARCH_BUTTON_SIZE_PX +
+    SEARCH_BUTTON_GAP_PX;
   const BOOKMARKS_BUTTON_SIZE_PX = 30;
   const BOOKMARKS_BUTTON_GAP_PX = 8;
   const BOOKMARKS_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
@@ -126,10 +112,8 @@
   const SIDEBAR_TOGGLE_SIZE_PX = 30;
   const SIDEBAR_TOGGLE_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
-  const SIDEBAR_PANEL_WIDTH_PX = 380;
-  const SIDEBAR_PANEL_EXPANDED_WIDTH_PX = 560;
-  const SIDEBAR_PANEL_TOP_OFFSET_PX = SIDEBAR_TOGGLE_TOP_OFFSET_PX;
-  const SIDEBAR_PANEL_RIGHT_OFFSET_PX = SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + SIDEBAR_TOGGLE_SIZE_PX + 8;
+  const SIDEBAR_PANEL_WIDTH_PX = 480;
+  const SIDEBAR_TRANSITION_MS = 300;
   const MESSAGE_FLAGS_STORAGE_KEY = "messageFlagsByConversation";
   const MESSAGE_FLAGS_SAVE_DEBOUNCE_MS = 200;
   const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "inset 0 0 0 1px rgba(59,130,246,0.35)";
@@ -1028,11 +1012,6 @@
   }
 
   function toggleSearchPanel() {
-    const sidebarVisible = !!(sidebarPanel && sidebarPanel.style.display !== "none");
-    if (sidebarVisible) {
-      openSidebar("search");
-      return;
-    }
     const panel = ensureSearchPanel();
     if (!panel) return;
     const isVisible = panel.style.display !== "none";
@@ -1440,170 +1419,148 @@
     if (tabId === "search") renderSearchTabContent(sidebarContentContainer);
     else if (tabId === "bookmarks") renderBookmarksTabContent(sidebarContentContainer);
     else if (tabId === "outline") renderOutlineTabContent(sidebarContentContainer);
+    else if (tabId === "snippets") renderSnippetsTabContent(sidebarContentContainer);
     else renderSettingsTabContent(sidebarContentContainer);
   }
 
-  function hideSidebar() {
-    if (!sidebarPanel) return;
-    sidebarPanel.style.display = "none";
-    clearSearchHighlight();
-  }
-
-  function applySidebarSize() {
-    if (!sidebarPanel) return;
-    const width = sidebarExpanded ? SIDEBAR_PANEL_EXPANDED_WIDTH_PX : SIDEBAR_PANEL_WIDTH_PX;
-    sidebarPanel.style.width = `${width}px`;
-    const expandBtn = sidebarPanel.querySelector('[data-gpt-boost-sidebar-action="expand"]');
-    if (expandBtn instanceof HTMLElement) {
-      expandBtn.textContent = sidebarExpanded ? "↤" : "↔";
-      expandBtn.setAttribute("aria-label", sidebarExpanded ? "Collapse sidebar width" : "Expand sidebar width");
+    function hideSidebar() {
+      if (!sidebarPanel) return;
+      sidebarPanel.style.display = "none";
+      document.body.style.marginRight = "0";
+      clearSearchHighlight();
     }
-  }
-
-  function openSidebar(tabId) {
-    const panel = ensureSidebarPanel();
-    if (!panel) return;
-    hideSearchPanel();
-    panel.style.display = "flex";
-    renderSidebarTab(tabId || activeSidebarTab);
-    applyThemeToUi();
-  }
-
-  function toggleSidebar(tabId) {
-    const panel = ensureSidebarPanel();
-    if (!panel) return;
-    const requested = tabId || activeSidebarTab;
-    if (panel.style.display !== "none" && requested === activeSidebarTab) {
-      hideSidebar();
-      return;
+  
+    function openSidebar(tabId) {
+      const panel = ensureSidebarPanel();
+      if (!panel) return;
+      hideSearchPanel();
+      panel.style.display = "flex";
+      document.body.style.marginRight = `${SIDEBAR_PANEL_WIDTH_PX}px`;
+      renderSidebarTab(tabId || activeSidebarTab);
+      applyThemeToUi();
     }
-    openSidebar(requested);
-  }
-
-  function ensureSidebarToggleButton() {
-    if (sidebarToggleButton && sidebarToggleButton.isConnected) return sidebarToggleButton;
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("aria-label", "Open tools sidebar");
-    button.style.position = "fixed";
-    button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-    styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
-    button.style.display = "none";
-    button.textContent = "☰";
-    button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
-    document.body.appendChild(button);
-    sidebarToggleButton = button;
-    return button;
-  }
-
-  function ensureSidebarPanel() {
-    if (sidebarPanel && sidebarPanel.isConnected) return sidebarPanel;
-    if (!document.body) return null;
-    const theme = getThemeTokens();
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-gpt-boost-sidebar", "panel");
-    panel.style.position = "fixed";
-    panel.style.top = `${SIDEBAR_PANEL_TOP_OFFSET_PX}px`;
-    panel.style.right = `${SIDEBAR_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "9999";
-    panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
-    panel.style.maxWidth = "min(92vw, 520px)";
-    panel.style.maxHeight = `calc(100vh - ${SIDEBAR_PANEL_TOP_OFFSET_PX + 16}px)`;
-    panel.style.display = "none";
-    panel.style.flexDirection = "column";
-    panel.style.gap = "8px";
-    panel.style.padding = "10px";
-    panel.style.borderRadius = "14px";
-    panel.style.background = theme.panelBg;
-    panel.style.boxShadow = theme.panelShadow;
-    panel.style.border = `1px solid ${theme.panelBorder}`;
-    panel.style.color = theme.text;
-    panel.style.backdropFilter = "blur(6px)";
-    panel.style.boxSizing = "border-box";
-    panel.style.overflow = "hidden";
-
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.alignItems = "center";
-    header.style.justifyContent = "space-between";
-    header.style.gap = "8px";
-
-    const title = document.createElement("div");
-    title.textContent = "Tools";
-    title.style.fontSize = "12px";
-    title.style.fontWeight = "600";
-    title.style.opacity = "0.9";
-
-    const headerActions = document.createElement("div");
-    headerActions.style.display = "flex";
-    headerActions.style.gap = "6px";
-
-    const expandBtn = document.createElement("button");
-    expandBtn.type = "button";
-    expandBtn.dataset.gptBoostSidebarAction = "expand";
-    styleSearchButton(expandBtn, 22);
-    expandBtn.style.display = "flex";
-    expandBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    expandBtn.addEventListener("click", () => {
-      sidebarExpanded = !sidebarExpanded;
-      applySidebarSize();
-    });
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.textContent = "×";
-    closeBtn.setAttribute("aria-label", "Close sidebar");
-    styleSearchButton(closeBtn, 22);
-    closeBtn.style.display = "flex";
-    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    closeBtn.addEventListener("click", hideSidebar);
-
-    headerActions.appendChild(expandBtn);
-    headerActions.appendChild(closeBtn);
-    header.appendChild(title);
-    header.appendChild(headerActions);
-
-    const tabs = document.createElement("div");
-    tabs.style.display = "grid";
-    tabs.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
-    tabs.style.gap = "6px";
-
-    tabs.appendChild(createSidebarTabButton("search", "Search"));
-    tabs.appendChild(createSidebarTabButton("bookmarks", "Bookmarks"));
-    tabs.appendChild(createSidebarTabButton("outline", "Outline"));
-    tabs.appendChild(createSidebarTabButton("settings", "Settings"));
-
-    const content = document.createElement("div");
-    content.style.display = "flex";
-    content.style.flexDirection = "column";
-    content.style.gap = "8px";
-    content.style.flex = "1";
-    content.style.minHeight = "0";
-    content.style.overflow = "hidden";
-
-    panel.appendChild(header);
-    panel.appendChild(tabs);
-    panel.appendChild(content);
-    document.body.appendChild(panel);
-    sidebarPanel = panel;
-    sidebarContentContainer = content;
-    applySidebarSize();
-    return panel;
-  }
-
-  function updateSidebarVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
-    const button = ensureSidebarToggleButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) hideSidebar();
-  }
+  
+    function toggleSidebar(tabId) {
+      const panel = ensureSidebarPanel();
+      if (!panel) return;
+      const requested = tabId || activeSidebarTab;
+      if (panel.style.display !== "none" && requested === activeSidebarTab) {
+        hideSidebar();
+        return;
+      }
+      openSidebar(requested);
+    }
+  
+    function ensureSidebarToggleButton() {
+      if (sidebarToggleButton && sidebarToggleButton.isConnected) return sidebarToggleButton;
+      if (!document.body) return null;
+  
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("aria-label", "Open tools sidebar");
+      button.style.position = "fixed";
+      button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
+      button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
+      button.style.zIndex = "9999";
+      button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+      styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
+      button.style.display = "none";
+      button.textContent = "☰";
+      button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
+      
+      // Ensure transition
+      document.body.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease`;
+      
+      document.body.appendChild(button);
+      sidebarToggleButton = button;
+      return button;
+    }
+  
+    function ensureSidebarPanel() {
+      if (sidebarPanel && sidebarPanel.isConnected) return sidebarPanel;
+      if (!document.body) return null;
+      const theme = getThemeTokens();
+  
+      const panel = document.createElement("div");
+      panel.setAttribute("data-gpt-boost-sidebar", "panel");
+      panel.style.position = "fixed";
+      panel.style.top = "0";
+      panel.style.right = "0";
+      panel.style.bottom = "0";
+      panel.style.zIndex = "9999";
+      panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
+      panel.style.display = "none";
+      panel.style.flexDirection = "column";
+      panel.style.gap = "0";
+      panel.style.padding = "16px";
+      panel.style.background = theme.panelBg;
+      panel.style.boxShadow = "-4px 0 20px rgba(0, 0, 0, 0.1)";
+      panel.style.borderLeft = `1px solid ${theme.panelBorder}`;
+      panel.style.color = theme.text;
+      panel.style.backdropFilter = "blur(12px)";
+      panel.style.boxSizing = "border-box";
+      panel.style.overflow = "hidden";
+  
+      const header = document.createElement("div");
+      header.style.display = "flex";
+      header.style.alignItems = "center";
+      header.style.justifyContent = "space-between";
+      header.style.marginBottom = "16px";
+  
+      const title = document.createElement("div");
+      title.textContent = "Tools";
+      title.style.fontSize = "14px";
+      title.style.fontWeight = "600";
+      title.style.opacity = "0.9";
+  
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.textContent = "×";
+      closeBtn.setAttribute("aria-label", "Close sidebar");
+      styleSearchButton(closeBtn, 24);
+      closeBtn.style.display = "flex";
+      closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
+      closeBtn.addEventListener("click", hideSidebar);
+  
+      header.appendChild(title);
+      header.appendChild(closeBtn);
+  
+      const tabs = document.createElement("div");
+      tabs.style.display = "grid";
+      tabs.style.gridTemplateColumns = "repeat(5, minmax(0, 1fr))";
+      tabs.style.gap = "4px";
+      tabs.style.marginBottom = "16px";
+  
+      tabs.appendChild(createSidebarTabButton("search", "Search"));
+      tabs.appendChild(createSidebarTabButton("bookmarks", "Marks"));
+      tabs.appendChild(createSidebarTabButton("snippets", "Code"));
+      tabs.appendChild(createSidebarTabButton("outline", "Outline"));
+      tabs.appendChild(createSidebarTabButton("settings", "Config"));
+  
+      const content = document.createElement("div");
+      content.style.display = "flex";
+      content.style.flexDirection = "column";
+      content.style.gap = "8px";
+      content.style.flex = "1";
+      content.style.minHeight = "0";
+      content.style.overflow = "hidden";
+  
+      panel.appendChild(header);
+      panel.appendChild(tabs);
+      panel.appendChild(content);
+      document.body.appendChild(panel);
+      sidebarPanel = panel;
+      sidebarContentContainer = content;
+      return panel;
+    }
+  
+    function updateSidebarVisibility(totalMessages) {
+      const shouldShow = state.enabled && totalMessages > 0;
+      const button = ensureSidebarToggleButton();
+      if (!button) return;
+      button.style.display = shouldShow ? "flex" : "none";
+      if (!shouldShow) hideSidebar();
+    }
 
   function ensureSearchButton() {
     if (searchButton && searchButton.isConnected) {
@@ -2461,276 +2418,127 @@
     refreshSidebarTab();
   }
 
-  // ---------------------------------------------------------------------------
-  // Code Snippet Panel
-  // ---------------------------------------------------------------------------
+  function renderSnippetsTabContent(container) {
+    const listContainer = document.createElement("div");
+    listContainer.style.display = "flex";
+    listContainer.style.flexDirection = "column";
+    listContainer.style.gap = "12px";
+    listContainer.style.overflowY = "auto";
+    listContainer.style.flex = "1";
+    listContainer.style.minHeight = "0";
+    listContainer.style.paddingRight = "4px"; // Scrollbar space
 
-  function collectAllCodeSnippets() {
+    const theme = getThemeTokens();
     const snippets = [];
+    
+    // Collect snippets
     const sortedEntries = Array.from(state.articleMap.entries())
       .sort((a, b) => Number(a[0]) - Number(b[0]));
 
     sortedEntries.forEach(([id, node]) => {
-      const codeEls = node.querySelectorAll("pre code");
-      const targets = codeEls.length > 0
-        ? Array.from(codeEls)
-        : Array.from(node.querySelectorAll("pre"));
-      targets.forEach((el, i) => {
-        const text = (el.textContent || "").trim();
+      const pres = node.querySelectorAll("pre");
+      pres.forEach((pre, i) => {
+        const codeEl = pre.querySelector("code");
+        const source = codeEl || pre;
+        // Use innerText to preserve formatting
+        const text = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
         if (!text) return;
-        const rawClass = el.className || "";
-        const langMatch = rawClass.match(/\blanguage-(\S+)/);
-        const lang = langMatch ? langMatch[1] : "";
-        snippets.push({ text, messageId: id, index: i, lang });
+        const lang = inferCodeLanguage(source);
+        snippets.push({ text, messageId: id, lang, index: i });
       });
     });
 
-    return snippets;
-  }
-
-  function hideCodePanel() {
-    if (codePanelPanel) codePanelPanel.style.display = "none";
-  }
-
-  function hideCodePanelUi() {
-    if (codePanelButton) codePanelButton.style.display = "none";
-    hideCodePanel();
-  }
-
-  function populateCodePanel(panel) {
-    const listContainer = panel.querySelector("[data-chatgpt-code-panel=\"list\"]");
-    if (!listContainer) return;
-
-    listContainer.innerHTML = "";
-    const snippets = collectAllCodeSnippets();
-    const theme = getThemeTokens();
-
     if (!snippets.length) {
       const empty = document.createElement("div");
-      empty.style.fontSize = "12px";
+      empty.style.fontSize = "13px";
       empty.style.opacity = "0.6";
-      empty.style.padding = "4px 2px";
-      empty.textContent = "No code blocks found in this conversation.";
+      empty.style.textAlign = "center";
+      empty.style.padding = "20px";
+      empty.textContent = "No code snippets found.";
       listContainer.appendChild(empty);
+      container.appendChild(listContainer);
       return;
     }
 
-    snippets.forEach(({ text, messageId, lang }, idx) => {
+    snippets.forEach(({ text, messageId, lang, index }) => {
       const wrapper = document.createElement("div");
       wrapper.style.borderRadius = "8px";
       wrapper.style.border = `1px solid ${theme.panelBorder}`;
       wrapper.style.overflow = "hidden";
-      wrapper.style.marginBottom = "8px";
+      wrapper.style.background = theme.inputBg;
+      wrapper.style.display = "flex";
+      wrapper.style.flexDirection = "column";
 
       const header = document.createElement("div");
       header.style.display = "flex";
       header.style.alignItems = "center";
       header.style.justifyContent = "space-between";
-      header.style.padding = "4px 8px";
+      header.style.padding = "6px 10px";
       header.style.background = theme.buttonMutedBg;
-      header.style.fontSize = "10px";
-      header.style.color = theme.mutedText;
+      header.style.borderBottom = `1px solid ${theme.panelBorder}`;
 
-      const langLabel = document.createElement("span");
-      langLabel.textContent = lang ? `#${idx + 1} · ${lang}` : `#${idx + 1}`;
+      const info = document.createElement("span");
+      info.style.fontSize = "11px";
+      info.style.fontWeight = "600";
+      info.style.color = theme.mutedText;
+      info.textContent = lang || "text";
+
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "6px";
 
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
       copyBtn.textContent = "Copy";
-      copyBtn.setAttribute("aria-label", "Copy code snippet");
       copyBtn.style.fontSize = "10px";
-      copyBtn.style.padding = "1px 6px";
+      copyBtn.style.padding = "2px 8px";
       copyBtn.style.borderRadius = "4px";
       copyBtn.style.border = "none";
       copyBtn.style.cursor = "pointer";
       copyBtn.style.background = theme.buttonBg;
       copyBtn.style.color = theme.buttonText;
-      copyBtn.style.fontFamily = "inherit";
       copyBtn.addEventListener("click", () => {
         navigator.clipboard.writeText(text).then(() => {
-          copyBtn.textContent = "✓ Copied";
-          setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
-        }).catch(() => {
-          copyBtn.textContent = "Error";
-          setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000);
         });
       });
 
-      header.appendChild(langLabel);
-      header.appendChild(copyBtn);
-
-      const pre = document.createElement("pre");
-      pre.style.margin = "0";
-      pre.style.padding = "8px";
-      pre.style.fontSize = "12px";
-      pre.style.overflowX = "auto";
-      pre.style.maxHeight = "150px";
-      pre.style.overflowY = "auto";
-      pre.style.whiteSpace = "pre";
-      pre.style.wordBreak = "normal";
-      pre.style.lineHeight = "1.45";
-      pre.style.background = theme.inputBg;
-      pre.style.color = theme.text;
-      pre.textContent = text;
-
       const jumpBtn = document.createElement("button");
       jumpBtn.type = "button";
-      jumpBtn.textContent = "↗ Jump to message";
-      jumpBtn.style.display = "block";
-      jumpBtn.style.width = "100%";
+      jumpBtn.textContent = "Jump";
       jumpBtn.style.fontSize = "10px";
-      jumpBtn.style.padding = "3px 8px";
+      jumpBtn.style.padding = "2px 8px";
+      jumpBtn.style.borderRadius = "4px";
       jumpBtn.style.border = "none";
       jumpBtn.style.cursor = "pointer";
       jumpBtn.style.background = theme.buttonMutedBg;
-      jumpBtn.style.color = theme.mutedText;
-      jumpBtn.style.textAlign = "left";
-      jumpBtn.style.fontFamily = "inherit";
+      jumpBtn.style.color = theme.text;
       jumpBtn.addEventListener("click", () => {
-        hideCodePanel();
         scrollToVirtualId(messageId);
       });
 
+      actions.appendChild(copyBtn);
+      actions.appendChild(jumpBtn);
+      header.appendChild(info);
+      header.appendChild(actions);
+
+      const pre = document.createElement("pre");
+      pre.style.margin = "0";
+      pre.style.padding = "10px";
+      pre.style.fontSize = "11px";
+      pre.style.fontFamily = "Consolas, Monaco, 'Andale Mono', monospace";
+      pre.style.overflowX = "auto";
+      pre.style.whiteSpace = "pre";
+      pre.style.color = theme.text;
+      pre.textContent = text; // Display textContent is safe for display inside pre
+
       wrapper.appendChild(header);
       wrapper.appendChild(pre);
-      wrapper.appendChild(jumpBtn);
       listContainer.appendChild(wrapper);
     });
-  }
 
-  function showCodePanel() {
-    const panel = ensureCodePanel();
-    if (!panel) return;
-    populateCodePanel(panel);
-    panel.style.display = "flex";
-  }
-
-  function toggleCodePanel() {
-    const panel = ensureCodePanel();
-    if (!panel) return;
-    if (panel.style.display !== "none") {
-      hideCodePanel();
-    } else {
-      showCodePanel();
-    }
-  }
-
-  function ensureCodePanelButton() {
-    if (codePanelButton && codePanelButton.isConnected) return codePanelButton;
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("data-chatgpt-code-panel", "toggle");
-    button.style.position = "fixed";
-    button.style.right = `${CODE_PANEL_BUTTON_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${CODE_PANEL_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.setAttribute("aria-hidden", "true");
-    icon.style.width = "14px";
-    icon.style.height = "14px";
-    icon.style.fill = "none";
-    icon.style.stroke = "currentColor";
-    icon.style.strokeWidth = "2";
-    icon.style.strokeLinecap = "round";
-    icon.style.strokeLinejoin = "round";
-    const poly1 = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    poly1.setAttribute("points", "16 18 22 12 16 6");
-    const poly2 = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    poly2.setAttribute("points", "8 6 2 12 8 18");
-    icon.appendChild(poly1);
-    icon.appendChild(poly2);
-
-    button.appendChild(icon);
-    button.setAttribute("aria-label", "Open code snippets panel");
-    styleSearchButton(button, CODE_PANEL_BUTTON_SIZE_PX);
-    button.style.display = "none";
-    button.addEventListener("click", toggleCodePanel);
-
-    document.body.appendChild(button);
-    codePanelButton = button;
-    applyThemeToUi();
-    return button;
-  }
-
-  function ensureCodePanel() {
-    if (codePanelPanel && codePanelPanel.isConnected) return codePanelPanel;
-    if (!document.body) return null;
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-chatgpt-code-panel", "panel");
-    panel.style.position = "fixed";
-    panel.style.top = `${CODE_PANEL_PANEL_TOP_OFFSET_PX}px`;
-    panel.style.right = `${CODE_PANEL_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "9999";
-    panel.style.width = `${CODE_PANEL_PANEL_WIDTH_PX}px`;
-    panel.style.maxWidth = "min(90vw, 720px)";
-    panel.style.maxHeight = `calc(100vh - ${CODE_PANEL_PANEL_TOP_OFFSET_PX + 16}px)`;
-    panel.style.display = "none";
-    panel.style.flexDirection = "column";
-    panel.style.gap = "8px";
-    panel.style.padding = "10px";
-    panel.style.borderRadius = "14px";
-    panel.style.background = "rgba(15, 23, 42, 0.92)";
-    panel.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.28)";
-    panel.style.color = "#f9fafb";
-    panel.style.backdropFilter = "blur(6px)";
-    panel.style.boxSizing = "border-box";
-    panel.style.overflow = "hidden";
-
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.alignItems = "center";
-    header.style.justifyContent = "space-between";
-    header.style.gap = "8px";
-    header.style.flexShrink = "0";
-
-    const title = document.createElement("span");
-    title.textContent = "Code Snippets";
-    title.style.fontSize = "12px";
-    title.style.fontWeight = "600";
-    title.style.lineHeight = "1.2";
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.textContent = "×";
-    closeBtn.setAttribute("aria-label", "Close code snippets panel");
-    styleSearchButton(closeBtn, 22);
-    closeBtn.style.display = "flex";
-    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    closeBtn.addEventListener("click", hideCodePanel);
-
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-
-    const listContainer = document.createElement("div");
-    listContainer.setAttribute("data-chatgpt-code-panel", "list");
-    listContainer.style.overflowY = "auto";
-    listContainer.style.display = "flex";
-    listContainer.style.flexDirection = "column";
-    listContainer.style.gap = "0";
-    listContainer.style.flex = "1";
-    listContainer.style.minHeight = "0";
-
-    panel.appendChild(header);
-    panel.appendChild(listContainer);
-
-    document.body.appendChild(panel);
-    codePanelPanel = panel;
-    applyThemeToUi();
-    return panel;
-  }
-
-  function updateCodePanelVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
-    const button = ensureCodePanelButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) hideCodePanel();
+    container.appendChild(listContainer);
   }
 
   // ---------------------------------------------------------------------------
@@ -2792,78 +2600,78 @@
     return match ? match[1].toLowerCase() : "";
   }
 
-  function extractMarkdownPartsFromMessage(messageRoot) {
-    function domToMarkdown(node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        return node.textContent;
-      }
-      if (node.nodeType !== Node.ELEMENT_NODE) {
-        return "";
-      }
-
-      const tagName = node.tagName.toLowerCase();
-
-      // Handle Code Blocks (PRE)
-      if (tagName === "pre") {
-        const codeEl = node.querySelector("code");
-        const source = codeEl || node;
-        // Use innerText to preserve newlines from layout if textContent fails
-        const codeText = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
-        const lang = inferCodeLanguage(source);
-        return `\n\n\`\`\`${lang}\n${codeText}\n\`\`\`\n\n`;
-      }
-
-      // Handle Paragraphs and Headers
-      if (["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
-        let prefix = "";
-        if (tagName === "h1") prefix = "# ";
-        else if (tagName === "h2") prefix = "## ";
-        else if (tagName === "h3") prefix = "### ";
-        else if (tagName === "h4") prefix = "#### ";
-        else if (tagName === "h5") prefix = "##### ";
-        else if (tagName === "h6") prefix = "###### ";
-        
-        const content = Array.from(node.childNodes).map(domToMarkdown).join("");
-        // Only return if content is not empty (ignoring whitespace)
-        if (!content.trim()) return "";
-        return `\n\n${prefix}${content.trim()}\n\n`;
-      }
-      
-      // Handle Lists
-      if (tagName === "ul" || tagName === "ol") {
-         const content = Array.from(node.childNodes).map(domToMarkdown).join("");
-         return `\n${content}\n`;
-      }
-      if (tagName === "li") {
-         const content = Array.from(node.childNodes).map(domToMarkdown).join("");
-         const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : "ul";
-         const prefix = parentTag === "ol" ? "1. " : "- "; 
-         return `\n${prefix}${content.trim()}`;
-      }
-
-      // Handle formatting
-      if (tagName === "strong" || tagName === "b") {
-        return `**${Array.from(node.childNodes).map(domToMarkdown).join("")}**`;
-      }
-      if (tagName === "em" || tagName === "i") {
-        return `*${Array.from(node.childNodes).map(domToMarkdown).join("")}*`;
-      }
-      if (tagName === "code") {
-        return `\`${Array.from(node.childNodes).map(domToMarkdown).join("")}\``;
-      }
-      if (tagName === "a") {
-          const href = node.getAttribute("href");
-          const text = Array.from(node.childNodes).map(domToMarkdown).join("");
-          return `[${text}](${href})`;
-      }
-      if (tagName === "br") return "\n";
-      if (tagName === "hr") return "\n---\n";
-
-      // Recurse for others
-      return Array.from(node.childNodes).map(domToMarkdown).join("");
+  function convertDomToMarkdown(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return "";
     }
 
-    const markdown = domToMarkdown(messageRoot);
+    const tagName = node.tagName.toLowerCase();
+
+    // Handle Code Blocks (PRE)
+    if (tagName === "pre") {
+      const codeEl = node.querySelector("code");
+      const source = codeEl || node;
+      // Use innerText to preserve newlines from layout if textContent fails
+      const codeText = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
+      const lang = inferCodeLanguage(source);
+      return `\n\n\`\`\`${lang}\n${codeText}\n\`\`\`\n\n`;
+    }
+
+    // Handle Paragraphs and Headers
+    if (["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
+      let prefix = "";
+      if (tagName === "h1") prefix = "# ";
+      else if (tagName === "h2") prefix = "## ";
+      else if (tagName === "h3") prefix = "### ";
+      else if (tagName === "h4") prefix = "#### ";
+      else if (tagName === "h5") prefix = "##### ";
+      else if (tagName === "h6") prefix = "###### ";
+      
+      const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+      // Only return if content is not empty (ignoring whitespace)
+      if (!content.trim()) return "";
+      return `\n\n${prefix}${content.trim()}\n\n`;
+    }
+    
+    // Handle Lists
+    if (tagName === "ul" || tagName === "ol") {
+       const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+       return `\n${content}\n`;
+    }
+    if (tagName === "li") {
+       const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+       const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : "ul";
+       const prefix = parentTag === "ol" ? "1. " : "- "; 
+       return `\n${prefix}${content.trim()}`;
+    }
+
+    // Handle formatting
+    if (tagName === "strong" || tagName === "b") {
+      return `**${Array.from(node.childNodes).map(convertDomToMarkdown).join("")}**`;
+    }
+    if (tagName === "em" || tagName === "i") {
+      return `*${Array.from(node.childNodes).map(convertDomToMarkdown).join("")}*`;
+    }
+    if (tagName === "code") {
+      return `\`${Array.from(node.childNodes).map(convertDomToMarkdown).join("")}\``;
+    }
+    if (tagName === "a") {
+        const href = node.getAttribute("href");
+        const text = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+        return `[${text}](${href})`;
+    }
+    if (tagName === "br") return "\n";
+    if (tagName === "hr") return "\n---\n";
+
+    // Recurse for others
+    return Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+  }
+
+  function extractMarkdownPartsFromMessage(messageRoot) {
+    const markdown = convertDomToMarkdown(messageRoot);
     const cleanMarkdown = markdown.replace(/\n{3,}/g, "\n\n").trim();
     return [cleanMarkdown];
   }
