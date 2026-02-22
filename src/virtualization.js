@@ -2793,31 +2793,79 @@
   }
 
   function extractMarkdownPartsFromMessage(messageRoot) {
-    const parts = [];
+    function domToMarkdown(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return "";
+      }
 
-    const textClone = messageRoot.cloneNode(true);
-    if (textClone instanceof HTMLElement) {
-      textClone.querySelectorAll("pre").forEach((pre) => pre.remove());
-      const text = toUnixNewlines(textClone.innerText || "")
-        .split("\n")
-        .map((line) => line.trimEnd())
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-      if (text) parts.push(text);
+      const tagName = node.tagName.toLowerCase();
+
+      // Handle Code Blocks (PRE)
+      if (tagName === "pre") {
+        const codeEl = node.querySelector("code");
+        const source = codeEl || node;
+        // Use innerText to preserve newlines from layout if textContent fails
+        const codeText = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
+        const lang = inferCodeLanguage(source);
+        return `\n\n\`\`\`${lang}\n${codeText}\n\`\`\`\n\n`;
+      }
+
+      // Handle Paragraphs and Headers
+      if (["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
+        let prefix = "";
+        if (tagName === "h1") prefix = "# ";
+        else if (tagName === "h2") prefix = "## ";
+        else if (tagName === "h3") prefix = "### ";
+        else if (tagName === "h4") prefix = "#### ";
+        else if (tagName === "h5") prefix = "##### ";
+        else if (tagName === "h6") prefix = "###### ";
+        
+        const content = Array.from(node.childNodes).map(domToMarkdown).join("");
+        // Only return if content is not empty (ignoring whitespace)
+        if (!content.trim()) return "";
+        return `\n\n${prefix}${content.trim()}\n\n`;
+      }
+      
+      // Handle Lists
+      if (tagName === "ul" || tagName === "ol") {
+         const content = Array.from(node.childNodes).map(domToMarkdown).join("");
+         return `\n${content}\n`;
+      }
+      if (tagName === "li") {
+         const content = Array.from(node.childNodes).map(domToMarkdown).join("");
+         const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : "ul";
+         const prefix = parentTag === "ol" ? "1. " : "- "; 
+         return `\n${prefix}${content.trim()}`;
+      }
+
+      // Handle formatting
+      if (tagName === "strong" || tagName === "b") {
+        return `**${Array.from(node.childNodes).map(domToMarkdown).join("")}**`;
+      }
+      if (tagName === "em" || tagName === "i") {
+        return `*${Array.from(node.childNodes).map(domToMarkdown).join("")}*`;
+      }
+      if (tagName === "code") {
+        return `\`${Array.from(node.childNodes).map(domToMarkdown).join("")}\``;
+      }
+      if (tagName === "a") {
+          const href = node.getAttribute("href");
+          const text = Array.from(node.childNodes).map(domToMarkdown).join("");
+          return `[${text}](${href})`;
+      }
+      if (tagName === "br") return "\n";
+      if (tagName === "hr") return "\n---\n";
+
+      // Recurse for others
+      return Array.from(node.childNodes).map(domToMarkdown).join("");
     }
 
-    const preElements = messageRoot.querySelectorAll("pre");
-    preElements.forEach((preEl) => {
-      const codeEl = preEl.querySelector("code");
-      const source = codeEl || preEl;
-      const codeText = toUnixNewlines(source.textContent || "").trimEnd();
-      if (!codeText) return;
-      const lang = inferCodeLanguage(source);
-      parts.push(`\`\`\`${lang}\n${codeText}\n\`\`\``);
-    });
-
-    return parts;
+    const markdown = domToMarkdown(messageRoot);
+    const cleanMarkdown = markdown.replace(/\n{3,}/g, "\n\n").trim();
+    return [cleanMarkdown];
   }
 
   function ensureDownloadButton() {
