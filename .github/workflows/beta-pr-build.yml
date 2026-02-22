@@ -1,0 +1,146 @@
+name: Beta PR Build
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
+
+permissions:
+  contents: write
+
+# Cancel any in-progress beta build for the same PR when a new push arrives.
+concurrency:
+  group: beta-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  beta-release:
+    name: Build & Publish Beta Pre-release
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Compute beta version
+        id: version
+        shell: bash
+        run: |
+          base=$(node -e "console.log(require('./package.json').version)")
+          beta="${base}.${GITHUB_RUN_NUMBER}"
+          echo "beta_version=${beta}" >> "$GITHUB_OUTPUT"
+          echo "Beta version: ${beta}"
+
+      - name: Patch manifests with beta version
+        env:
+          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.BETA_VERSION;
+          for (const file of ['package.json', 'manifest.json', 'manifest_firefox.json']) {
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            data.version = version;
+            fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
+          }
+          console.log(`Patched versions to ${version}`);
+          NODE
+
+      - name: Verify AMO secrets
+        run: |
+          test -n "$AMO_JWT_ISSUER" || { echo "Missing secret: AMO_JWT_ISSUER"; exit 1; }
+          test -n "$AMO_JWT_SECRET" || { echo "Missing secret: AMO_JWT_SECRET"; exit 1; }
+
+      - name: Build and sign Firefox extension
+        run: npm run sign:firefox
+
+      - name: Collect signed artifact path
+        id: artifact
+        shell: bash
+        run: |
+          signed="$(ls -1t web-ext-artifacts/*.xpi | head -n 1 || true)"
+          if [ -z "$signed" ]; then
+            echo "No signed XPI found in web-ext-artifacts" >&2
+            exit 1
+          fi
+          echo "signed_xpi=$signed" >> "$GITHUB_OUTPUT"
+
+      - name: Force-update beta tag to current commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          tag="beta-pr-${{ github.event.pull_request.number }}"
+          git tag -f "${tag}"
+          git push origin "refs/tags/${tag}" --force
+
+      - name: Publish or update GitHub pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BETA_VERSION: ${{ steps.version.outputs.beta_version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          SIGNED_XPI: ${{ steps.artifact.outputs.signed_xpi }}
+        shell: bash
+        run: |
+          tag="beta-pr-${PR_NUMBER}"
+          title="Beta PR #${PR_NUMBER}: ${PR_TITLE}"
+          notes="Beta build for [PR #${PR_NUMBER}](../../pull/${PR_NUMBER})
+
+          **Version:** \`${BETA_VERSION}\`
+          **Commit:** \`${GITHUB_SHA}\`
+
+          > This is an automatically generated pre-release. Do not use in production."
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release edit "${tag}" \
+              --title "${title}" \
+              --notes "${notes}" \
+              --prerelease
+            gh release upload "${tag}" "${SIGNED_XPI}" --clobber
+          else
+            gh release create "${tag}" "${SIGNED_XPI}" \
+              --title "${title}" \
+              --notes "${notes}" \
+              --prerelease
+          fi
+
+  cleanup-beta:
+    name: Delete Beta Pre-release on PR Close
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete beta pre-release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          tag="beta-pr-${PR_NUMBER}"
+          gh release delete "${tag}" --yes 2>/dev/null || true
+          gh api --method DELETE "repos/${{ github.repository }}/git/refs/tags/${tag}" 2>/dev/null || true
+          echo "Cleaned up beta release and tag: ${tag}"
