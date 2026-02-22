@@ -902,15 +902,9 @@
   }
 
   function focusSearchResult(id) {
+    scrollToVirtualId(id);
+
     const selectorId = escapeSelectorValue(id);
-    const target = document.querySelector(
-      `[data-virtual-id="${selectorId}"]`
-    );
-    if (!target) return;
-
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    scheduleVirtualization();
-
     setTimeout(() => {
       const refreshed =
         document.querySelector(`article[data-virtual-id="${selectorId}"]`) ||
@@ -2287,12 +2281,18 @@
   // Pin to Top
   // ---------------------------------------------------------------------------
 
-  function scrollToVirtualId(virtualId) {
+  function scrollToVirtualId(virtualId, attempt = 0) {
     const selectorId = escapeSelectorValue(virtualId);
     const target = document.querySelector(`[data-virtual-id="${selectorId}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "center" });
     scheduleVirtualization();
+
+    if (attempt < MAX_SCROLL_ATTEMPTS) {
+      setTimeout(() => {
+        scrollToVirtualId(virtualId, attempt + 1);
+      }, SCROLL_RETRY_DELAY_MS);
+    }
   }
 
   function ensurePinnedBar() {
