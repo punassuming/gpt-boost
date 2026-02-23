@@ -42,6 +42,11 @@
   let downloadButton = null;
   let bookmarksButton = null;
   let bookmarksPanel = null;
+  // codePanelButton/codePanelPanel were refactored into the sidebar snippets tab
+  // in b232a91, but their call sites (applyThemeToUi, teardownVirtualizer, updateIndicator)
+  // were not cleaned up. Keeping them as null guards prevents ReferenceErrors.
+  let codePanelButton = null;
+  let codePanelPanel = null;
   let tokenGaugeElement = null;
   let pinnedBarElement = null;
   let deferredVirtualizationTimer = null;
@@ -85,21 +90,10 @@
     SEARCH_BUTTON_TOP_OFFSET_PX +
     SEARCH_BUTTON_SIZE_PX +
     SEARCH_BUTTON_GAP_PX;
-  const BOOKMARKS_BUTTON_SIZE_PX = 30;
-  const BOOKMARKS_BUTTON_GAP_PX = 8;
-  const BOOKMARKS_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
-  const BOOKMARKS_BUTTON_TOP_OFFSET_PX =
+  const SCROLL_BUTTON_TOP_OFFSET_PX =
     DOWNLOAD_BUTTON_TOP_OFFSET_PX +
     DOWNLOAD_BUTTON_SIZE_PX +
     DOWNLOAD_BUTTON_GAP_PX;
-  const BOOKMARKS_PANEL_RIGHT_OFFSET_PX =
-    BOOKMARKS_BUTTON_RIGHT_OFFSET_PX + BOOKMARKS_BUTTON_SIZE_PX + BOOKMARKS_BUTTON_GAP_PX;
-  const BOOKMARKS_PANEL_TOP_OFFSET_PX = BOOKMARKS_BUTTON_TOP_OFFSET_PX;
-  const BOOKMARKS_PANEL_WIDTH_PX = 280;
-  const SCROLL_BUTTON_TOP_OFFSET_PX =
-    BOOKMARKS_BUTTON_TOP_OFFSET_PX +
-    BOOKMARKS_BUTTON_SIZE_PX +
-    BOOKMARKS_BUTTON_GAP_PX;
   const TOKEN_GAUGE_MAX_TOKENS = 128000;
   const TOKEN_GAUGE_YELLOW_RATIO = 0.25;
   const TOKEN_GAUGE_RED_RATIO = 0.65;
@@ -261,7 +255,7 @@
     }
     saveFlagsTimer = setTimeout(() => {
       saveFlagsTimer = null;
-      saveFlagsToStorage().catch(() => {});
+      saveFlagsToStorage().catch(() => { });
     }, MESSAGE_FLAGS_SAVE_DEBOUNCE_MS);
   }
 
@@ -376,22 +370,55 @@
     const offset = getSidebarUiOffsetPx();
 
     if (indicatorElement) indicatorElement.style.right = `${INDICATOR_RIGHT_OFFSET_PX + offset}px`;
-    if (scrollToTopButton) scrollToTopButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
+
+    // Dynamically stack the right-side floating buttons so there are no empty gaps
+    // if conditional buttons (like bookmarks) are hidden.
+    let currentTop = SIDEBAR_TOGGLE_TOP_OFFSET_PX;
+
+    if (sidebarToggleButton && sidebarToggleButton.style.display !== "none") {
+      sidebarToggleButton.style.top = `${currentTop}px`;
+      sidebarToggleButton.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + offset}px`;
+      currentTop += SIDEBAR_TOGGLE_SIZE_PX + SEARCH_BUTTON_GAP_PX;
+    }
+
+    if (searchButton && searchButton.style.display !== "none") {
+      searchButton.style.top = `${currentTop}px`;
+      searchButton.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+      if (searchPanel) searchPanel.style.top = `${currentTop}px`;
+      if (searchPanel) searchPanel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX + offset}px`;
+      currentTop += SEARCH_BUTTON_SIZE_PX + SEARCH_BUTTON_GAP_PX;
+    }
+
+    if (downloadButton && downloadButton.style.display !== "none") {
+      downloadButton.style.top = `${currentTop}px`;
+      downloadButton.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+      currentTop += DOWNLOAD_BUTTON_SIZE_PX + DOWNLOAD_BUTTON_GAP_PX;
+    }
+
+    if (bookmarksButton && bookmarksButton.style.display !== "none") {
+      bookmarksButton.style.top = `${currentTop}px`;
+      bookmarksButton.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+      if (bookmarksPanel) bookmarksPanel.style.top = `${currentTop}px`;
+      if (bookmarksPanel) bookmarksPanel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX + offset}px`;
+      currentTop += BOOKMARKS_BUTTON_SIZE_PX + BOOKMARKS_BUTTON_GAP_PX;
+    }
+
+    if (scrollToTopButton && scrollToTopButton.style.display !== "none") {
+      scrollToTopButton.style.top = `${currentTop}px`;
+      scrollToTopButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
+    }
+
+    // Scroll to bottom stays anchored to the bottom
     if (scrollToBottomButton) scrollToBottomButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
-    if (searchButton) searchButton.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-    if (searchPanel) searchPanel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX + offset}px`;
+
     if (minimapButton) minimapButton.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX + offset}px`;
     if (minimapPanel) minimapPanel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX + offset}px`;
-    if (downloadButton) downloadButton.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-    if (bookmarksButton) bookmarksButton.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-    if (bookmarksPanel) bookmarksPanel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX + offset}px`;
-    if (sidebarToggleButton) sidebarToggleButton.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + offset}px`;
   }
 
   function clearSidebarLayoutOffset() {
     sidebarLayoutOriginalStyles.forEach((original, el) => {
       if (!(el instanceof HTMLElement) || !el.isConnected) return;
-      el.style.paddingRight = original.paddingRight;
+      el.style.marginRight = original.marginRight;
       el.style.right = original.right;
       el.style.boxSizing = original.boxSizing;
       el.style.transition = original.transition;
@@ -425,6 +452,7 @@
       const computed = getComputedStyle(el);
       sidebarLayoutOriginalStyles.set(el, {
         paddingRight: el.style.paddingRight,
+        marginRight: el.style.marginRight,
         right: el.style.right,
         boxSizing: el.style.boxSizing,
         transition: el.style.transition
@@ -436,11 +464,18 @@
         const baseRight = computed.right && computed.right !== "auto" ? computed.right : "0px";
         el.style.right = `calc(${baseRight} + ${offsetPx}px)`;
       } else {
-        const basePaddingRight = computed.paddingRight || "0px";
-        el.style.paddingRight = `calc(${basePaddingRight} + ${offsetPx}px)`;
-        el.style.boxSizing = "border-box";
+        const isRootContainer = el === document.documentElement || el === document.body || el.tagName.toLowerCase() === "main";
+        if (isRootContainer) {
+          // Push native scrollbar inwards instead of burying it under padding
+          const baseMarginRight = computed.marginRight || "0px";
+          el.style.marginRight = `calc(${baseMarginRight} + ${offsetPx}px)`;
+        } else {
+          const basePaddingRight = computed.paddingRight || "0px";
+          el.style.paddingRight = `calc(${basePaddingRight} + ${offsetPx}px)`;
+          el.style.boxSizing = "border-box";
+        }
       }
-      el.style.transition = `padding-right ${SIDEBAR_TRANSITION_MS}ms ease, right ${SIDEBAR_TRANSITION_MS}ms ease`;
+      el.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease, padding-right ${SIDEBAR_TRANSITION_MS}ms ease, right ${SIDEBAR_TRANSITION_MS}ms ease`;
     });
   }
 
@@ -485,11 +520,11 @@
   }
 
   function isElementVisibleForConversation(el) {
+    // Intentionally minimal: only exclude elements that are explicitly display:none
+    // at the article level itself. Do NOT walk ancestors — ChatGPT may wrap articles
+    // in aria-hidden or transitional containers during load.
     if (!(el instanceof HTMLElement)) return false;
-    if (el.closest("[hidden], [aria-hidden='true']")) return false;
-    const styles = getComputedStyle(el);
-    if (styles.display === "none" || styles.visibility === "hidden") return false;
-    return true;
+    return el.style.display !== "none";
   }
 
   function getActiveConversationNodes() {
@@ -539,13 +574,15 @@
       }
     }
 
-    if (state.conversationRoot) {
+    if (state.conversationRoot instanceof HTMLElement) {
+      const root = state.conversationRoot;
+      const styles = getComputedStyle(root);
       if (
-        state.conversationRoot.scrollHeight >
-        state.conversationRoot.clientHeight + 10
+        (styles.overflowY === "auto" || styles.overflowY === "scroll") &&
+        root.scrollHeight > root.clientHeight + 10
       ) {
         log("Using conversation root as scroll container");
-        return state.conversationRoot;
+        return root;
       }
     }
 
@@ -804,35 +841,41 @@
       return;
     }
 
-    const candidates = [];
-    const primary = getScrollTarget();
-    if (primary) candidates.push(primary);
-    if (state.scrollElement instanceof HTMLElement) candidates.push(state.scrollElement);
-    const docFallback = document.scrollingElement || document.documentElement || document.body;
-    if (docFallback) candidates.push(docFallback);
+    // Prefer the established scroll element; fall back to candidates only
+    // when it isn't set (e.g., early in page load before messages are found).
+    let scrollTarget = getScrollTarget();
 
-    const uniqueCandidates = candidates.filter((candidate, idx, arr) =>
-      !!candidate && arr.indexOf(candidate) === idx
-    );
-    let scrollTarget = null;
-    let maxScrollable = 0;
-    uniqueCandidates.forEach((candidate) => {
-      const max = getMaxScrollTop(candidate);
-      if (max > maxScrollable) {
-        maxScrollable = max;
-        scrollTarget = candidate;
+    if (!scrollTarget) {
+      const candidates = [];
+      if (state.scrollElement instanceof HTMLElement) candidates.push(state.scrollElement);
+      const docFallback = document.scrollingElement || document.documentElement || document.body;
+      if (docFallback) candidates.push(docFallback);
+
+      let maxScrollable = 0;
+      candidates.forEach((candidate) => {
+        if (!candidate) return;
+        const max = getMaxScrollTop(candidate);
+        if (max > maxScrollable) {
+          maxScrollable = max;
+          scrollTarget = candidate;
+        }
+      });
+
+      if (!scrollTarget || maxScrollable < SCROLL_BUFFER_PX) {
+        hideScrollButtons();
+        return;
       }
-    });
-
-    if (!scrollTarget || maxScrollable < SCROLL_BUFFER_PX) {
-      hideScrollButtons();
-      return;
+    } else {
+      if (!isScrollable(scrollTarget)) {
+        hideScrollButtons();
+        return;
+      }
     }
 
     const topButton = ensureScrollButton("top");
     const bottomButton = ensureScrollButton("bottom");
 
-    const maxScrollTop = maxScrollable;
+    const maxScrollTop = getMaxScrollTop(scrollTarget);
     setButtonVisibility(topButton, scrollTarget.scrollTop > SCROLL_BUFFER_PX);
     setButtonVisibility(
       bottomButton,
@@ -1040,9 +1083,8 @@
         ? searchState.activeIndex + 1
         : 0;
     const primaryText = `${active}/${totalSections}`;
-    const secondaryText = `${searchState.matchCount} match${
-      searchState.matchCount === 1 ? "" : "es"
-    }`;
+    const secondaryText = `${searchState.matchCount} match${searchState.matchCount === 1 ? "" : "es"
+      }`;
 
     if (searchCountPrimaryLabel && searchCountSecondaryLabel) {
       searchCountPrimaryLabel.textContent = primaryText;
@@ -1269,7 +1311,7 @@
   function openExtensionSettingsPage() {
     if (typeof chrome !== "undefined" && chrome.runtime) {
       if (typeof chrome.runtime.openOptionsPage === "function") {
-        chrome.runtime.openOptionsPage(() => {});
+        chrome.runtime.openOptionsPage(() => { });
         return;
       }
       if (typeof chrome.runtime.getURL === "function") {
@@ -1639,168 +1681,168 @@
     else if (tabId === "bookmarks") renderBookmarksTabContent(sidebarContentContainer);
     else if (tabId === "outline") renderOutlineTabContent(sidebarContentContainer);
     else if (tabId === "snippets") renderSnippetsTabContent(sidebarContentContainer);
-    else renderSearchTabContent(sidebarContentContainer);
+    else renderSettingsTabContent(sidebarContentContainer);
   }
 
-    function hideSidebar() {
-      if (sidebarPanel) sidebarPanel.style.display = "none";
-      applySidebarLayoutOffset(0);
-      applyFloatingUiOffsets();
-      refreshArticleSideRailLayout();
-      clearSearchHighlight();
-    }
-  
-    function openSidebar(tabId) {
-      const panel = ensureSidebarPanel();
-      if (!panel) return;
-      const wasOpen = panel.style.display !== "none";
-      hideSearchPanel();
-      if (!wasOpen) {
-        applySidebarLayoutOffset(SIDEBAR_PANEL_WIDTH_PX);
-      }
-      panel.style.display = "flex";
-      applyFloatingUiOffsets();
-      if (!wasOpen) refreshArticleSideRailLayout();
-      renderSidebarTab(tabId || activeSidebarTab);
-      applyThemeToUi();
-    }
-  
-    function toggleSidebar(tabId) {
-      const panel = ensureSidebarPanel();
-      if (!panel) return;
-      const requested = tabId || activeSidebarTab;
-      if (panel.style.display !== "none" && requested === activeSidebarTab) {
-        hideSidebar();
-        return;
-      }
-      openSidebar(requested);
-    }
-  
-    function ensureSidebarToggleButton() {
-      if (sidebarToggleButton && sidebarToggleButton.isConnected) return sidebarToggleButton;
-      if (!document.body) return null;
-  
-      const button = document.createElement("button");
-      button.type = "button";
-      button.setAttribute("aria-label", "Open tools sidebar");
-      button.style.position = "fixed";
-      button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
-      button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
-      button.style.zIndex = "10002";
-      button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-      styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
-      button.style.display = "none";
-      button.textContent = "☰";
-      button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
+  function hideSidebar() {
+    if (sidebarPanel) sidebarPanel.style.display = "none";
+    applySidebarLayoutOffset(0);
+    applyFloatingUiOffsets();
+    refreshArticleSideRailLayout();
+    clearSearchHighlight();
+  }
 
-      document.body.appendChild(button);
-      sidebarToggleButton = button;
-      applyFloatingUiOffsets();
-      return button;
+  function openSidebar(tabId) {
+    const panel = ensureSidebarPanel();
+    if (!panel) return;
+    const wasOpen = panel.style.display !== "none";
+    hideSearchPanel();
+    if (!wasOpen) {
+      applySidebarLayoutOffset(SIDEBAR_PANEL_WIDTH_PX);
     }
-  
-    function ensureSidebarPanel() {
-      if (sidebarPanel && sidebarPanel.isConnected) return sidebarPanel;
-      if (!document.body) return null;
-      const theme = getThemeTokens();
-  
-      const panel = document.createElement("div");
-      panel.setAttribute("data-gpt-boost-sidebar", "panel");
-      panel.style.position = "fixed";
-      panel.style.top = "0";
-      panel.style.right = "0";
-      panel.style.bottom = "0";
-      panel.style.zIndex = "10000";
-      panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
-      panel.style.display = "none";
-      panel.style.flexDirection = "column";
-      panel.style.gap = "0";
-      panel.style.padding = "12px";
-      panel.style.background = theme.panelBg;
-      panel.style.boxShadow = "none";
-      panel.style.borderLeft = `1px solid ${theme.panelBorder}`;
-      panel.style.color = theme.text;
-      panel.style.backdropFilter = "";
-      panel.style.boxSizing = "border-box";
-      panel.style.overflow = "hidden";
-  
-      const header = document.createElement("div");
-      header.style.display = "flex";
-      header.style.alignItems = "center";
-      header.style.justifyContent = "space-between";
-      header.style.marginBottom = "16px";
-  
-      const title = document.createElement("div");
-      title.textContent = "Tools";
-      title.style.fontSize = "14px";
-      title.style.fontWeight = "600";
-      title.style.opacity = "0.9";
-  
-      const headerActions = document.createElement("div");
-      headerActions.style.display = "flex";
-      headerActions.style.alignItems = "center";
-      headerActions.style.gap = "6px";
+    panel.style.display = "flex";
+    applyFloatingUiOffsets();
+    if (!wasOpen) refreshArticleSideRailLayout();
+    renderSidebarTab(tabId || activeSidebarTab);
+    applyThemeToUi();
+  }
 
-      const settingsBtn = document.createElement("button");
-      settingsBtn.type = "button";
-      settingsBtn.textContent = "⚙";
-      settingsBtn.setAttribute("aria-label", "Open extension settings");
-      styleSearchButton(settingsBtn, 24);
-      settingsBtn.style.display = "flex";
-      settingsBtn.style.background = "rgba(148, 163, 184, 0.2)";
-      settingsBtn.addEventListener("click", openExtensionSettingsPage);
+  function toggleSidebar(tabId) {
+    const panel = ensureSidebarPanel();
+    if (!panel) return;
+    const requested = tabId || activeSidebarTab;
+    if (panel.style.display !== "none" && requested === activeSidebarTab) {
+      hideSidebar();
+      return;
+    }
+    openSidebar(requested);
+  }
 
-      const closeBtn = document.createElement("button");
-      closeBtn.type = "button";
-      closeBtn.textContent = "×";
-      closeBtn.setAttribute("aria-label", "Close sidebar");
-      styleSearchButton(closeBtn, 24);
-      closeBtn.style.display = "flex";
-      closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
-      closeBtn.addEventListener("click", hideSidebar);
-  
-      headerActions.appendChild(settingsBtn);
-      headerActions.appendChild(closeBtn);
-      header.appendChild(title);
-      header.appendChild(headerActions);
-  
-      const tabs = document.createElement("div");
-      tabs.style.display = "flex";
-      tabs.style.gap = "8px";
-      tabs.style.marginBottom = "12px";
-      tabs.style.paddingBottom = "6px";
-      tabs.style.borderBottom = `1px solid ${theme.panelBorder}`;
-  
-      tabs.appendChild(createSidebarTabButton("search", "Search", "🔎"));
-      tabs.appendChild(createSidebarTabButton("bookmarks", "Marks", "🔖"));
-      tabs.appendChild(createSidebarTabButton("snippets", "Code", "⌨"));
-      tabs.appendChild(createSidebarTabButton("outline", "Outline", "🧭"));
-  
-      const content = document.createElement("div");
-      content.style.display = "flex";
-      content.style.flexDirection = "column";
-      content.style.gap = "8px";
-      content.style.flex = "1";
-      content.style.minHeight = "0";
-      content.style.overflow = "hidden";
-  
-      panel.appendChild(header);
-      panel.appendChild(tabs);
-      panel.appendChild(content);
-      document.body.appendChild(panel);
-      sidebarPanel = panel;
-      sidebarContentContainer = content;
-      applyFloatingUiOffsets();
-      return panel;
-    }
-  
-    function updateSidebarVisibility(totalMessages) {
-      const shouldShow = state.enabled;
-      const button = ensureSidebarToggleButton();
-      if (!button) return;
-      button.style.display = shouldShow ? "flex" : "none";
-      if (!shouldShow) hideSidebar();
-    }
+  function ensureSidebarToggleButton() {
+    if (sidebarToggleButton && sidebarToggleButton.isConnected) return sidebarToggleButton;
+    if (!document.body) return null;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "Open tools sidebar");
+    button.style.position = "fixed";
+    button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
+    button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
+    button.style.zIndex = "10002";
+    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
+    styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
+    button.style.display = "none";
+    button.textContent = "☰";
+    button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
+
+    document.body.appendChild(button);
+    sidebarToggleButton = button;
+    applyFloatingUiOffsets();
+    return button;
+  }
+
+  function ensureSidebarPanel() {
+    if (sidebarPanel && sidebarPanel.isConnected) return sidebarPanel;
+    if (!document.body) return null;
+    const theme = getThemeTokens();
+
+    const panel = document.createElement("div");
+    panel.setAttribute("data-gpt-boost-sidebar", "panel");
+    panel.style.position = "fixed";
+    panel.style.top = "0";
+    panel.style.right = "0";
+    panel.style.bottom = "0";
+    panel.style.zIndex = "10000";
+    panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
+    panel.style.display = "none";
+    panel.style.flexDirection = "column";
+    panel.style.gap = "0";
+    panel.style.padding = "12px";
+    panel.style.background = theme.panelBg;
+    panel.style.boxShadow = "none";
+    panel.style.borderLeft = `1px solid ${theme.panelBorder}`;
+    panel.style.color = theme.text;
+    panel.style.backdropFilter = "";
+    panel.style.boxSizing = "border-box";
+    panel.style.overflow = "hidden";
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.alignItems = "center";
+    header.style.justifyContent = "space-between";
+    header.style.marginBottom = "16px";
+
+    const title = document.createElement("div");
+    title.textContent = "Tools";
+    title.style.fontSize = "14px";
+    title.style.fontWeight = "600";
+    title.style.opacity = "0.9";
+
+    const headerActions = document.createElement("div");
+    headerActions.style.display = "flex";
+    headerActions.style.alignItems = "center";
+    headerActions.style.gap = "6px";
+
+    const settingsBtn = document.createElement("button");
+    settingsBtn.type = "button";
+    settingsBtn.textContent = "⚙";
+    settingsBtn.setAttribute("aria-label", "Open extension settings");
+    styleSearchButton(settingsBtn, 24);
+    settingsBtn.style.display = "flex";
+    settingsBtn.style.background = "rgba(148, 163, 184, 0.2)";
+    settingsBtn.addEventListener("click", openExtensionSettingsPage);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.textContent = "×";
+    closeBtn.setAttribute("aria-label", "Close sidebar");
+    styleSearchButton(closeBtn, 24);
+    closeBtn.style.display = "flex";
+    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
+    closeBtn.addEventListener("click", hideSidebar);
+
+    headerActions.appendChild(settingsBtn);
+    headerActions.appendChild(closeBtn);
+    header.appendChild(title);
+    header.appendChild(headerActions);
+
+    const tabs = document.createElement("div");
+    tabs.style.display = "flex";
+    tabs.style.gap = "8px";
+    tabs.style.marginBottom = "12px";
+    tabs.style.paddingBottom = "6px";
+    tabs.style.borderBottom = `1px solid ${theme.panelBorder}`;
+
+    tabs.appendChild(createSidebarTabButton("search", "Search", "🔎"));
+    tabs.appendChild(createSidebarTabButton("bookmarks", "Marks", "🔖"));
+    tabs.appendChild(createSidebarTabButton("snippets", "Code", "⌨"));
+    tabs.appendChild(createSidebarTabButton("outline", "Outline", "🧭"));
+
+    const content = document.createElement("div");
+    content.style.display = "flex";
+    content.style.flexDirection = "column";
+    content.style.gap = "8px";
+    content.style.flex = "1";
+    content.style.minHeight = "0";
+    content.style.overflow = "hidden";
+
+    panel.appendChild(header);
+    panel.appendChild(tabs);
+    panel.appendChild(content);
+    document.body.appendChild(panel);
+    sidebarPanel = panel;
+    sidebarContentContainer = content;
+    applyFloatingUiOffsets();
+    return panel;
+  }
+
+  function updateSidebarVisibility(totalMessages) {
+    const shouldShow = state.enabled;
+    const button = ensureSidebarToggleButton();
+    if (!button) return;
+    button.style.display = shouldShow ? "flex" : "none";
+    if (!shouldShow) hideSidebar();
+  }
 
   function ensureSearchButton() {
     if (searchButton && searchButton.isConnected) {
@@ -2352,10 +2394,11 @@
 
   function applyCollapseState(article, virtualId) {
     const isCollapsed = state.collapsedMessages.has(virtualId);
-    const hoverTarget = getArticleHoverTarget(article);
     const contentArea = article.querySelector("[data-message-author-role]");
     const snippet = article.querySelector("[data-gpt-boost-snippet]");
-    const overlay = article.querySelector("[data-gpt-boost-overlay]");
+    // The overlay lives on the article itself so it stays visible even when
+    // the inner contentArea is hidden (display:none) during collapse.
+    const overlay = article.querySelector(":scope > [data-gpt-boost-overlay]");
     const collapseBtn = overlay && overlay.querySelector("[data-gpt-boost-collapse-btn]");
 
     if (contentArea) {
@@ -2364,18 +2407,31 @@
     if (snippet) {
       snippet.style.display = isCollapsed ? "block" : "none";
     }
+    if (overlay) {
+      if (isCollapsed) {
+        // When collapsed, make the overlay always visible (not just on hover)
+        // and reposition it inline inside the snippet row (static flow).
+        overlay.style.position = "static";
+        overlay.style.display = "flex";
+        overlay.style.marginTop = "4px";
+        overlay.style.justifyContent = "flex-end";
+      } else {
+        // Expanded: restore to hover-only absolute position
+        overlay.style.position = "absolute";
+        overlay.style.display = "none";
+        overlay.style.marginTop = "";
+        overlay.style.justifyContent = "";
+      }
+    }
     if (collapseBtn) {
       setArticleActionIcon(collapseBtn, isCollapsed ? "expand" : "collapse");
       collapseBtn.setAttribute("aria-label", isCollapsed ? "Expand message" : "Collapse message");
     }
-    article.style.borderLeft = "";
-    article.style.background = "";
-    article.style.borderRadius = "";
-    if (hoverTarget instanceof HTMLElement) {
-      hoverTarget.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
-      hoverTarget.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
-      hoverTarget.style.borderRadius = isCollapsed ? "10px" : "";
-    }
+    // Apply visual treatment to the article itself so it is always visible
+    // and constrains height, even when the inner content is hidden.
+    article.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
+    article.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
+    article.style.borderRadius = isCollapsed ? "10px" : "";
   }
 
   function toggleCollapse(virtualId) {
@@ -2455,7 +2511,9 @@
     });
 
     overlay.appendChild(collapseBtn);
-    (hoverTarget instanceof HTMLElement ? hoverTarget : article).appendChild(overlay);
+    // Append overlay to the article (not hoverTarget) so the collapse/expand
+    // button remains visible and clickable even when hoverTarget is hidden.
+    article.appendChild(overlay);
 
     const sideRail = document.createElement("div");
     sideRail.setAttribute("data-gpt-boost-side-rail", "1");
@@ -2718,14 +2776,13 @@
     listContainer.style.flexDirection = "column";
     listContainer.style.gap = "12px";
     listContainer.style.overflowY = "auto";
-    listContainer.style.overflowX = "hidden";
     listContainer.style.flex = "1";
     listContainer.style.minHeight = "0";
     listContainer.style.paddingRight = "4px"; // Scrollbar space
 
     const theme = getThemeTokens();
     const snippets = [];
-    
+
     // Collect snippets
     const sortedEntries = Array.from(state.articleMap.entries())
       .sort((a, b) => Number(a[0]) - Number(b[0]));
@@ -2825,17 +2882,18 @@
       pre.style.fontSize = "11px";
       pre.style.lineHeight = "1.45";
       pre.style.fontFamily = "Consolas, Monaco, 'Andale Mono', monospace";
-      pre.style.overflowY = "auto";
       pre.style.overflowX = "auto";
       pre.style.maxHeight = `${SIDEBAR_SNIPPET_MAX_HEIGHT_PX}px`;
       pre.style.whiteSpace = "pre";
       pre.style.color = theme.text;
       pre.style.background = "transparent";
+      // flex-shrink:0 prevents Firefox from collapsing the pre height
+      // when it is a flex item inside a flex-column wrapper.
+      pre.style.flexShrink = "0";
 
       const code = document.createElement("code");
       code.style.display = "block";
       code.style.whiteSpace = "pre";
-      code.style.minWidth = "max-content";
       code.style.color = "inherit";
       code.textContent = text;
       pre.appendChild(code);
@@ -2952,23 +3010,23 @@
       else if (tagName === "h4") prefix = "#### ";
       else if (tagName === "h5") prefix = "##### ";
       else if (tagName === "h6") prefix = "###### ";
-      
+
       const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
       // Only return if content is not empty (ignoring whitespace)
       if (!content.trim()) return "";
       return `\n\n${prefix}${content.trim()}\n\n`;
     }
-    
+
     // Handle Lists
     if (tagName === "ul" || tagName === "ol") {
-       const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
-       return `\n${content}\n`;
+      const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+      return `\n${content}\n`;
     }
     if (tagName === "li") {
-       const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
-       const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : "ul";
-       const prefix = parentTag === "ol" ? "1. " : "- "; 
-       return `\n${prefix}${content.trim()}`;
+      const content = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+      const parentTag = node.parentElement ? node.parentElement.tagName.toLowerCase() : "ul";
+      const prefix = parentTag === "ol" ? "1. " : "- ";
+      return `\n${prefix}${content.trim()}`;
     }
 
     // Handle formatting
@@ -2982,9 +3040,9 @@
       return `\`${Array.from(node.childNodes).map(convertDomToMarkdown).join("")}\``;
     }
     if (tagName === "a") {
-        const href = node.getAttribute("href");
-        const text = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
-        return `[${text}](${href})`;
+      const href = node.getAttribute("href");
+      const text = Array.from(node.childNodes).map(convertDomToMarkdown).join("");
+      return `[${text}](${href})`;
     }
     if (tagName === "br") return "\n";
     if (tagName === "hr") return "\n---\n";
@@ -3052,6 +3110,14 @@
     const button = ensureDownloadButton();
     if (!button) return;
     button.style.display = shouldShow ? "flex" : "none";
+  }
+
+  // updateCodePanelVisibility was removed when the standalone floating code-panel
+  // button was refactored into the sidebar snippets tab (b232a91), but its call
+  // inside updateIndicator() was not cleaned up. This stub prevents the
+  // ReferenceError that was crashing virtualizeNow on every tick.
+  function updateCodePanelVisibility(_totalMessages) {
+    // Code panel is now in the sidebar snippets tab — nothing to do here.
   }
 
   // ---------------------------------------------------------------------------
@@ -3268,13 +3334,13 @@
       return;
     }
 
-    applyFloatingUiOffsets();
     updateSearchVisibility(totalMessages);
     updateMinimapVisibility(totalMessages);
     updateCodePanelVisibility(totalMessages);
     updateDownloadVisibility(totalMessages);
     updateBookmarksVisibility(totalMessages);
     updateTokenGauge();
+    applyFloatingUiOffsets();
 
     const hidden = totalMessages - renderedMessages;
     if (totalMessages === 0 || hidden <= 0) {
@@ -3306,8 +3372,7 @@
     element.style.opacity = String(opacity);
     element.setAttribute(
       "aria-label",
-      `Virtualizing ${hidden} message${
-        hidden === 1 ? "" : "s"
+      `Virtualizing ${hidden} message${hidden === 1 ? "" : "s"
       } with ${config.MARGIN_PX}px buffer`
     );
     element.style.display = "block";
@@ -3364,16 +3429,9 @@
   }
 
   function virtualizeNow() {
+    console.log('[GPT-Boost] virtualizeNow: enabled=', state.enabled, 'lifecycle=', state.lifecycleStatus);
     if (!state.enabled) {
       hideAllUiElements();
-      return;
-    }
-
-    const activeConversationKey = getConversationStorageKey();
-    if (activeConversationKey !== currentConversationKey) {
-      log("Conversation key changed → rebooting virtualizer");
-      teardownVirtualizer();
-      bootVirtualizer();
       return;
     }
 
@@ -3428,7 +3486,7 @@
   function scheduleVirtualization() {
     if (state.requestAnimationScheduled) return;
     state.requestAnimationScheduled = true;
-
+    console.log('[GPT-Boost] scheduleVirtualization: queuing rAF');
     requestAnimationFrame(() => {
       state.requestAnimationScheduled = false;
       virtualizeNow();
@@ -3541,8 +3599,9 @@
   }
 
   function bootVirtualizer() {
+    console.log('[GPT-Boost] bootVirtualizer called, lifecycle:', state.lifecycleStatus);
     if (state.lifecycleStatus !== "IDLE") {
-      log("bootVirtualizer called but already active");
+      console.log('[GPT-Boost] bootVirtualizer: already active, aborting');
       return;
     }
 
@@ -3561,8 +3620,24 @@
       attachOrUpdateScrollListener();
       scheduleVirtualization();
     }, config.MUTATION_DEBOUNCE_MS);
-    const observeTarget = document.body || root;
-    mutationObserver.observe(observeTarget, { childList: true, subtree: true });
+    // Observe the conversation root (not document.body): a narrower target means
+    // far fewer mutations per second, preventing debounce starvation on load.
+    mutationObserver.observe(root, {
+      childList: true,
+      subtree: true
+    });
+    // Also observe body for SPA navigation mutations (new root appearing).
+    const bodyObserver = createDebouncedObserver(() => {
+      const newRoot = findConversationRoot();
+      if (newRoot !== state.conversationRoot) {
+        state.conversationRoot = newRoot;
+        mutationObserver.disconnect();
+        mutationObserver.observe(newRoot, { childList: true, subtree: true });
+      }
+      scheduleVirtualization();
+    }, 300);
+    bodyObserver.observe(document.body, { childList: true, subtree: false });
+    state.bodyObserver = bodyObserver;
 
     state.lifecycleStatus = "OBSERVING";
     state.observer = mutationObserver;
@@ -3573,17 +3648,24 @@
     // Ensure we start tracking even if messages already exist
     attachOrUpdateScrollListener();
     scheduleVirtualization();
+    // Belt-and-suspenders: call virtualizeNow directly (no rAF) in case rAF is
+    // delayed or throttled in the Firefox content script context at page load.
     setTimeout(() => {
       attachOrUpdateScrollListener();
-      scheduleVirtualization();
+      virtualizeNow();
+    }, 0);
+    setTimeout(() => {
+      attachOrUpdateScrollListener();
+      virtualizeNow();
     }, 250);
-    loadPersistedFlagsForConversation().catch(() => {});
+    loadPersistedFlagsForConversation().catch(() => { });
   }
 
   function teardownVirtualizer() {
     applySidebarLayoutOffset(0);
 
     if (state.observer) state.observer.disconnect();
+    if (state.bodyObserver) { state.bodyObserver.disconnect(); state.bodyObserver = null; }
     if (state.cleanupScrollListener) state.cleanupScrollListener();
     if (deferredVirtualizationTimer !== null) {
       clearTimeout(deferredVirtualizationTimer);
@@ -3704,18 +3786,18 @@
       if (snippet) snippet.remove();
       if (el instanceof HTMLElement) {
         el.style.boxShadow = "";
-      const hoverTarget = getArticleHoverTarget(el);
-      if (hoverTarget instanceof HTMLElement) {
-        hoverTarget.style.boxShadow = "";
-        hoverTarget.style.borderRadius = "";
-        hoverTarget.style.outline = "";
-        hoverTarget.style.outlineOffset = "";
-        const hoverOriginalPaddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
-        hoverTarget.style.paddingLeft = hoverOriginalPaddingLeft;
-        delete hoverTarget.dataset.gptBoostOrigPaddingLeft;
-        const hoverOverlay = hoverTarget.querySelector("[data-gpt-boost-overlay]");
-        if (hoverOverlay) hoverOverlay.remove();
-      }
+        const hoverTarget = getArticleHoverTarget(el);
+        if (hoverTarget instanceof HTMLElement) {
+          hoverTarget.style.boxShadow = "";
+          hoverTarget.style.borderRadius = "";
+          hoverTarget.style.outline = "";
+          hoverTarget.style.outlineOffset = "";
+          const hoverOriginalPaddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
+          hoverTarget.style.paddingLeft = hoverOriginalPaddingLeft;
+          delete hoverTarget.dataset.gptBoostOrigPaddingLeft;
+          const hoverOverlay = hoverTarget.querySelector("[data-gpt-boost-overlay]");
+          if (hoverOverlay) hoverOverlay.remove();
+        }
         const originalPaddingLeft = el.dataset.gptBoostOrigPaddingLeft || "";
         el.style.paddingLeft = originalPaddingLeft;
         delete el.dataset.gptBoostOrigPaddingLeft;
@@ -3728,8 +3810,16 @@
       if (window.location.href !== state.lastUrl) {
         state.lastUrl = window.location.href;
         log("URL changed → rebooting virtualizer");
+        // Capture sidebar state before tearing down so we can restore it.
+        const wasSidebarOpen = isSidebarOpen();
+        const previousSidebarTab = activeSidebarTab;
         teardownVirtualizer();
         bootVirtualizer();
+        // Re-open the sidebar to the same tab so outline/snippets refresh for
+        // the new conversation instead of disappearing.
+        if (wasSidebarOpen) {
+          openSidebar(previousSidebarTab);
+        }
       }
     }, config.URL_CHECK_INTERVAL);
   }
@@ -3743,6 +3833,12 @@
     teardownVirtualizer,
     startUrlWatcher,
     handleResize,
-    getStatsSnapshot
+    getStatsSnapshot,
+    // Direct virtualizeNow bypass (no rAF) — used by the warmup poll in boot.js
+    // to guard against requestAnimationFrame throttling in Firefox content scripts.
+    forceVirtualize() {
+      attachOrUpdateScrollListener();
+      virtualizeNow();
+    }
   };
 })();

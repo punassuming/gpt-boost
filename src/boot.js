@@ -27,6 +27,7 @@
         config.MARGIN_PX = normalizeMargin(data.marginPx);
 
         startPromoLogging();
+        virtualizer.handleResize();
       }
     );
 
@@ -100,11 +101,16 @@
     virtualizer.startUrlWatcher();
 
     // Some ChatGPT layouts stabilize after initial idle; keep UI in sync early.
+    // Run up to 60 times (30s at 500ms) but stop as soon as messages are found.
+    // forceVirtualize() directly calls virtualizeNow without rAF, guarding against
+    // rAF throttling in Firefox content script contexts.
     let warmupRuns = 0;
     const warmupTimer = setInterval(() => {
       warmupRuns += 1;
-      virtualizer.handleResize();
-      if (warmupRuns >= 12) {
+      virtualizer.handleResize();         // rAF-gated, attaches scroll listener
+      virtualizer.forceVirtualize();      // direct, no rAF — ensures UI shows up
+      const found = scroller.state.stats.totalMessages > 0;
+      if (found || warmupRuns >= 60) {
         clearInterval(warmupTimer);
       }
     }, 500);
