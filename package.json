@@ -11,7 +11,7 @@
     "version:patch": "node scripts/bump-version.js patch",
     "version:minor": "node scripts/bump-version.js minor",
     "version:major": "node scripts/bump-version.js major",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -28,8 +28,16 @@
   "author": "Bram van der Giessen, Rich Alesi (punassuming)",
   "license": "MIT",
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.0",
     "archiver": "^7.0.1",
+    "babel-jest": "^30.2.0",
     "esbuild": "^0.27.3",
+    "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.2.0",
     "web-ext": "^9.3.0"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1"
   }
 }

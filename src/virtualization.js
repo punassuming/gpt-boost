@@ -1,5 +1,6 @@
 import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
 import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey } from './core/storage.js';
+import hljs from 'highlight.js/lib/common';
 
 // virtualization.js
 (function initializeVirtualizationModule() {
@@ -114,6 +115,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
   const SIDEBAR_TOGGLE_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
   const SIDEBAR_PANEL_WIDTH_PX = 480;
+  let currentSidebarWidthPx = SIDEBAR_PANEL_WIDTH_PX;
   const SIDEBAR_TRANSITION_MS = 300;
   const SIDEBAR_SNIPPET_MAX_HEIGHT_PX = 420;
 
@@ -252,11 +254,11 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
   }
 
   function isSidebarOpen() {
-    return !!(sidebarPanel && sidebarPanel.style.display !== "none");
+    return !!(sidebarPanel && sidebarPanel.getAttribute("data-open") === "true");
   }
 
   function getSidebarUiOffsetPx() {
-    return isSidebarOpen() ? SIDEBAR_PANEL_WIDTH_PX : 0;
+    return isSidebarOpen() ? currentSidebarWidthPx : 0;
   }
 
   function applyFloatingUiOffsets() {
@@ -327,7 +329,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     sidebarBodyTransitionOriginal = "";
   }
 
-  function applySidebarLayoutOffset(offsetPx) {
+  function applySidebarLayoutOffset(offsetPx, transitionMs = SIDEBAR_TRANSITION_MS) {
     clearSidebarLayoutOffset();
     if (!offsetPx) return;
 
@@ -337,7 +339,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       sidebarBodyMarginOriginal = document.body.style.marginRight;
       sidebarBodyTransitionOriginal = document.body.style.transition;
       document.body.style.marginRight = `${offsetPx}px`;
-      document.body.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease`;
+      document.body.style.transition = `margin-right ${transitionMs}ms ease`;
       return;
     }
 
@@ -369,7 +371,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
           el.style.boxSizing = "border-box";
         }
       }
-      el.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease, padding-right ${SIDEBAR_TRANSITION_MS}ms ease, right ${SIDEBAR_TRANSITION_MS}ms ease`;
+      el.style.transition = `margin-right ${transitionMs}ms ease, padding-right ${transitionMs}ms ease, right ${transitionMs}ms ease`;
     });
   }
 
@@ -1198,6 +1200,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
         item.style.cursor = "pointer";
         item.style.fontFamily = "inherit";
         item.style.display = "flex";
+        item.style.flexShrink = "0";
         item.style.flexDirection = "column";
         item.style.gap = "4px";
         item.addEventListener("click", () => {
@@ -1319,6 +1322,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       item.style.borderRadius = "10px";
       item.style.padding = "6px 8px";
       item.style.display = "flex";
+      item.style.flexShrink = "0";
       item.style.flexDirection = "column";
       item.style.gap = "6px";
       item.style.background = isUser ? "rgba(59,130,246,0.12)" : "rgba(16,185,129,0.12)";
@@ -1467,7 +1471,10 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
   }
 
   function hideSidebar() {
-    if (sidebarPanel) sidebarPanel.style.display = "none";
+    if (sidebarPanel) {
+      sidebarPanel.setAttribute("data-open", "false");
+      sidebarPanel.style.transform = "translateX(100%)";
+    }
     applySidebarLayoutOffset(0);
     applyFloatingUiOffsets();
     refreshArticleSideRailLayout();
@@ -1477,12 +1484,13 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
   function openSidebar(tabId) {
     const panel = ensureSidebarPanel();
     if (!panel) return;
-    const wasOpen = panel.style.display !== "none";
+    const wasOpen = panel.getAttribute("data-open") === "true";
     hideSearchPanel();
     if (!wasOpen) {
-      applySidebarLayoutOffset(SIDEBAR_PANEL_WIDTH_PX);
+      applySidebarLayoutOffset(currentSidebarWidthPx);
     }
-    panel.style.display = "flex";
+    panel.setAttribute("data-open", "true");
+    panel.style.transform = "translateX(0px)";
     applyFloatingUiOffsets();
     if (!wasOpen) refreshArticleSideRailLayout();
     renderSidebarTab(tabId || activeSidebarTab);
@@ -1530,13 +1538,16 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
 
     const panel = document.createElement("div");
     panel.setAttribute("data-gpt-boost-sidebar", "panel");
+    panel.setAttribute("data-open", "false");
     panel.style.position = "fixed";
     panel.style.top = "0";
     panel.style.right = "0";
     panel.style.bottom = "0";
     panel.style.zIndex = "10000";
-    panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
-    panel.style.display = "none";
+    panel.style.width = `${currentSidebarWidthPx}px`;
+    panel.style.display = "flex";
+    panel.style.transform = "translateX(100%)";
+    panel.style.transition = `transform ${SIDEBAR_TRANSITION_MS}ms ease`;
     panel.style.flexDirection = "column";
     panel.style.gap = "0";
     panel.style.padding = "12px";
@@ -1547,6 +1558,44 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     panel.style.backdropFilter = "";
     panel.style.boxSizing = "border-box";
     panel.style.overflow = "hidden";
+
+    const resizer = document.createElement("div");
+    resizer.style.position = "absolute";
+    resizer.style.left = "0";
+    resizer.style.top = "0";
+    resizer.style.bottom = "0";
+    resizer.style.width = "4px";
+    resizer.style.cursor = "ew-resize";
+    resizer.style.zIndex = "10";
+    resizer.style.background = "transparent";
+
+    let isResizing = false;
+    resizer.addEventListener("mousedown", (e) => {
+      isResizing = true;
+      document.body.style.userSelect = "none";
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isResizing) return;
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth > 200 && newWidth < window.innerWidth - 100) {
+        currentSidebarWidthPx = newWidth;
+        panel.style.width = `${currentSidebarWidthPx}px`;
+        if (isSidebarOpen()) {
+          applySidebarLayoutOffset(currentSidebarWidthPx, 0);
+          applyFloatingUiOffsets();
+        }
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.userSelect = "";
+      }
+    });
+
+    panel.appendChild(resizer);
 
     const header = document.createElement("div");
     header.style.display = "flex";
@@ -2552,7 +2601,54 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     refreshSidebarTab();
   }
 
+  function ensureHighlightJsStyles() {
+    if (document.getElementById("gpt-boost-hljs-style")) return;
+    const style = document.createElement("style");
+    style.id = "gpt-boost-hljs-style";
+    style.textContent = `
+      .hljs{color:#c9d1d9;background:transparent}
+      .hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}
+      .hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}
+      .hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-variable,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id{color:#79c0ff}
+      .hljs-regexp,.hljs-string,.hljs-meta .hljs-string{color:#a5d6ff}
+      .hljs-built_in,.hljs-symbol{color:#ffa657}
+      .hljs-comment,.hljs-code,.hljs-formula{color:#8b949e}
+      .hljs-name,.hljs-quote,.hljs-selector-tag,.hljs-selector-pseudo{color:#7ee787}
+      .hljs-subst{color:#c9d1d9}
+      .hljs-section{color:#1f6feb;font-weight:700}
+      .hljs-bullet{color:#f2cc60}
+      .hljs-emphasis{color:#c9d1d9;font-style:italic}
+      .hljs-strong{color:#c9d1d9;font-weight:700}
+      .hljs-addition{color:#aff5b4;background-color:#033a16}
+      .hljs-deletion{color:#ffd8d3;background-color:#67060c}
+    `;
+    document.head.appendChild(style);
+  }
+
   function renderSnippetsTabContent(container) {
+    ensureHighlightJsStyles();
+
+    const theme = getThemeTokens();
+    const searchRow = document.createElement("div");
+    searchRow.style.display = "flex";
+    searchRow.style.marginBottom = "8px";
+
+    const snippetSearchInput = document.createElement("input");
+    snippetSearchInput.type = "text";
+    snippetSearchInput.placeholder = "Filter code snippets...";
+    snippetSearchInput.style.flex = "1";
+    snippetSearchInput.style.height = "28px";
+    snippetSearchInput.style.borderRadius = "6px";
+    snippetSearchInput.style.border = `1px solid ${theme.inputBorder}`;
+    snippetSearchInput.style.background = theme.inputBg;
+    snippetSearchInput.style.color = theme.text;
+    snippetSearchInput.style.padding = "0 8px";
+    snippetSearchInput.style.fontSize = "11px";
+    snippetSearchInput.style.fontFamily = "inherit";
+
+    searchRow.appendChild(snippetSearchInput);
+    container.appendChild(searchRow);
+
     const listContainer = document.createElement("div");
     listContainer.style.display = "flex";
     listContainer.style.flexDirection = "column";
@@ -2562,7 +2658,6 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     listContainer.style.minHeight = "0";
     listContainer.style.paddingRight = "4px"; // Scrollbar space
 
-    const theme = getThemeTokens();
     const snippets = [];
 
     // Collect snippets
@@ -2574,10 +2669,47 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       pres.forEach((pre, i) => {
         const codeEl = pre.querySelector("code");
         const source = codeEl || pre;
-        const text = extractCodeSnippetText(pre);
+        let text = extractCodeSnippetText(pre);
         if (!text) return;
-        const lang = inferCodeLanguage(source);
-        snippets.push({ text, messageId: id, lang, index: i });
+
+        let lang = inferCodeLanguage(source, pre);
+
+        // Robust cleanup of the first few lines if they match the language name or "Copy code"
+        const lines = text.split('\n');
+        while (lines.length > 0) {
+          const l = lines[0].trim().toLowerCase();
+          if ((lang && l === lang.toLowerCase()) || l === 'copy code' || l === '') {
+            lines.shift();
+          } else if (lang && l.startsWith(lang.toLowerCase())) {
+            // Example: "Python# INPUTS" 
+            const remainder = lines[0].substring(lang.length).trim();
+            if (remainder.length > 0) {
+              lines[0] = remainder;
+            } else {
+              lines.shift();
+            }
+            break;
+          } else if (!lang && /^[a-z]+$/i.test(l) && ['python', 'javascript', 'html', 'css', 'bash', 'json', 'typescript', 'java', 'cpp', 'c', 'sql'].includes(l)) {
+            lang = l;
+            lines.shift();
+          } else {
+            break;
+          }
+        }
+        text = lines.join('\n').trimEnd();
+        if (!text) return;
+
+        let titleLine = lines.find(l => l.trim().length > 0) || "";
+        titleLine = titleLine.trim();
+        if (titleLine.length > 45) {
+          titleLine = titleLine.substring(0, 42) + "...";
+        }
+
+        let rawLang = lang;
+        // Format the language for display
+        lang = lang ? (lang.charAt(0).toUpperCase() + lang.slice(1)) : "Code";
+
+        snippets.push({ text, messageId: id, lang, rawLang, titleLine, index: i });
       });
     });
 
@@ -2593,7 +2725,9 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       return;
     }
 
-    snippets.forEach(({ text, messageId, lang, index }) => {
+    const snippetElements = [];
+
+    snippets.forEach(({ text, messageId, lang, rawLang, titleLine, index }) => {
       const wrapper = document.createElement("div");
       wrapper.style.borderRadius = "8px";
       wrapper.style.border = `1px solid ${theme.panelBorder}`;
@@ -2602,6 +2736,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       wrapper.style.display = "flex";
       wrapper.style.flexDirection = "column";
       wrapper.style.minWidth = "0";
+      wrapper.style.flexShrink = "0";
 
       const header = document.createElement("div");
       header.style.display = "flex";
@@ -2615,7 +2750,22 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       info.style.fontSize = "11px";
       info.style.fontWeight = "600";
       info.style.color = theme.mutedText;
-      info.textContent = lang || "text";
+      info.style.whiteSpace = "nowrap";
+      info.style.overflow = "hidden";
+      info.style.textOverflow = "ellipsis";
+
+      const langSpan = document.createElement("span");
+      langSpan.style.color = theme.text;
+      langSpan.textContent = lang;
+      info.appendChild(langSpan);
+
+      if (titleLine) {
+        const titleSpan = document.createElement("span");
+        titleSpan.style.opacity = "0.6";
+        titleSpan.style.marginLeft = "6px";
+        titleSpan.textContent = titleLine;
+        info.appendChild(titleSpan);
+      }
 
       const actions = document.createElement("div");
       actions.style.display = "flex";
@@ -2665,7 +2815,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       pre.style.lineHeight = "1.45";
       pre.style.fontFamily = "Consolas, Monaco, 'Andale Mono', monospace";
       pre.style.overflowX = "auto";
-      pre.style.maxHeight = `${SIDEBAR_SNIPPET_MAX_HEIGHT_PX}px`;
+      pre.style.maxHeight = `${SIDEBAR_SNIPPET_MAX_HEIGHT_PX} px`;
       pre.style.whiteSpace = "pre";
       pre.style.color = theme.text;
       pre.style.background = "transparent";
@@ -2677,25 +2827,82 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       code.style.display = "block";
       code.style.whiteSpace = "pre";
       code.style.color = "inherit";
-      code.textContent = text;
+      code.style.fontFamily = "inherit";
+      if (typeof rawLang === 'string' && rawLang && hljs.getLanguage(rawLang)) {
+        try {
+          code.innerHTML = hljs.highlight(text, { language: rawLang, ignoreIllegals: true }).value;
+          code.classList.add('hljs');
+        } catch (e) {
+          code.textContent = text;
+        }
+      } else {
+        try {
+          code.innerHTML = hljs.highlightAuto(text).value;
+          code.classList.add('hljs');
+        } catch (e) {
+          code.textContent = text;
+        }
+      }
       pre.appendChild(code);
 
       wrapper.appendChild(header);
       wrapper.appendChild(pre);
       listContainer.appendChild(wrapper);
+
+      snippetElements.push({ el: wrapper, text: text.toLowerCase() });
     });
 
     container.appendChild(listContainer);
+
+    snippetSearchInput.addEventListener("input", (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      snippetElements.forEach(item => {
+        if (!query || item.text.includes(query)) {
+          item.el.style.display = "flex";
+        } else {
+          item.el.style.display = "none";
+        }
+      });
+    });
+  }
+
+  function extractTextPreservingNewlines(element) {
+    if (!element) return "";
+    if (element.isConnected) {
+      return element.innerText || element.textContent || "";
+    }
+    let text = "";
+    try {
+      const hiddenContainer = document.createElement("div");
+      // Use off-screen rendering instead of visibility: hidden
+      // innerText fails and returns empty if an element is not rendered
+      hiddenContainer.style.position = "absolute";
+      hiddenContainer.style.left = "-9999px";
+      hiddenContainer.style.top = "-9999px";
+      hiddenContainer.style.width = "1000px";
+      hiddenContainer.style.whiteSpace = "pre-wrap"; // Force newlines to be preserved
+      document.body.appendChild(hiddenContainer);
+      const clone = element.cloneNode(true);
+      hiddenContainer.appendChild(clone);
+
+      text = hiddenContainer.innerText || hiddenContainer.textContent || "";
+      document.body.removeChild(hiddenContainer);
+    } catch (e) {
+      text = element.textContent || "";
+    }
+    return text;
   }
 
   function extractCodeSnippetText(pre) {
     if (!(pre instanceof HTMLElement)) return "";
 
     const codeEl = pre.querySelector("code");
-    let text = toUnixNewlines(codeEl ? codeEl.innerText || codeEl.textContent || "" : "");
-    if (!text) {
-      text = toUnixNewlines(pre.innerText || pre.textContent || "");
+    let rawText = extractTextPreservingNewlines(codeEl);
+    if (!rawText || !rawText.trim()) {
+      rawText = extractTextPreservingNewlines(pre);
     }
+
+    let text = toUnixNewlines(rawText);
 
     text = text
       .replace(/^\n+/, "")
@@ -2716,7 +2923,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
 
     const lines = [
       "# ChatGPT Conversation\n",
-      `> Exported: ${new Date().toLocaleString()}\n`,
+      `> Exported: ${new Date().toLocaleString()} \n`,
       "---"
     ];
 
@@ -2730,7 +2937,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       const contentParts = extractMarkdownPartsFromMessage(messageRoot);
       if (!contentParts.length) return;
 
-      lines.push(`\n## ${displayRole}\n`);
+      lines.push(`\n## ${displayRole} \n`);
       lines.push(contentParts.join("\n\n"));
       lines.push("\n---");
     });
@@ -2740,7 +2947,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `chatgpt-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.md`;
+    a.download = `chatgpt - ${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2751,7 +2958,8 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   }
 
-  function inferCodeLanguage(el) {
+  function inferCodeLanguage(el, preEl) {
+    let lang = "";
     const classCandidates = [];
     if (el instanceof HTMLElement && el.className) classCandidates.push(el.className);
     const nestedCode = el instanceof HTMLElement ? el.querySelector("code") : null;
@@ -2760,7 +2968,32 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
     }
     const classBlob = classCandidates.join(" ");
     const match = classBlob.match(/\blanguage-([a-z0-9_+-]+)/i);
-    return match ? match[1].toLowerCase() : "";
+    if (match) {
+      lang = match[1].toLowerCase();
+    }
+
+    // Try to parse from ChatGPT's codeblock header if class fails
+    if (!lang && preEl && preEl instanceof HTMLElement) {
+      const header = preEl.firstElementChild;
+      if (header && header.tagName === "DIV" && !header.querySelector("code")) {
+        const span = header.querySelector("span");
+        if (span && span.textContent) {
+          lang = span.textContent.trim().toLowerCase();
+        } else {
+          const clone = header.cloneNode(true);
+          const btns = clone.querySelectorAll("button");
+          btns.forEach(b => b.remove());
+          lang = clone.textContent.trim().toLowerCase();
+        }
+
+        if (lang.length > 20 || lang.includes('\n')) {
+          // False positive, grabbed the code or a large title
+          lang = "";
+        }
+      }
+    }
+
+    return lang;
   }
 
   function convertDomToMarkdown(node) {
@@ -2778,7 +3011,8 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       const codeEl = node.querySelector("code");
       const source = codeEl || node;
       // Use innerText to preserve newlines from layout if textContent fails
-      const codeText = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
+      const rawText = extractTextPreservingNewlines(source);
+      const codeText = toUnixNewlines(rawText).trimEnd();
       const lang = inferCodeLanguage(source);
       return `\n\n\`\`\`${lang}\n${codeText}\n\`\`\`\n\n`;
     }
@@ -2969,6 +3203,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       const item = document.createElement("button");
       item.type = "button";
       item.style.display = "block";
+      item.style.flexShrink = "0";
       item.style.width = "100%";
       item.style.textAlign = "left";
       item.style.background = "transparent";
@@ -3205,9 +3440,15 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       if (!isVirtualSpacerNode(node)) rendered += 1;
     });
 
+    const isTotalChanged = state.stats.totalMessages !== total;
+
     state.stats.totalMessages = total;
     state.stats.renderedMessages = rendered;
     updateIndicator(total, rendered);
+
+    if (isTotalChanged) {
+      refreshSidebarTab();
+    }
   }
 
   function virtualizeNow() {
@@ -3416,6 +3657,7 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
         mutationObserver.disconnect();
         mutationObserver.observe(newRoot, { childList: true, subtree: true });
       }
+      attachOrUpdateScrollListener();
       scheduleVirtualization();
     }, 300);
     bodyObserver.observe(document.body, { childList: true, subtree: false });
@@ -3453,27 +3695,27 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
       clearTimeout(deferredVirtualizationTimer);
       deferredVirtualizationTimer = null;
     }
-    if (saveFlagsTimer !== null) {
-      clearTimeout(saveFlagsTimer);
-      saveFlagsTimer = null;
-    }
+
     if (themeObserver) {
       themeObserver.disconnect();
       themeObserver = null;
     }
 
     state.scrollElement = null;
+    state.cleanupScrollListener = null;
     state.observer = null;
     state.conversationRoot = null;
     state.lifecycleStatus = "IDLE";
+    state.requestAnimationScheduled = false;
+
+    // Restore all original elements BEFORE clearing the map so React can unmount them cleanly
+    document
+      .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')
+      .forEach((spacer) => convertSpacerToArticle(spacer));
 
     state.articleMap.clear();
     state.nextVirtualId = 1;
     state.emptyVirtualizationRetryCount = 0;
-
-    document
-      .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')
-      .forEach((spacer) => spacer.remove());
 
     if (indicatorElement && indicatorElement.isConnected) {
       indicatorElement.remove();
@@ -3584,6 +3826,11 @@ import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarked
         el.style.paddingLeft = originalPaddingLeft;
         delete el.dataset.gptBoostOrigPaddingLeft;
       }
+    });
+
+    document.querySelectorAll("[data-chatgpt-virtual-id]").forEach((el) => {
+      el.removeAttribute("data-chatgpt-virtual-id");
+      el.removeAttribute("data-gpt-boost-message-key");
     });
   }
 
