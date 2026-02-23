@@ -898,23 +898,85 @@ import hljs from 'highlight.js/lib/common';
     return entries;
   }
 
+  function getRoleDisplayLabel(role) {
+    const normalized = (role || "").toLowerCase();
+    if (normalized === "user") return "User";
+    if (normalized === "assistant") return "Agent";
+    if (!normalized || normalized === "unknown" || normalized === "message") return "Message";
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+
+  function getRoleSurfaceStyle(role, theme) {
+    const normalized = (role || "").toLowerCase();
+
+    if (normalized === "user") {
+      return {
+        label: "User",
+        surfaceBg: "rgba(59, 130, 246, 0.12)",
+        activeSurfaceBg: "rgba(59, 130, 246, 0.2)",
+        borderColor: "rgba(59, 130, 246, 0.4)",
+        accentColor: "rgba(59, 130, 246, 0.75)",
+        chipBg: "rgba(59, 130, 246, 0.22)",
+        chipText: theme.text
+      };
+    }
+
+    if (normalized === "assistant") {
+      return {
+        label: "Agent",
+        surfaceBg: "rgba(16, 185, 129, 0.12)",
+        activeSurfaceBg: "rgba(16, 185, 129, 0.2)",
+        borderColor: "rgba(16, 185, 129, 0.4)",
+        accentColor: "rgba(16, 185, 129, 0.75)",
+        chipBg: "rgba(16, 185, 129, 0.22)",
+        chipText: theme.text
+      };
+    }
+
+    return {
+      label: getRoleDisplayLabel(role),
+      surfaceBg: theme.buttonMutedBg,
+      activeSurfaceBg: theme.buttonMutedBg,
+      borderColor: theme.panelBorder,
+      accentColor: theme.panelBorder,
+      chipBg: theme.buttonMutedBg,
+      chipText: theme.mutedText
+    };
+  }
+
+  function createRoleChip(roleStyle) {
+    const chip = document.createElement("div");
+    chip.textContent = roleStyle.label;
+    chip.style.display = "inline-flex";
+    chip.style.alignItems = "center";
+    chip.style.width = "fit-content";
+    chip.style.padding = "2px 7px";
+    chip.style.borderRadius = "999px";
+    chip.style.fontSize = "10px";
+    chip.style.fontWeight = "600";
+    chip.style.letterSpacing = "0.01em";
+    chip.style.background = roleStyle.chipBg;
+    chip.style.color = roleStyle.chipText;
+    return chip;
+  }
+
   function getSearchResultSummary(id, index, total) {
     const node = state.articleMap.get(id);
     if (!(node instanceof HTMLElement)) {
       return {
         title: `Result ${index + 1}`,
-        subtitle: `Message ${id} • ${index + 1}/${total}`
+        subtitle: `#${id} • ${index + 1}/${total}`,
+        role: "message"
       };
     }
+    const role = getMessageRole(node);
     const textSource = node.querySelector("[data-message-author-role]") || node;
-    const role = textSource instanceof HTMLElement
-      ? (textSource.getAttribute("data-message-author-role") || "message")
-      : "message";
     const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
     const snippet = raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
     return {
       title: snippet || `Message ${id}`,
-      subtitle: `${role} • #${id} • ${index + 1}/${total}`
+      subtitle: `#${id} • ${index + 1}/${total}`,
+      role
     };
   }
 
@@ -1189,13 +1251,15 @@ import hljs from 'highlight.js/lib/common';
       const total = searchState.results.length;
       searchState.results.forEach((id, idx) => {
         const summary = getSearchResultSummary(id, idx, total);
+        const roleStyle = getRoleSurfaceStyle(summary.role, theme);
         const item = document.createElement("button");
         item.type = "button";
         item.style.textAlign = "left";
-        item.style.border = `1px solid ${theme.panelBorder}`;
+        item.style.border = `1px solid ${roleStyle.borderColor}`;
+        item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
         item.style.borderRadius = "10px";
         item.style.padding = "8px";
-        item.style.background = idx === searchState.activeIndex ? theme.buttonMutedBg : "transparent";
+        item.style.background = idx === searchState.activeIndex ? roleStyle.activeSurfaceBg : roleStyle.surfaceBg;
         item.style.color = theme.text;
         item.style.cursor = "pointer";
         item.style.fontFamily = "inherit";
@@ -1210,6 +1274,8 @@ import hljs from 'highlight.js/lib/common';
           renderSidebarTab("search");
         });
 
+        const roleChip = createRoleChip(roleStyle);
+
         const title = document.createElement("div");
         title.textContent = summary.title;
         title.style.fontSize = "12px";
@@ -1221,6 +1287,7 @@ import hljs from 'highlight.js/lib/common';
         subtitle.style.fontSize = "10px";
         subtitle.style.opacity = "0.72";
 
+        item.appendChild(roleChip);
         item.appendChild(title);
         item.appendChild(subtitle);
         resultsList.appendChild(item);
@@ -1314,28 +1381,21 @@ import hljs from 'highlight.js/lib/common';
       const text = (textSource.textContent || "").trim().replace(/\s+/g, " ");
       if (!text) return;
       const role = getMessageRole(article);
-      const isUser = role === "user";
-      const roleLabel = isUser ? "User" : role === "assistant" ? "ChatGPT" : role;
+      const roleStyle = getRoleSurfaceStyle(role, theme);
 
       const item = document.createElement("div");
-      item.style.border = `1px solid ${theme.panelBorder}`;
+      item.style.border = `1px solid ${roleStyle.borderColor}`;
+      item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
       item.style.borderRadius = "10px";
       item.style.padding = "6px 8px";
       item.style.display = "flex";
       item.style.flexShrink = "0";
       item.style.flexDirection = "column";
       item.style.gap = "6px";
-      item.style.background = isUser ? "rgba(59,130,246,0.12)" : "rgba(16,185,129,0.12)";
-      item.style.alignSelf = isUser ? "flex-end" : "flex-start";
-      item.style.width = "92%";
-      item.style.borderLeft = isUser ? "3px solid rgba(59,130,246,0.65)" : "3px solid rgba(16,185,129,0.65)";
+      item.style.background = roleStyle.surfaceBg;
+      item.style.width = "100%";
 
-      const roleChip = document.createElement("div");
-      roleChip.textContent = roleLabel;
-      roleChip.style.fontSize = "10px";
-      roleChip.style.fontWeight = "600";
-      roleChip.style.opacity = "0.8";
-      roleChip.style.alignSelf = isUser ? "flex-end" : "flex-start";
+      const roleChip = createRoleChip(roleStyle);
 
       const title = document.createElement("button");
       title.type = "button";
@@ -3194,6 +3254,8 @@ import hljs from 'highlight.js/lib/common';
       const article = state.articleMap.get(id);
       if (!article) return;
 
+      const role = getMessageRole(article);
+      const roleStyle = getRoleSurfaceStyle(role, theme);
       const textSource = article.querySelector("[data-message-author-role]") || article;
       const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
       const snippet = rawText.length > MINIMAP_PROMPT_SNIPPET_LENGTH
@@ -3202,28 +3264,43 @@ import hljs from 'highlight.js/lib/common';
 
       const item = document.createElement("button");
       item.type = "button";
-      item.style.display = "block";
+      item.style.display = "flex";
+      item.style.flexDirection = "column";
+      item.style.gap = "4px";
       item.style.flexShrink = "0";
       item.style.width = "100%";
       item.style.textAlign = "left";
-      item.style.background = "transparent";
-      item.style.border = "none";
-      item.style.borderRadius = "8px";
+      item.style.background = roleStyle.surfaceBg;
+      item.style.border = `1px solid ${roleStyle.borderColor}`;
+      item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
+      item.style.borderRadius = "10px";
       item.style.padding = "6px 8px";
-      item.style.fontSize = "12px";
-      item.style.lineHeight = "1.4";
       item.style.cursor = "pointer";
       item.style.color = theme.text;
       item.style.wordBreak = "break-word";
       item.style.fontFamily = "inherit";
-      item.textContent = `${index + 1}. ${snippet}`;
-      item.addEventListener("mouseenter", () => { item.style.background = theme.buttonMutedBg; });
-      item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
+      item.addEventListener("mouseenter", () => { item.style.background = roleStyle.activeSurfaceBg; });
+      item.addEventListener("mouseleave", () => { item.style.background = roleStyle.surfaceBg; });
       item.addEventListener("click", () => {
         hideBookmarksPanel();
         scrollToVirtualId(id);
       });
 
+      const roleChip = createRoleChip(roleStyle);
+
+      const snippetLine = document.createElement("div");
+      snippetLine.textContent = `${index + 1}. ${snippet}`;
+      snippetLine.style.fontSize = "12px";
+      snippetLine.style.lineHeight = "1.4";
+
+      const metaLine = document.createElement("div");
+      metaLine.textContent = `#${id} • ${index + 1}/${sortedIds.length}`;
+      metaLine.style.fontSize = "10px";
+      metaLine.style.opacity = "0.72";
+
+      item.appendChild(roleChip);
+      item.appendChild(snippetLine);
+      item.appendChild(metaLine);
       listContainer.appendChild(item);
     });
   }
