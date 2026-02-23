@@ -22,6 +22,7 @@ Thumbs.db
 .cache/
 
 dist/
+build/
 .env
 web-ext-artifacts/
 .npm-cache/
