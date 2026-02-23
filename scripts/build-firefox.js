@@ -46,6 +46,7 @@ async function buildFirefox() {
     path.join(outDir, 'manifest.json')
   );
   await copyDir(path.join(ROOT, 'src'), path.join(outDir, 'src'));
+  await copyDir(path.join(ROOT, 'build'), path.join(outDir, 'build'));
   await copyDir(path.join(ROOT, 'icons'), path.join(outDir, 'icons'));
 
   await new Promise((resolve, reject) => {

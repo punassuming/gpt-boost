@@ -3,7 +3,9 @@
   "version": "1.0.8",
   "description": "Productivity-focused virtualization for faster, lighter ChatGPT conversations.",
   "scripts": {
-    "build:firefox": "node scripts/build-firefox.js",
+    "build": "esbuild src/boot.js --bundle --outfile=build/content.js && esbuild src/background.js --bundle --outfile=build/background.js && esbuild src/popup.js --bundle --outfile=build/popup.js",
+    "dev": "npm run build && node -e \"require('child_process').execSync('npx esbuild src/boot.js --bundle --outfile=build/content.js --watch & npx esbuild src/background.js --bundle --outfile=build/background.js --watch & npx esbuild src/popup.js --bundle --outfile=build/popup.js --watch', {stdio: 'inherit'})\"",
+    "build:firefox": "npm run build && node scripts/build-firefox.js",
     "amo:login": "node scripts/open-amo-credentials.js",
     "sign:firefox": "node scripts/sign-firefox.js",
     "version:patch": "node scripts/bump-version.js patch",
@@ -27,6 +29,7 @@
   "license": "MIT",
   "devDependencies": {
     "archiver": "^7.0.1",
+    "esbuild": "^0.27.3",
     "web-ext": "^9.3.0"
   }
 }

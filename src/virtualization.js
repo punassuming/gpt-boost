@@ -1,3 +1,6 @@
+import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
+import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey } from './core/storage.js';
+
 // virtualization.js
 (function initializeVirtualizationModule() {
   const scroller = window.ChatGPTVirtualScroller;
@@ -113,77 +116,9 @@
   const SIDEBAR_PANEL_WIDTH_PX = 480;
   const SIDEBAR_TRANSITION_MS = 300;
   const SIDEBAR_SNIPPET_MAX_HEIGHT_PX = 420;
-  const MESSAGE_FLAGS_STORAGE_KEY = "messageFlagsByConversation";
-  const MESSAGE_FLAGS_SAVE_DEBOUNCE_MS = 200;
+
+
   const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "inset 0 0 0 1px rgba(59,130,246,0.35)";
-  let currentConversationKey = "";
-  let persistedPinnedMessageKeys = new Set();
-  let persistedBookmarkedMessageKeys = new Set();
-  let saveFlagsTimer = null;
-  let flagsStoreCache = null;
-
-  function isVirtualSpacerNode(node) {
-    return (
-      node instanceof HTMLElement &&
-      node.dataset &&
-      node.dataset.chatgptVirtualSpacer === "1"
-    );
-  }
-
-  function getExtensionStorageArea() {
-    if (typeof chrome !== "undefined" && chrome.storage) {
-      return chrome.storage.local || chrome.storage.sync || null;
-    }
-    return null;
-  }
-
-  function extensionStorageGet(key) {
-    const area = getExtensionStorageArea();
-    if (!area) return Promise.resolve({});
-    return new Promise((resolve) => {
-      area.get(key, (result) => resolve(result || {}));
-    });
-  }
-
-  function extensionStorageSet(payload) {
-    const area = getExtensionStorageArea();
-    if (!area) return Promise.resolve();
-    return new Promise((resolve) => {
-      area.set(payload, () => resolve());
-    });
-  }
-
-  async function loadFlagsStore() {
-    if (flagsStoreCache) return flagsStoreCache;
-    const result = await extensionStorageGet(MESSAGE_FLAGS_STORAGE_KEY);
-    const store = result[MESSAGE_FLAGS_STORAGE_KEY];
-    flagsStoreCache = store && typeof store === "object" ? store : {};
-    return flagsStoreCache;
-  }
-
-  function getConversationStorageKey() {
-    const match = window.location.pathname.match(/\/c\/([^/?#]+)/);
-    if (match && match[1]) return `chat:${match[1]}`;
-    return "";
-  }
-
-  function getArticleMessageKey(article, virtualId) {
-    if (article.dataset.gptBoostMessageKey) {
-      return article.dataset.gptBoostMessageKey;
-    }
-
-    const nestedMessageEl = article.querySelector("[data-message-id]");
-    const candidate = (
-      article.getAttribute("data-message-id") ||
-      article.getAttribute("id") ||
-      article.getAttribute("data-testid") ||
-      (nestedMessageEl && nestedMessageEl.getAttribute("data-message-id")) ||
-      `virtual:${virtualId}`
-    ).trim();
-
-    article.dataset.gptBoostMessageKey = candidate;
-    return candidate;
-  }
 
   function syncFlagsFromPersistedKeys() {
     const nextPinned = new Set();
@@ -215,48 +150,6 @@
       updateBookmarkButtonAppearance(article, virtualId);
     });
     if (flagsChanged) refreshSidebarTab();
-  }
-
-  async function loadPersistedFlagsForConversation() {
-    currentConversationKey = getConversationStorageKey();
-    if (!currentConversationKey) {
-      persistedPinnedMessageKeys = new Set();
-      persistedBookmarkedMessageKeys = new Set();
-      syncFlagsFromPersistedKeys();
-      return;
-    }
-    const store = await loadFlagsStore();
-    const conversationFlags = store[currentConversationKey] || {};
-    const pinned = Array.isArray(conversationFlags.pinned) ? conversationFlags.pinned : [];
-    const bookmarked = Array.isArray(conversationFlags.bookmarked) ? conversationFlags.bookmarked : [];
-    persistedPinnedMessageKeys = new Set(pinned);
-    persistedBookmarkedMessageKeys = new Set(bookmarked);
-    syncFlagsFromPersistedKeys();
-  }
-
-  async function saveFlagsToStorage() {
-    if (!currentConversationKey) return;
-    const store = await loadFlagsStore();
-    const pinned = Array.from(persistedPinnedMessageKeys);
-    const bookmarked = Array.from(persistedBookmarkedMessageKeys);
-
-    if (!pinned.length && !bookmarked.length) {
-      delete store[currentConversationKey];
-    } else {
-      store[currentConversationKey] = { pinned, bookmarked };
-    }
-
-    await extensionStorageSet({ [MESSAGE_FLAGS_STORAGE_KEY]: store });
-  }
-
-  function scheduleFlagsSave() {
-    if (saveFlagsTimer !== null) {
-      clearTimeout(saveFlagsTimer);
-    }
-    saveFlagsTimer = setTimeout(() => {
-      saveFlagsTimer = null;
-      saveFlagsToStorage().catch(() => { });
-    }, MESSAGE_FLAGS_SAVE_DEBOUNCE_MS);
   }
 
   // ---------------------------------------------------------------------------
@@ -465,7 +358,8 @@
         el.style.right = `calc(${baseRight} + ${offsetPx}px)`;
       } else {
         const isRootContainer = el === document.documentElement || el === document.body || el.tagName.toLowerCase() === "main";
-        if (isRootContainer) {
+        const isScrollOwner = el === state.scrollElement;
+        if (isRootContainer || isScrollOwner) {
           // Push native scrollbar inwards instead of burying it under padding
           const baseMarginRight = computed.marginRight || "0px";
           el.style.marginRight = `calc(${baseMarginRight} + ${offsetPx}px)`;
@@ -479,119 +373,7 @@
     });
   }
 
-  function getMessageRole(article) {
-    if (!(article instanceof HTMLElement)) return "unknown";
-    const roleEl = article.querySelector("[data-message-author-role]");
-    if (roleEl instanceof HTMLElement) {
-      return (roleEl.getAttribute("data-message-author-role") || "unknown").toLowerCase();
-    }
-    return "unknown";
-  }
 
-  /**
-   * Find the main conversation root element.
-   *
-   * @returns {HTMLElement}
-   */
-  function findConversationRoot() {
-    const selectors = [
-      'main[class*="conversation" i]',
-      '[role="main"]',
-      "main",
-      '[class*="thread" i]',
-      '[class*="conversation" i]'
-    ];
-
-    for (const selector of selectors) {
-      const root = document.querySelector(selector);
-      if (root instanceof HTMLElement) {
-        log("Found conversation root via selector:", selector);
-        return root;
-      }
-    }
-
-    log("Conversation root not found via selectors; using <body>");
-    return document.body;
-  }
-
-  /** @returns {boolean} */
-  function hasAnyMessages() {
-    return getActiveConversationNodes().length > 0;
-  }
-
-  function isElementVisibleForConversation(el) {
-    // Intentionally minimal: only exclude elements that are explicitly display:none
-    // at the article level itself. Do NOT walk ancestors — ChatGPT may wrap articles
-    // in aria-hidden or transitional containers during load.
-    if (!(el instanceof HTMLElement)) return false;
-    return el.style.display !== "none";
-  }
-
-  function getActiveConversationNodes() {
-    const selector = config.ARTICLE_SELECTOR;
-    const root = state.conversationRoot instanceof HTMLElement ? state.conversationRoot : document;
-    const nodes = Array.from(root.querySelectorAll(selector))
-      .filter((node) => node instanceof HTMLElement)
-      .filter((node) => {
-        const parent = node.parentElement;
-        return !(parent && parent.closest(selector));
-      })
-      .filter((node) => isElementVisibleForConversation(node));
-
-    return /** @type {HTMLElement[]} */ (nodes);
-  }
-
-  /**
-   * Find the scrollable container for the conversation.
-   *
-   * @returns {HTMLElement | Window}
-   */
-  function findScrollContainer() {
-    const firstMessage = getActiveConversationNodes()[0];
-
-    if (firstMessage instanceof HTMLElement) {
-      let ancestor = firstMessage.parentElement;
-      while (
-        ancestor &&
-        ancestor !== document.body &&
-        ancestor !== document.documentElement
-      ) {
-        const styles = getComputedStyle(ancestor);
-        const overflowY = styles.overflowY;
-        const isScrollable =
-          (overflowY === "auto" || overflowY === "scroll") &&
-          ancestor.scrollHeight > ancestor.clientHeight + 10;
-
-        if (isScrollable) {
-          log(
-            "Found scroll container from ancestor:",
-            ancestor.tagName,
-            ancestor.className
-          );
-          return ancestor;
-        }
-        ancestor = ancestor.parentElement;
-      }
-    }
-
-    if (state.conversationRoot instanceof HTMLElement) {
-      const root = state.conversationRoot;
-      const styles = getComputedStyle(root);
-      if (
-        (styles.overflowY === "auto" || styles.overflowY === "scroll") &&
-        root.scrollHeight > root.clientHeight + 10
-      ) {
-        log("Using conversation root as scroll container");
-        return root;
-      }
-    }
-
-    const docScroll =
-      document.scrollingElement || document.documentElement || document.body;
-
-    log("Using document.scrollingElement as scroll container");
-    return docScroll;
-  }
 
   // ---------------------------------------------------------------------------
   // Core virtualization helpers
@@ -2753,7 +2535,7 @@
 
   function togglePin(virtualId) {
     if (!currentConversationKey) {
-      currentConversationKey = getConversationStorageKey();
+      setCurrentConversationKey(getConversationStorageKey());
     }
     const article = state.articleMap.get(virtualId);
     const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : "";
@@ -3126,7 +2908,7 @@
 
   function toggleBookmark(virtualId) {
     if (!currentConversationKey) {
-      currentConversationKey = getConversationStorageKey();
+      setCurrentConversationKey(getConversationStorageKey());
     }
     const article = state.articleMap.get(virtualId);
     const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : "";
@@ -3643,7 +3425,7 @@
     state.observer = mutationObserver;
 
     log("Virtualizer booted.");
-    currentConversationKey = getConversationStorageKey();
+    setCurrentConversationKey(getConversationStorageKey());
 
     // Ensure we start tracking even if messages already exist
     attachOrUpdateScrollListener();
@@ -3658,7 +3440,7 @@
       attachOrUpdateScrollListener();
       virtualizeNow();
     }, 250);
-    loadPersistedFlagsForConversation().catch(() => { });
+    loadPersistedFlagsForConversation(syncFlagsFromPersistedKeys).catch(() => { });
   }
 
   function teardownVirtualizer() {

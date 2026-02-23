@@ -12,9 +12,9 @@
     "https://chatgpt.com/*"
   ],
   "background": {
-    "service_worker": "src/background.js",
+    "service_worker": "build/background.js",
     "scripts": [
-      "src/background.js"
+      "build/background.js"
     ]
   },
   "content_scripts": [
@@ -24,9 +24,7 @@
         "https://chatgpt.com/*"
       ],
       "js": [
-        "src/constants.js",
-        "src/virtualization.js",
-        "src/boot.js"
+        "build/content.js"
       ],
       "run_at": "document_idle"
     }

@@ -1,3 +1,6 @@
+import './constants.js';
+import './virtualization.js';
+
 // boot.js
 (function initializeContentScript() {
   const scroller = window.ChatGPTVirtualScroller;
