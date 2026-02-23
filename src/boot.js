@@ -98,6 +98,16 @@
 
     virtualizer.bootVirtualizer();
     virtualizer.startUrlWatcher();
+
+    // Some ChatGPT layouts stabilize after initial idle; keep UI in sync early.
+    let warmupRuns = 0;
+    const warmupTimer = setInterval(() => {
+      warmupRuns += 1;
+      virtualizer.handleResize();
+      if (warmupRuns >= 12) {
+        clearInterval(warmupTimer);
+      }
+    }, 500);
   }
 
   // Auto-clean promo-logging when page unloads

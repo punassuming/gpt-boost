@@ -14,7 +14,7 @@ window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
    */
   scroller.config = {
     /** CSS selector for conversation messages */
-    ARTICLE_SELECTOR: 'article[data-testid^="conversation-turn-"]',
+    ARTICLE_SELECTOR: 'article, [data-testid^="conversation-turn-"]',
 
     /** Default virtualization buffer (px) */
     DEFAULT_MARGIN_PX: 2000,

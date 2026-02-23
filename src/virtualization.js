@@ -24,6 +24,10 @@
   let sidebarToggleButton = null;
   let sidebarPanel = null;
   let sidebarContentContainer = null;
+  const sidebarLayoutOriginalStyles = new Map();
+  let sidebarBodyMarginOriginal = "";
+  let sidebarBodyTransitionOriginal = "";
+  let sidebarBodyFallbackUsed = false;
   let activeSidebarTab = "search";
   let settingsEnabledInput = null;
   let settingsDebugInput = null;
@@ -44,8 +48,8 @@
   const SCROLL_BUTTON_SIZE_PX = 30;
   const SCROLL_BUTTON_OFFSET_PX = 12;
   const TOP_BUTTON_STACK_OFFSET_PX = 56;
-  const DEFERRED_VIRTUALIZATION_DELAY_MS = 120;
-  const MAX_EMPTY_RETRY_COUNT = 8;
+  const DEFERRED_VIRTUALIZATION_DELAY_MS = 250;
+  const MAX_EMPTY_RETRY_COUNT = 240;
   // Keep the indicator close to the scrollbar without overlapping it.
   const INDICATOR_RIGHT_OFFSET_PX = 6;
   const INDICATOR_BASE_MIN_HEIGHT_PX = 36;
@@ -114,6 +118,7 @@
   const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
   const SIDEBAR_PANEL_WIDTH_PX = 480;
   const SIDEBAR_TRANSITION_MS = 300;
+  const SIDEBAR_SNIPPET_MAX_HEIGHT_PX = 420;
   const MESSAGE_FLAGS_STORAGE_KEY = "messageFlagsByConversation";
   const MESSAGE_FLAGS_SAVE_DEBOUNCE_MS = 200;
   const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "inset 0 0 0 1px rgba(59,130,246,0.35)";
@@ -122,6 +127,14 @@
   let persistedBookmarkedMessageKeys = new Set();
   let saveFlagsTimer = null;
   let flagsStoreCache = null;
+
+  function isVirtualSpacerNode(node) {
+    return (
+      node instanceof HTMLElement &&
+      node.dataset &&
+      node.dataset.chatgptVirtualSpacer === "1"
+    );
+  }
 
   function getExtensionStorageArea() {
     if (typeof chrome !== "undefined" && chrome.storage) {
@@ -189,6 +202,14 @@
       if (persistedBookmarkedMessageKeys.has(key)) nextBookmarked.add(virtualId);
     });
 
+    const prevPinned = state.pinnedMessages;
+    const prevBookmarked = state.bookmarkedMessages;
+    const flagsChanged =
+      prevPinned.size !== nextPinned.size ||
+      prevBookmarked.size !== nextBookmarked.size ||
+      Array.from(nextPinned).some((id) => !prevPinned.has(id)) ||
+      Array.from(nextBookmarked).some((id) => !prevBookmarked.has(id));
+
     state.pinnedMessages = nextPinned;
     state.bookmarkedMessages = nextBookmarked;
     updatePinnedBar();
@@ -199,7 +220,7 @@
       updatePinButtonAppearance(article, virtualId);
       updateBookmarkButtonAppearance(article, virtualId);
     });
-    refreshSidebarTab();
+    if (flagsChanged) refreshSidebarTab();
   }
 
   async function loadPersistedFlagsForConversation() {
@@ -264,39 +285,172 @@
     const mode = getThemeMode();
     if (mode === "dark") {
       return {
-        text: "#f8fafc",
-        mutedText: "rgba(248, 250, 252, 0.7)",
-        panelBg: "rgba(15, 23, 42, 0.92)",
-        panelBorder: "rgba(148, 163, 184, 0.25)",
-        panelShadow: "0 8px 20px rgba(2, 6, 23, 0.55)",
-        inputBg: "rgba(2, 6, 23, 0.6)",
-        inputBorder: "rgba(148, 163, 184, 0.35)",
-        buttonBg: "rgba(148, 163, 184, 0.22)",
-        buttonText: "#e2e8f0",
-        buttonShadow: "0 6px 16px rgba(2, 6, 23, 0.5)",
-        buttonMutedBg: "rgba(148, 163, 184, 0.18)",
-        buttonMutedText: "#e2e8f0",
-        indicatorBg: "rgba(148, 163, 184, 0.55)",
-        indicatorShadow: "0 4px 10px rgba(2, 6, 23, 0.4)"
+        text: "#ececf1",
+        mutedText: "rgba(236, 236, 241, 0.72)",
+        panelBg: "rgba(32, 33, 35, 0.96)",
+        panelBorder: "rgba(255, 255, 255, 0.1)",
+        panelShadow: "0 8px 20px rgba(0, 0, 0, 0.45)",
+        inputBg: "rgba(52, 53, 65, 0.92)",
+        inputBorder: "rgba(255, 255, 255, 0.18)",
+        buttonBg: "rgba(255, 255, 255, 0.12)",
+        buttonText: "#ececf1",
+        buttonShadow: "0 6px 16px rgba(0, 0, 0, 0.35)",
+        buttonMutedBg: "rgba(255, 255, 255, 0.08)",
+        buttonMutedText: "#ececf1",
+        indicatorBg: "rgba(16, 163, 127, 0.7)",
+        indicatorShadow: "0 4px 10px rgba(0, 0, 0, 0.35)"
       };
     }
 
     return {
-      text: "#0f172a",
-      mutedText: "rgba(15, 23, 42, 0.6)",
-      panelBg: "rgba(255, 255, 255, 0.97)",
-      panelBorder: "rgba(15, 23, 42, 0.12)",
-      panelShadow: "0 8px 20px rgba(15, 23, 42, 0.18)",
-      inputBg: "rgba(241, 245, 249, 0.95)",
-      inputBorder: "rgba(148, 163, 184, 0.55)",
-      buttonBg: "rgba(15, 23, 42, 0.78)",
-      buttonText: "#f8fafc",
-      buttonShadow: "0 6px 16px rgba(15, 23, 42, 0.2)",
-      buttonMutedBg: "rgba(15, 23, 42, 0.12)",
-      buttonMutedText: "#0f172a",
-      indicatorBg: "rgba(15, 23, 42, 0.6)",
-      indicatorShadow: "0 4px 10px rgba(15, 23, 42, 0.18)"
+      text: "#202123",
+      mutedText: "rgba(32, 33, 35, 0.62)",
+      panelBg: "rgba(255, 255, 255, 0.98)",
+      panelBorder: "rgba(32, 33, 35, 0.1)",
+      panelShadow: "0 8px 20px rgba(0, 0, 0, 0.12)",
+      inputBg: "rgba(247, 247, 248, 0.95)",
+      inputBorder: "rgba(32, 33, 35, 0.16)",
+      buttonBg: "rgba(32, 33, 35, 0.85)",
+      buttonText: "#ffffff",
+      buttonShadow: "0 6px 16px rgba(0, 0, 0, 0.16)",
+      buttonMutedBg: "rgba(32, 33, 35, 0.08)",
+      buttonMutedText: "#202123",
+      indicatorBg: "rgba(16, 163, 127, 0.66)",
+      indicatorShadow: "0 4px 10px rgba(0, 0, 0, 0.12)"
     };
+  }
+
+  function collectSidebarLayoutTargets() {
+    const targets = [];
+
+    // Primary layout owner in ChatGPT is usually the detected scroll container.
+    const scrollOwner = state.scrollElement instanceof HTMLElement ? state.scrollElement : null;
+    if (scrollOwner) {
+      targets.push(scrollOwner);
+    } else {
+      const mainRoot =
+        document.querySelector('[role="main"]') ||
+        document.querySelector("main") ||
+        (state.conversationRoot instanceof HTMLElement ? state.conversationRoot : null);
+      if (mainRoot instanceof HTMLElement) {
+        targets.push(mainRoot);
+      }
+    }
+
+    const composer = document.querySelector("textarea");
+    if (composer instanceof HTMLTextAreaElement) {
+      let fixedAncestor = null;
+      let ancestor = composer.closest("form") || composer.parentElement;
+      while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+        if (ancestor instanceof HTMLElement) {
+          const pos = getComputedStyle(ancestor).position;
+          if (pos === "fixed" || pos === "sticky") {
+            fixedAncestor = ancestor;
+            break;
+          }
+        }
+        ancestor = ancestor.parentElement;
+      }
+      if (fixedAncestor && !targets.includes(fixedAncestor)) {
+        targets.push(fixedAncestor);
+      }
+    }
+
+    const filtered = targets.filter((el) => {
+      if (!(el instanceof HTMLElement) || !el.isConnected) return false;
+      if (sidebarPanel && sidebarPanel.contains(el)) return false;
+      return !targets.some((other) => other !== el && other instanceof HTMLElement && other.contains(el));
+    });
+    return filtered;
+  }
+
+  function isSidebarOpen() {
+    return !!(sidebarPanel && sidebarPanel.style.display !== "none");
+  }
+
+  function getSidebarUiOffsetPx() {
+    return isSidebarOpen() ? SIDEBAR_PANEL_WIDTH_PX : 0;
+  }
+
+  function applyFloatingUiOffsets() {
+    const offset = getSidebarUiOffsetPx();
+
+    if (indicatorElement) indicatorElement.style.right = `${INDICATOR_RIGHT_OFFSET_PX + offset}px`;
+    if (scrollToTopButton) scrollToTopButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
+    if (scrollToBottomButton) scrollToBottomButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
+    if (searchButton) searchButton.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+    if (searchPanel) searchPanel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX + offset}px`;
+    if (minimapButton) minimapButton.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+    if (minimapPanel) minimapPanel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX + offset}px`;
+    if (downloadButton) downloadButton.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+    if (bookmarksButton) bookmarksButton.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX + offset}px`;
+    if (bookmarksPanel) bookmarksPanel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX + offset}px`;
+    if (sidebarToggleButton) sidebarToggleButton.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + offset}px`;
+  }
+
+  function clearSidebarLayoutOffset() {
+    sidebarLayoutOriginalStyles.forEach((original, el) => {
+      if (!(el instanceof HTMLElement) || !el.isConnected) return;
+      el.style.paddingRight = original.paddingRight;
+      el.style.right = original.right;
+      el.style.boxSizing = original.boxSizing;
+      el.style.transition = original.transition;
+    });
+    sidebarLayoutOriginalStyles.clear();
+
+    if (sidebarBodyFallbackUsed) {
+      document.body.style.marginRight = sidebarBodyMarginOriginal;
+      document.body.style.transition = sidebarBodyTransitionOriginal;
+    }
+    sidebarBodyFallbackUsed = false;
+    sidebarBodyMarginOriginal = "";
+    sidebarBodyTransitionOriginal = "";
+  }
+
+  function applySidebarLayoutOffset(offsetPx) {
+    clearSidebarLayoutOffset();
+    if (!offsetPx) return;
+
+    const targets = collectSidebarLayoutTargets();
+    if (!targets.length) {
+      sidebarBodyFallbackUsed = true;
+      sidebarBodyMarginOriginal = document.body.style.marginRight;
+      sidebarBodyTransitionOriginal = document.body.style.transition;
+      document.body.style.marginRight = `${offsetPx}px`;
+      document.body.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease`;
+      return;
+    }
+
+    targets.forEach((el) => {
+      const computed = getComputedStyle(el);
+      sidebarLayoutOriginalStyles.set(el, {
+        paddingRight: el.style.paddingRight,
+        right: el.style.right,
+        boxSizing: el.style.boxSizing,
+        transition: el.style.transition
+      });
+
+      const hasTextarea = !!el.querySelector("textarea");
+      const isFixedLike = computed.position === "fixed" || computed.position === "sticky";
+      if (hasTextarea && isFixedLike) {
+        const baseRight = computed.right && computed.right !== "auto" ? computed.right : "0px";
+        el.style.right = `calc(${baseRight} + ${offsetPx}px)`;
+      } else {
+        const basePaddingRight = computed.paddingRight || "0px";
+        el.style.paddingRight = `calc(${basePaddingRight} + ${offsetPx}px)`;
+        el.style.boxSizing = "border-box";
+      }
+      el.style.transition = `padding-right ${SIDEBAR_TRANSITION_MS}ms ease, right ${SIDEBAR_TRANSITION_MS}ms ease`;
+    });
+  }
+
+  function getMessageRole(article) {
+    if (!(article instanceof HTMLElement)) return "unknown";
+    const roleEl = article.querySelector("[data-message-author-role]");
+    if (roleEl instanceof HTMLElement) {
+      return (roleEl.getAttribute("data-message-author-role") || "unknown").toLowerCase();
+    }
+    return "unknown";
   }
 
   /**
@@ -327,7 +481,29 @@
 
   /** @returns {boolean} */
   function hasAnyMessages() {
-    return !!document.querySelector(config.ARTICLE_SELECTOR);
+    return getActiveConversationNodes().length > 0;
+  }
+
+  function isElementVisibleForConversation(el) {
+    if (!(el instanceof HTMLElement)) return false;
+    if (el.closest("[hidden], [aria-hidden='true']")) return false;
+    const styles = getComputedStyle(el);
+    if (styles.display === "none" || styles.visibility === "hidden") return false;
+    return true;
+  }
+
+  function getActiveConversationNodes() {
+    const selector = config.ARTICLE_SELECTOR;
+    const root = state.conversationRoot instanceof HTMLElement ? state.conversationRoot : document;
+    const nodes = Array.from(root.querySelectorAll(selector))
+      .filter((node) => node instanceof HTMLElement)
+      .filter((node) => {
+        const parent = node.parentElement;
+        return !(parent && parent.closest(selector));
+      })
+      .filter((node) => isElementVisibleForConversation(node));
+
+    return /** @type {HTMLElement[]} */ (nodes);
   }
 
   /**
@@ -336,7 +512,7 @@
    * @returns {HTMLElement | Window}
    */
   function findScrollContainer() {
-    const firstMessage = document.querySelector(config.ARTICLE_SELECTOR);
+    const firstMessage = getActiveConversationNodes()[0];
 
     if (firstMessage instanceof HTMLElement) {
       let ancestor = firstMessage.parentElement;
@@ -388,7 +564,7 @@
    * Assign virtual IDs to visible <article> messages.
    */
   function ensureVirtualIds() {
-    const articleList = document.querySelectorAll(config.ARTICLE_SELECTOR);
+    const articleList = getActiveConversationNodes();
 
     articleList.forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
@@ -486,7 +662,7 @@
     element.style.right = `${INDICATOR_RIGHT_OFFSET_PX}px`;
     element.style.top = "50%";
     element.style.transform = "translateY(-50%)";
-    element.style.zIndex = "9999";
+    element.style.zIndex = "10003";
     element.style.display = "none";
     element.style.width = "6px";
     element.style.height = `${INDICATOR_BASE_MIN_HEIGHT_PX}px`;
@@ -499,6 +675,7 @@
     element.setAttribute("aria-label", "Virtualizing messages");
     document.body.appendChild(element);
     indicatorElement = element;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return element;
   }
@@ -567,7 +744,7 @@
     button.setAttribute("data-chatgpt-virtual-scroll", position);
     button.style.position = "fixed";
     button.style.right = `${SCROLL_BUTTON_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
+    button.style.zIndex = "10002";
     button.style.width = `${SCROLL_BUTTON_SIZE_PX}px`;
     button.style.height = `${SCROLL_BUTTON_SIZE_PX}px`;
     button.style.borderRadius = "999px";
@@ -606,6 +783,7 @@
       scrollToBottomButton = button;
     }
 
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -621,19 +799,32 @@
   }
 
   function updateScrollButtons(totalMessages) {
-    if (!state.enabled || totalMessages === 0) {
+    if (!state.enabled) {
       hideScrollButtons();
       return;
     }
 
-    const scrollTarget = getScrollTarget();
+    const candidates = [];
+    const primary = getScrollTarget();
+    if (primary) candidates.push(primary);
+    if (state.scrollElement instanceof HTMLElement) candidates.push(state.scrollElement);
+    const docFallback = document.scrollingElement || document.documentElement || document.body;
+    if (docFallback) candidates.push(docFallback);
 
-    if (!scrollTarget) {
-      hideScrollButtons();
-      return;
-    }
+    const uniqueCandidates = candidates.filter((candidate, idx, arr) =>
+      !!candidate && arr.indexOf(candidate) === idx
+    );
+    let scrollTarget = null;
+    let maxScrollable = 0;
+    uniqueCandidates.forEach((candidate) => {
+      const max = getMaxScrollTop(candidate);
+      if (max > maxScrollable) {
+        maxScrollable = max;
+        scrollTarget = candidate;
+      }
+    });
 
-    if (!isScrollable(scrollTarget)) {
+    if (!scrollTarget || maxScrollable < SCROLL_BUFFER_PX) {
       hideScrollButtons();
       return;
     }
@@ -641,7 +832,7 @@
     const topButton = ensureScrollButton("top");
     const bottomButton = ensureScrollButton("bottom");
 
-    const maxScrollTop = getMaxScrollTop(scrollTarget);
+    const maxScrollTop = maxScrollable;
     setButtonVisibility(topButton, scrollTarget.scrollTop > SCROLL_BUFFER_PX);
     setButtonVisibility(
       bottomButton,
@@ -866,7 +1057,7 @@
     ensureVirtualIds();
     const entries = new Map();
 
-    document.querySelectorAll(config.ARTICLE_SELECTOR).forEach((node) => {
+    getActiveConversationNodes().forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       const id = node.dataset.virtualId;
       if (!id) return;
@@ -1006,6 +1197,10 @@
   }
 
   function toggleSearchPanel() {
+    if (isSidebarOpen()) {
+      openSidebar("search");
+      return;
+    }
     const panel = ensureSearchPanel();
     if (!panel) return;
     const isVisible = panel.style.display !== "none";
@@ -1048,10 +1243,10 @@
     renderSidebarTab(activeSidebarTab);
   }
 
-  function createSidebarTabButton(tabId, label) {
+  function createSidebarTabButton(tabId, label, icon) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = label;
+    btn.textContent = `${icon} ${label}`;
     btn.style.border = "none";
     btn.style.borderRadius = "8px";
     btn.style.padding = "6px 8px";
@@ -1061,8 +1256,28 @@
     btn.style.background = "transparent";
     btn.style.color = "inherit";
     btn.dataset.gptBoostSidebarTab = tabId;
-    btn.addEventListener("click", () => openSidebar(tabId));
+    btn.addEventListener("click", () => {
+      if (isSidebarOpen()) {
+        renderSidebarTab(tabId);
+      } else {
+        openSidebar(tabId);
+      }
+    });
     return btn;
+  }
+
+  function openExtensionSettingsPage() {
+    if (typeof chrome !== "undefined" && chrome.runtime) {
+      if (typeof chrome.runtime.openOptionsPage === "function") {
+        chrome.runtime.openOptionsPage(() => {});
+        return;
+      }
+      if (typeof chrome.runtime.getURL === "function") {
+        window.open(chrome.runtime.getURL("src/popup.html"), "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
+    window.open("about:blank", "_blank");
   }
 
   function renderSearchTabContent(container) {
@@ -1187,13 +1402,6 @@
 
     container.appendChild(resultsList);
 
-    searchInput = input;
-    searchPrevButton = prevBtn;
-    searchNextButton = nextBtn;
-    searchCountLabel = count;
-    searchCountPrimaryLabel = null;
-    searchCountSecondaryLabel = null;
-    searchCloseButton = null;
     setTimeout(() => input.focus(), 0);
   }
 
@@ -1278,6 +1486,9 @@
       const textSource = article.querySelector("[data-message-author-role]") || article;
       const text = (textSource.textContent || "").trim().replace(/\s+/g, " ");
       if (!text) return;
+      const role = getMessageRole(article);
+      const isUser = role === "user";
+      const roleLabel = isUser ? "User" : role === "assistant" ? "ChatGPT" : role;
 
       const item = document.createElement("div");
       item.style.border = `1px solid ${theme.panelBorder}`;
@@ -1286,7 +1497,17 @@
       item.style.display = "flex";
       item.style.flexDirection = "column";
       item.style.gap = "6px";
-      item.style.background = "rgba(148,163,184,0.06)";
+      item.style.background = isUser ? "rgba(59,130,246,0.12)" : "rgba(16,185,129,0.12)";
+      item.style.alignSelf = isUser ? "flex-end" : "flex-start";
+      item.style.width = "92%";
+      item.style.borderLeft = isUser ? "3px solid rgba(59,130,246,0.65)" : "3px solid rgba(16,185,129,0.65)";
+
+      const roleChip = document.createElement("div");
+      roleChip.textContent = roleLabel;
+      roleChip.style.fontSize = "10px";
+      roleChip.style.fontWeight = "600";
+      roleChip.style.opacity = "0.8";
+      roleChip.style.alignSelf = isUser ? "flex-end" : "flex-start";
 
       const title = document.createElement("button");
       title.type = "button";
@@ -1333,6 +1554,7 @@
         renderSidebarTab("outline");
       }));
 
+      item.appendChild(roleChip);
       item.appendChild(title);
       item.appendChild(actions);
       list.appendChild(item);
@@ -1407,29 +1629,38 @@
       if (!(tab instanceof HTMLElement)) return;
       const isActive = tab.dataset.gptBoostSidebarTab === tabId;
       tab.style.opacity = isActive ? "1" : "0.72";
-      tab.style.background = isActive ? getThemeTokens().buttonMutedBg : "transparent";
+      tab.style.background = "transparent";
+      tab.style.borderRadius = "0";
+      tab.style.padding = "4px 0";
+      tab.style.borderBottom = isActive ? `2px solid ${getThemeTokens().text}` : "2px solid transparent";
     });
 
     if (tabId === "search") renderSearchTabContent(sidebarContentContainer);
     else if (tabId === "bookmarks") renderBookmarksTabContent(sidebarContentContainer);
     else if (tabId === "outline") renderOutlineTabContent(sidebarContentContainer);
     else if (tabId === "snippets") renderSnippetsTabContent(sidebarContentContainer);
-    else renderSettingsTabContent(sidebarContentContainer);
+    else renderSearchTabContent(sidebarContentContainer);
   }
 
     function hideSidebar() {
-      if (!sidebarPanel) return;
-      sidebarPanel.style.display = "none";
-      document.body.style.marginRight = "0";
+      if (sidebarPanel) sidebarPanel.style.display = "none";
+      applySidebarLayoutOffset(0);
+      applyFloatingUiOffsets();
+      refreshArticleSideRailLayout();
       clearSearchHighlight();
     }
   
     function openSidebar(tabId) {
       const panel = ensureSidebarPanel();
       if (!panel) return;
+      const wasOpen = panel.style.display !== "none";
       hideSearchPanel();
+      if (!wasOpen) {
+        applySidebarLayoutOffset(SIDEBAR_PANEL_WIDTH_PX);
+      }
       panel.style.display = "flex";
-      document.body.style.marginRight = `${SIDEBAR_PANEL_WIDTH_PX}px`;
+      applyFloatingUiOffsets();
+      if (!wasOpen) refreshArticleSideRailLayout();
       renderSidebarTab(tabId || activeSidebarTab);
       applyThemeToUi();
     }
@@ -1455,18 +1686,16 @@
       button.style.position = "fixed";
       button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
       button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
-      button.style.zIndex = "9999";
+      button.style.zIndex = "10002";
       button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
       styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
       button.style.display = "none";
       button.textContent = "☰";
       button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
-      
-      // Ensure transition
-      document.body.style.transition = `margin-right ${SIDEBAR_TRANSITION_MS}ms ease`;
-      
+
       document.body.appendChild(button);
       sidebarToggleButton = button;
+      applyFloatingUiOffsets();
       return button;
     }
   
@@ -1481,17 +1710,17 @@
       panel.style.top = "0";
       panel.style.right = "0";
       panel.style.bottom = "0";
-      panel.style.zIndex = "9999";
+      panel.style.zIndex = "10000";
       panel.style.width = `${SIDEBAR_PANEL_WIDTH_PX}px`;
       panel.style.display = "none";
       panel.style.flexDirection = "column";
       panel.style.gap = "0";
-      panel.style.padding = "16px";
+      panel.style.padding = "12px";
       panel.style.background = theme.panelBg;
-      panel.style.boxShadow = "-4px 0 20px rgba(0, 0, 0, 0.1)";
+      panel.style.boxShadow = "none";
       panel.style.borderLeft = `1px solid ${theme.panelBorder}`;
       panel.style.color = theme.text;
-      panel.style.backdropFilter = "blur(12px)";
+      panel.style.backdropFilter = "";
       panel.style.boxSizing = "border-box";
       panel.style.overflow = "hidden";
   
@@ -1507,6 +1736,20 @@
       title.style.fontWeight = "600";
       title.style.opacity = "0.9";
   
+      const headerActions = document.createElement("div");
+      headerActions.style.display = "flex";
+      headerActions.style.alignItems = "center";
+      headerActions.style.gap = "6px";
+
+      const settingsBtn = document.createElement("button");
+      settingsBtn.type = "button";
+      settingsBtn.textContent = "⚙";
+      settingsBtn.setAttribute("aria-label", "Open extension settings");
+      styleSearchButton(settingsBtn, 24);
+      settingsBtn.style.display = "flex";
+      settingsBtn.style.background = "rgba(148, 163, 184, 0.2)";
+      settingsBtn.addEventListener("click", openExtensionSettingsPage);
+
       const closeBtn = document.createElement("button");
       closeBtn.type = "button";
       closeBtn.textContent = "×";
@@ -1516,20 +1759,22 @@
       closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
       closeBtn.addEventListener("click", hideSidebar);
   
+      headerActions.appendChild(settingsBtn);
+      headerActions.appendChild(closeBtn);
       header.appendChild(title);
-      header.appendChild(closeBtn);
+      header.appendChild(headerActions);
   
       const tabs = document.createElement("div");
-      tabs.style.display = "grid";
-      tabs.style.gridTemplateColumns = "repeat(5, minmax(0, 1fr))";
-      tabs.style.gap = "4px";
-      tabs.style.marginBottom = "16px";
+      tabs.style.display = "flex";
+      tabs.style.gap = "8px";
+      tabs.style.marginBottom = "12px";
+      tabs.style.paddingBottom = "6px";
+      tabs.style.borderBottom = `1px solid ${theme.panelBorder}`;
   
-      tabs.appendChild(createSidebarTabButton("search", "Search"));
-      tabs.appendChild(createSidebarTabButton("bookmarks", "Marks"));
-      tabs.appendChild(createSidebarTabButton("snippets", "Code"));
-      tabs.appendChild(createSidebarTabButton("outline", "Outline"));
-      tabs.appendChild(createSidebarTabButton("settings", "Config"));
+      tabs.appendChild(createSidebarTabButton("search", "Search", "🔎"));
+      tabs.appendChild(createSidebarTabButton("bookmarks", "Marks", "🔖"));
+      tabs.appendChild(createSidebarTabButton("snippets", "Code", "⌨"));
+      tabs.appendChild(createSidebarTabButton("outline", "Outline", "🧭"));
   
       const content = document.createElement("div");
       content.style.display = "flex";
@@ -1545,11 +1790,12 @@
       document.body.appendChild(panel);
       sidebarPanel = panel;
       sidebarContentContainer = content;
+      applyFloatingUiOffsets();
       return panel;
     }
   
     function updateSidebarVisibility(totalMessages) {
-      const shouldShow = state.enabled && totalMessages > 0;
+      const shouldShow = state.enabled;
       const button = ensureSidebarToggleButton();
       if (!button) return;
       button.style.display = shouldShow ? "flex" : "none";
@@ -1569,7 +1815,7 @@
     button.style.position = "fixed";
     button.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX}px`;
     button.style.top = `${SEARCH_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
+    button.style.zIndex = "10002";
     button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     icon.setAttribute("viewBox", "0 0 24 24");
@@ -1591,6 +1837,7 @@
 
     document.body.appendChild(button);
     searchButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -1607,7 +1854,7 @@
     panel.style.position = "fixed";
     panel.style.top = `${SEARCH_PANEL_TOP_OFFSET_PX}px`;
     panel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "9999";
+    panel.style.zIndex = "10001";
     panel.style.width = `${SEARCH_PANEL_WIDTH_PX}px`;
     panel.style.display = "none";
     panel.style.flexDirection = "column";
@@ -1753,12 +2000,13 @@
     searchCountPrimaryLabel = countPrimary;
     searchCountSecondaryLabel = countSecondary;
     searchCloseButton = closeButton;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return panel;
   }
 
   function updateSearchVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
+    const shouldShow = state.enabled;
     const button = ensureSearchButton();
     if (button) button.style.display = shouldShow ? "flex" : "none";
     if (!shouldShow) hideSearchPanel();
@@ -1878,7 +2126,7 @@
     button.style.position = "fixed";
     button.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX}px`;
     button.style.top = `${MINIMAP_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
+    button.style.zIndex = "10002";
     button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
 
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1905,6 +2153,7 @@
 
     document.body.appendChild(button);
     minimapButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -1920,7 +2169,7 @@
     panel.style.position = "fixed";
     panel.style.top = `${MINIMAP_PANEL_TOP_OFFSET_PX}px`;
     panel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "9999";
+    panel.style.zIndex = "10001";
     panel.style.width = `${MINIMAP_PANEL_WIDTH_PX}px`;
     panel.style.maxHeight = `calc(100vh - ${MINIMAP_PANEL_TOP_OFFSET_PX + 16}px)`;
     panel.style.display = "none";
@@ -1970,6 +2219,7 @@
 
     document.body.appendChild(panel);
     minimapPanel = panel;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return panel;
   }
@@ -2092,6 +2342,7 @@
     btn.style.opacity = "0.85";
     btn.style.background = "rgba(17,24,39,0.7)";
     btn.style.color = "#f9fafb";
+    btn.style.border = "1px solid rgba(148,163,184,0.45)";
     btn.style.transition = "opacity 0.15s, background 0.15s";
     setArticleActionIcon(btn, iconName);
     btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
@@ -2101,6 +2352,7 @@
 
   function applyCollapseState(article, virtualId) {
     const isCollapsed = state.collapsedMessages.has(virtualId);
+    const hoverTarget = getArticleHoverTarget(article);
     const contentArea = article.querySelector("[data-message-author-role]");
     const snippet = article.querySelector("[data-gpt-boost-snippet]");
     const overlay = article.querySelector("[data-gpt-boost-overlay]");
@@ -2116,9 +2368,14 @@
       setArticleActionIcon(collapseBtn, isCollapsed ? "expand" : "collapse");
       collapseBtn.setAttribute("aria-label", isCollapsed ? "Expand message" : "Collapse message");
     }
-    article.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
-    article.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
-    article.style.borderRadius = isCollapsed ? "10px" : "";
+    article.style.borderLeft = "";
+    article.style.background = "";
+    article.style.borderRadius = "";
+    if (hoverTarget instanceof HTMLElement) {
+      hoverTarget.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
+      hoverTarget.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
+      hoverTarget.style.borderRadius = isCollapsed ? "10px" : "";
+    }
   }
 
   function toggleCollapse(virtualId) {
@@ -2150,6 +2407,15 @@
     bookmarkBtn.setAttribute("aria-label", isBookmarked ? "Remove bookmark" : "Bookmark message");
   }
 
+  function getArticleHoverTarget(article) {
+    if (!(article instanceof HTMLElement)) return article;
+    const messageContainer =
+      article.querySelector("[data-message-author-role]") ||
+      article.querySelector(".markdown") ||
+      article;
+    return messageContainer instanceof HTMLElement ? messageContainer : article;
+  }
+
   function injectArticleUi(article, virtualId) {
     if (article.dataset.gptBoostUiInjected) return;
     article.dataset.gptBoostUiInjected = "1";
@@ -2162,6 +2428,13 @@
     }
     article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft;
     article.style.transition = "box-shadow 0.15s ease";
+    const hoverTarget = getArticleHoverTarget(article);
+    if (hoverTarget instanceof HTMLElement && getComputedStyle(hoverTarget).position === "static") {
+      hoverTarget.style.position = "relative";
+    }
+    if (hoverTarget instanceof HTMLElement && !hoverTarget.dataset.gptBoostOrigPaddingLeft) {
+      hoverTarget.dataset.gptBoostOrigPaddingLeft = hoverTarget.style.paddingLeft || "";
+    }
 
     const overlay = document.createElement("div");
     overlay.setAttribute("data-gpt-boost-overlay", "1");
@@ -2182,23 +2455,25 @@
     });
 
     overlay.appendChild(collapseBtn);
-    article.appendChild(overlay);
+    (hoverTarget instanceof HTMLElement ? hoverTarget : article).appendChild(overlay);
 
     const sideRail = document.createElement("div");
     sideRail.setAttribute("data-gpt-boost-side-rail", "1");
     sideRail.style.position = "absolute";
-    sideRail.style.left = `${MESSAGE_RAIL_OUTSIDE_LEFT_PX}px`;
-    sideRail.style.top = "50%";
-    sideRail.style.transform = "translateY(-50%)";
+    sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
+    sideRail.style.top = "8px";
+    sideRail.style.transform = "none";
     sideRail.style.display = "flex";
     sideRail.style.flexDirection = "column";
     sideRail.style.gap = "4px";
-    sideRail.style.zIndex = "101";
+    sideRail.style.zIndex = "103";
     sideRail.style.alignItems = "center";
     sideRail.style.padding = "2px";
     sideRail.style.borderRadius = "8px";
-    sideRail.style.background = "rgba(15,23,42,0.15)";
-    sideRail.style.opacity = "0.92";
+    sideRail.style.background = "rgba(15,23,42,0.35)";
+    sideRail.style.opacity = "0";
+    sideRail.style.pointerEvents = "none";
+    sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
     sideRail.style.transition = "background 0.15s ease, opacity 0.15s ease";
 
     const pinBtn = createArticleActionButton("pin", "Pin message to top");
@@ -2217,20 +2492,28 @@
 
     sideRail.appendChild(pinBtn);
     sideRail.appendChild(bookmarkBtn);
-    article.appendChild(sideRail);
+    (hoverTarget instanceof HTMLElement ? hoverTarget : article).appendChild(sideRail);
     updateArticleSideRailLayout(article, sideRail);
 
     article.addEventListener("mouseenter", () => {
       overlay.style.display = "flex";
-      article.style.boxShadow = ARTICLE_HOVER_HIGHLIGHT_SHADOW;
+      if (hoverTarget instanceof HTMLElement) {
+        hoverTarget.style.boxShadow = ARTICLE_HOVER_HIGHLIGHT_SHADOW;
+        hoverTarget.style.borderRadius = "10px";
+      }
       sideRail.style.background = "rgba(59,130,246,0.2)";
       sideRail.style.opacity = "1";
+      sideRail.style.pointerEvents = "auto";
     });
     article.addEventListener("mouseleave", () => {
       overlay.style.display = "none";
-      article.style.boxShadow = "";
-      sideRail.style.background = "rgba(15,23,42,0.15)";
-      sideRail.style.opacity = "0.92";
+      if (hoverTarget instanceof HTMLElement) {
+        hoverTarget.style.boxShadow = "";
+        hoverTarget.style.borderRadius = "";
+      }
+      sideRail.style.background = "rgba(15,23,42,0.35)";
+      sideRail.style.opacity = "0";
+      sideRail.style.pointerEvents = "none";
     });
 
     const snippet = document.createElement("div");
@@ -2241,9 +2524,13 @@
     snippet.style.overflow = "hidden";
     snippet.style.whiteSpace = "nowrap";
     snippet.style.textOverflow = "ellipsis";
-    snippet.style.padding = "4px 40px 4px 0";
+    snippet.style.padding = "6px 8px";
+    snippet.style.marginTop = "6px";
     snippet.style.maxWidth = "100%";
     snippet.style.boxSizing = "border-box";
+    snippet.style.border = "1px solid rgba(148,163,184,0.35)";
+    snippet.style.borderRadius = "8px";
+    snippet.style.background = "rgba(148,163,184,0.08)";
 
     const textSource = article.querySelector("[data-message-author-role]") || article;
     const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
@@ -2256,14 +2543,21 @@
 
   function updateArticleSideRailLayout(article, sideRail) {
     if (!(article instanceof HTMLElement) || !(sideRail instanceof HTMLElement)) return;
-    const rect = article.getBoundingClientRect();
-    const hasLeftGutter = rect.left >= MESSAGE_RAIL_LEFT_GUTTER_THRESHOLD_PX;
-    if (hasLeftGutter) {
+    const hoverTarget = getArticleHoverTarget(article);
+    const forceInside = true;
+    const hasLeftGutter = false;
+    sideRail.style.top = "8px";
+    sideRail.style.transform = "none";
+    if (!forceInside && hasLeftGutter) {
       sideRail.style.left = `${MESSAGE_RAIL_OUTSIDE_LEFT_PX}px`;
       article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft || "";
     } else {
       sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
-      article.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+      if (hoverTarget instanceof HTMLElement) {
+        hoverTarget.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+      } else {
+        article.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+      }
     }
   }
 
@@ -2424,6 +2718,7 @@
     listContainer.style.flexDirection = "column";
     listContainer.style.gap = "12px";
     listContainer.style.overflowY = "auto";
+    listContainer.style.overflowX = "hidden";
     listContainer.style.flex = "1";
     listContainer.style.minHeight = "0";
     listContainer.style.paddingRight = "4px"; // Scrollbar space
@@ -2440,8 +2735,7 @@
       pres.forEach((pre, i) => {
         const codeEl = pre.querySelector("code");
         const source = codeEl || pre;
-        // Use innerText to preserve formatting
-        const text = toUnixNewlines(source.innerText || source.textContent || "").trimEnd();
+        const text = extractCodeSnippetText(pre);
         if (!text) return;
         const lang = inferCodeLanguage(source);
         snippets.push({ text, messageId: id, lang, index: i });
@@ -2468,6 +2762,7 @@
       wrapper.style.background = theme.inputBg;
       wrapper.style.display = "flex";
       wrapper.style.flexDirection = "column";
+      wrapper.style.minWidth = "0";
 
       const header = document.createElement("div");
       header.style.display = "flex";
@@ -2524,14 +2819,26 @@
       header.appendChild(actions);
 
       const pre = document.createElement("pre");
+      pre.style.display = "block";
       pre.style.margin = "0";
       pre.style.padding = "10px";
       pre.style.fontSize = "11px";
+      pre.style.lineHeight = "1.45";
       pre.style.fontFamily = "Consolas, Monaco, 'Andale Mono', monospace";
+      pre.style.overflowY = "auto";
       pre.style.overflowX = "auto";
+      pre.style.maxHeight = `${SIDEBAR_SNIPPET_MAX_HEIGHT_PX}px`;
       pre.style.whiteSpace = "pre";
       pre.style.color = theme.text;
-      pre.textContent = text; // Display textContent is safe for display inside pre
+      pre.style.background = "transparent";
+
+      const code = document.createElement("code");
+      code.style.display = "block";
+      code.style.whiteSpace = "pre";
+      code.style.minWidth = "max-content";
+      code.style.color = "inherit";
+      code.textContent = text;
+      pre.appendChild(code);
 
       wrapper.appendChild(header);
       wrapper.appendChild(pre);
@@ -2539,6 +2846,22 @@
     });
 
     container.appendChild(listContainer);
+  }
+
+  function extractCodeSnippetText(pre) {
+    if (!(pre instanceof HTMLElement)) return "";
+
+    const codeEl = pre.querySelector("code");
+    let text = toUnixNewlines(codeEl ? codeEl.innerText || codeEl.textContent || "" : "");
+    if (!text) {
+      text = toUnixNewlines(pre.innerText || pre.textContent || "");
+    }
+
+    text = text
+      .replace(/^\n+/, "")
+      .replace(/\n+$/, "")
+      .replace(/\n{4,}/g, "\n\n\n");
+    return text.trim() ? text : "";
   }
 
   // ---------------------------------------------------------------------------
@@ -2686,7 +3009,7 @@
     button.style.position = "fixed";
     button.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX}px`;
     button.style.top = `${DOWNLOAD_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
+    button.style.zIndex = "10002";
     button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
 
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -2719,6 +3042,7 @@
 
     document.body.appendChild(button);
     downloadButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -2839,7 +3163,7 @@
     button.style.position = "fixed";
     button.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX}px`;
     button.style.top = `${BOOKMARKS_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "9999";
+    button.style.zIndex = "10002";
     button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
 
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -2864,6 +3188,7 @@
 
     document.body.appendChild(button);
     bookmarksButton = button;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return button;
   }
@@ -2877,7 +3202,7 @@
     panel.style.position = "fixed";
     panel.style.top = `${BOOKMARKS_PANEL_TOP_OFFSET_PX}px`;
     panel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "9999";
+    panel.style.zIndex = "10001";
     panel.style.width = `${BOOKMARKS_PANEL_WIDTH_PX}px`;
     panel.style.maxHeight = `calc(100vh - ${BOOKMARKS_PANEL_TOP_OFFSET_PX + 16}px)`;
     panel.style.display = "none";
@@ -2927,6 +3252,7 @@
 
     document.body.appendChild(panel);
     bookmarksPanel = panel;
+    applyFloatingUiOffsets();
     applyThemeToUi();
     return panel;
   }
@@ -2942,6 +3268,7 @@
       return;
     }
 
+    applyFloatingUiOffsets();
     updateSearchVisibility(totalMessages);
     updateMinimapVisibility(totalMessages);
     updateCodePanelVisibility(totalMessages);
@@ -3016,9 +3343,9 @@
   }
 
   function updateStats() {
-    const nodes = document.querySelectorAll(
-      `${config.ARTICLE_SELECTOR}, div[data-chatgpt-virtual-spacer="1"]`
-    );
+    const activeNodes = getActiveConversationNodes();
+    const spacers = document.querySelectorAll('div[data-chatgpt-virtual-spacer="1"]');
+    const nodes = [...activeNodes, ...spacers];
 
     let total = 0;
     let rendered = 0;
@@ -3028,7 +3355,7 @@
       if (!node.dataset.virtualId) return;
 
       total += 1;
-      if (node.tagName === "ARTICLE") rendered += 1;
+      if (!isVirtualSpacerNode(node)) rendered += 1;
     });
 
     state.stats.totalMessages = total;
@@ -3042,14 +3369,26 @@
       return;
     }
 
+    const activeConversationKey = getConversationStorageKey();
+    if (activeConversationKey !== currentConversationKey) {
+      log("Conversation key changed → rebooting virtualizer");
+      teardownVirtualizer();
+      bootVirtualizer();
+      return;
+    }
+
+    if (!state.scrollElement) {
+      attachOrUpdateScrollListener();
+    }
+
     ensureVirtualIds();
 
-    const nodes = document.querySelectorAll(
-      `${config.ARTICLE_SELECTOR}, div[data-chatgpt-virtual-spacer="1"]`
-    );
+    const activeNodes = getActiveConversationNodes();
+    const spacers = document.querySelectorAll('div[data-chatgpt-virtual-spacer="1"]');
+    const nodes = [...activeNodes, ...spacers];
     if (!nodes.length) {
       log("virtualize: no messages yet");
-      hideAllUiElements();
+      updateIndicator(0, 0);
       queueDeferredVirtualizationRetry();
       return;
     }
@@ -3073,10 +3412,10 @@
         relativeBottom < -config.MARGIN_PX ||
         relativeTop > viewport.height + config.MARGIN_PX;
 
-      if (node.tagName === "ARTICLE") {
-        if (isOutside) convertArticleToSpacer(node);
-      } else if (node.dataset.chatgptVirtualSpacer === "1") {
+      if (isVirtualSpacerNode(node)) {
         if (!isOutside) convertSpacerToArticle(node);
+      } else {
+        if (isOutside) convertArticleToSpacer(node);
       }
     });
 
@@ -3182,6 +3521,10 @@
     state.cleanupScrollListener = setupScrollTracking(container, () => {
       scheduleVirtualization();
     });
+    if (isSidebarOpen()) {
+      applySidebarLayoutOffset(SIDEBAR_PANEL_WIDTH_PX);
+      applyFloatingUiOffsets();
+    }
 
     log(
       "Scroll listener attached to:",
@@ -3218,8 +3561,8 @@
       attachOrUpdateScrollListener();
       scheduleVirtualization();
     }, config.MUTATION_DEBOUNCE_MS);
-
-    mutationObserver.observe(root, { childList: true, subtree: true });
+    const observeTarget = document.body || root;
+    mutationObserver.observe(observeTarget, { childList: true, subtree: true });
 
     state.lifecycleStatus = "OBSERVING";
     state.observer = mutationObserver;
@@ -3230,10 +3573,16 @@
     // Ensure we start tracking even if messages already exist
     attachOrUpdateScrollListener();
     scheduleVirtualization();
+    setTimeout(() => {
+      attachOrUpdateScrollListener();
+      scheduleVirtualization();
+    }, 250);
     loadPersistedFlagsForConversation().catch(() => {});
   }
 
   function teardownVirtualizer() {
+    applySidebarLayoutOffset(0);
+
     if (state.observer) state.observer.disconnect();
     if (state.cleanupScrollListener) state.cleanupScrollListener();
     if (deferredVirtualizationTimer !== null) {
@@ -3355,6 +3704,18 @@
       if (snippet) snippet.remove();
       if (el instanceof HTMLElement) {
         el.style.boxShadow = "";
+      const hoverTarget = getArticleHoverTarget(el);
+      if (hoverTarget instanceof HTMLElement) {
+        hoverTarget.style.boxShadow = "";
+        hoverTarget.style.borderRadius = "";
+        hoverTarget.style.outline = "";
+        hoverTarget.style.outlineOffset = "";
+        const hoverOriginalPaddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
+        hoverTarget.style.paddingLeft = hoverOriginalPaddingLeft;
+        delete hoverTarget.dataset.gptBoostOrigPaddingLeft;
+        const hoverOverlay = hoverTarget.querySelector("[data-gpt-boost-overlay]");
+        if (hoverOverlay) hoverOverlay.remove();
+      }
         const originalPaddingLeft = el.dataset.gptBoostOrigPaddingLeft || "";
         el.style.paddingLeft = originalPaddingLeft;
         delete el.dataset.gptBoostOrigPaddingLeft;

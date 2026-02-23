@@ -15,6 +15,9 @@
 - Install dependencies: `npm install` (or `npm ci` when lockfile is present and authoritative).
 - Build Firefox package locally: `npm run build:firefox`.
   - Produces a build directory and unsigned XPI under `dist/` using timestamped names.
+  - Stable overwrite mode (no new timestamped artifact names): `npm run build:firefox -- --stable`
+    or set `FIREFOX_BUILD_STABLE=1` for `npm run build:firefox`.
+  - Stable mode outputs `dist/firefox-build/` and `dist/gpt-boost-firefox-build.xpi`.
 - Sign Firefox package locally (AMO unlisted flow): `npm run sign:firefox`.
   - Requires `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` in environment or `.env`.
   - Signed artifacts are downloaded under `web-ext-artifacts/`.

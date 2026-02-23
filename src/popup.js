@@ -132,4 +132,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   updateStatsUI();
+  const statsIntervalId = setInterval(updateStatsUI, 1000);
+  window.addEventListener("beforeunload", () => clearInterval(statsIntervalId));
 });

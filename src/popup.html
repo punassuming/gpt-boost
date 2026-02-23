@@ -34,55 +34,51 @@
           </label>
         </div>
 
-        <details class="advanced-panel">
-          <summary>More controls</summary>
+        <div class="section-title advanced-section-title">PERFORMANCE STATS</div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Messages</div>
+            <div class="stat-value" id="statTotalMessages">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Rendered</div>
+            <div class="stat-value" id="statRenderedMessages">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Memory Saved</div>
+            <div class="stat-value" id="statMemorySaved">0%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Status</div>
+            <div class="stat-value status-active" id="statStatus">Active</div>
+          </div>
+        </div>
 
-          <div class="section-title advanced-section-title">PERFORMANCE STATS</div>
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-label">Total Messages</div>
-              <div class="stat-value" id="statTotalMessages">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Rendered</div>
-              <div class="stat-value" id="statRenderedMessages">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Memory Saved</div>
-              <div class="stat-value" id="statMemorySaved">0%</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Status</div>
-              <div class="stat-value status-active" id="statStatus">Active</div>
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Debug Mode</div>
+            <div class="setting-description">
+              Log virtualization activity to the DevTools console.
             </div>
           </div>
+          <label class="switch">
+            <input type="checkbox" id="toggleDebug" />
+            <span class="slider"></span>
+          </label>
+        </div>
 
-          <div class="setting-row">
-            <div class="setting-text">
-              <div class="setting-title">Debug Mode</div>
-              <div class="setting-description">
-                Log virtualization activity to the DevTools console.
-              </div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="toggleDebug" />
-              <span class="slider"></span>
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-text">
-              <div class="setting-title">Buffer Size</div>
-              <div class="setting-description">
-                Keep messages within this pixel range loaded around the viewport.
-              </div>
-            </div>
-            <div class="buffer-control">
-              <input type="number" id="bufferSize" step="250" value="2000" />
-              <span class="buffer-unit">px</span>
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Buffer Size</div>
+            <div class="setting-description">
+              Keep messages within this pixel range loaded around the viewport.
             </div>
           </div>
-        </details>
+          <div class="buffer-control">
+            <input type="number" id="bufferSize" step="250" value="2000" />
+            <span class="buffer-unit">px</span>
+          </div>
+        </div>
       </div>
 
       <div class="footer">
