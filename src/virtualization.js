@@ -1501,7 +1501,7 @@ import hljs from 'highlight.js/lib/common';
     const panel = ensureSidebarPanel();
     if (!panel) return;
     const requested = tabId || activeSidebarTab;
-    if (panel.style.display !== "none" && requested === activeSidebarTab) {
+    if (isSidebarOpen() && requested === activeSidebarTab) {
       hideSidebar();
       return;
     }
