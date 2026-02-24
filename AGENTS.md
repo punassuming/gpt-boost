@@ -16,6 +16,7 @@
   - `src/ui/features/bookmarks/bookmarksFeature.js` contains sidebar marks/bookmarks behavior.
   - `src/ui/features/outline/outlineFeature.js` contains outline-tab rendering and collapse controls.
   - `src/ui/features/download/downloadFeature.js` contains markdown-download button lifecycle behavior.
+  - `src/ui/features/tokenGauge/tokenGaugeFeature.js` contains token pressure gauge lifecycle behavior.
   - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`).
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/ui/features/snippets/markdownExport.js` contains markdown export conversion logic.

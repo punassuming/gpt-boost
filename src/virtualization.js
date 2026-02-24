@@ -11,6 +11,7 @@ import { createBookmarksFeature } from './ui/features/bookmarks/bookmarksFeature
 import { createOutlineFeature } from './ui/features/outline/outlineFeature.js';
 import { createMarkdownExportFeature } from './ui/features/snippets/markdownExport.js';
 import { createDownloadFeature } from './ui/features/download/downloadFeature.js';
+import { createTokenGaugeFeature } from './ui/features/tokenGauge/tokenGaugeFeature.js';
 import { createSearchFeature } from './ui/features/search/searchFeature.js';
 import { createMinimapFeature } from './ui/features/minimap/minimapFeature.js';
 import { createMapFeature } from './ui/features/map/mapFeature.js';
@@ -246,6 +247,13 @@ import {
       set: (value) => { downloadButton = value; }
     }
   });
+  const tokenGaugeRefs = {};
+  Object.defineProperties(tokenGaugeRefs, {
+    tokenGaugeElement: {
+      get: () => tokenGaugeElement,
+      set: (value) => { tokenGaugeElement = value; }
+    }
+  });
 
   const searchFeature = createSearchFeature({
     refs: searchRefs,
@@ -427,6 +435,15 @@ import {
       applyFloatingUiOffsets,
       applyThemeToUi,
       downloadMarkdown
+    }
+  });
+  const tokenGaugeFeature = createTokenGaugeFeature({
+    refs: tokenGaugeRefs,
+    state,
+    constants: {
+      tokenGaugeMaxTokens: TOKEN_GAUGE_MAX_TOKENS,
+      tokenGaugeYellowRatio: TOKEN_GAUGE_YELLOW_RATIO,
+      tokenGaugeRedRatio: TOKEN_GAUGE_RED_RATIO
     }
   });
 
@@ -1401,65 +1418,11 @@ import {
   // ---------------------------------------------------------------------------
 
   function ensureTokenGaugeElement() {
-    if (tokenGaugeElement && tokenGaugeElement.isConnected) return tokenGaugeElement;
-    const el = document.createElement("div");
-    el.setAttribute("data-chatgpt-token-gauge", "1");
-    el.style.position = "fixed";
-    el.style.top = "0";
-    el.style.left = "0";
-    el.style.right = "0";
-    el.style.height = "3px";
-    el.style.zIndex = "10001";
-    el.style.pointerEvents = "none";
-    el.style.background = "transparent";
-    el.style.transition = "background 0.8s ease";
-    el.setAttribute("aria-hidden", "true");
-    document.body.appendChild(el);
-    tokenGaugeElement = el;
-    return el;
+    return tokenGaugeFeature.ensureTokenGaugeElement();
   }
 
   function updateTokenGauge() {
-    if (!state.enabled) {
-      if (tokenGaugeElement) tokenGaugeElement.style.background = "transparent";
-      return;
-    }
-
-    const totalChars = Array.from(state.articleMap.values())
-      .reduce((sum, node) => sum + (node.textContent || "").length, 0);
-    // Rough approximation: 1 token ≈ 4 characters (OpenAI rule of thumb)
-    const estimatedTokens = totalChars / 4;
-    const ratio = Math.min(1, estimatedTokens / TOKEN_GAUGE_MAX_TOKENS);
-
-    const el = ensureTokenGaugeElement();
-
-    if (ratio < 0.01) {
-      el.style.background = "transparent";
-      el.removeAttribute("title");
-      return;
-    }
-
-    let r, g, b;
-    if (ratio <= TOKEN_GAUGE_YELLOW_RATIO) {
-      const t = ratio / TOKEN_GAUGE_YELLOW_RATIO;
-      r = Math.round(t * 210);
-      g = 180;
-      b = 0;
-    } else if (ratio <= TOKEN_GAUGE_RED_RATIO) {
-      const t = (ratio - TOKEN_GAUGE_YELLOW_RATIO) / (TOKEN_GAUGE_RED_RATIO - TOKEN_GAUGE_YELLOW_RATIO);
-      r = 210;
-      g = Math.round(180 * (1 - t));
-      b = 0;
-    } else {
-      r = 210;
-      g = 0;
-      b = 0;
-    }
-
-    const alpha = 0.35 + ratio * 0.5;
-    const pct = Math.round(ratio * 100);
-    el.style.background = `linear-gradient(to right, rgba(${r},${g},${b},${alpha}) 0%, rgba(${r},${g},${b},${alpha}) ${pct}%, transparent ${pct}%)`;
-    el.title = `~${Math.round(estimatedTokens).toLocaleString()} estimated tokens`;
+    tokenGaugeFeature.updateTokenGauge();
   }
 
   // ---------------------------------------------------------------------------

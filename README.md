@@ -120,6 +120,7 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/bookmarks/        # Sidebar-only marks/bookmarks feature
 ├── src/ui/features/outline/          # Outline tab render + collapse controls
 ├── src/ui/features/download/         # Markdown download button lifecycle
+├── src/ui/features/tokenGauge/       # Token pressure gauge lifecycle
 ├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
 ├── src/ui/features/snippets/         # Snippet extraction + markdown export
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
