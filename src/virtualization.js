@@ -6,6 +6,7 @@ import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
 import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
 import { renderSidebarSettingsTab } from './ui/features/sidebar/settingsTab.js';
 import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
+import { createSidebarShellFeature } from './ui/features/sidebar/shellFeature.js';
 import { toUnixNewlines, inferCodeLanguage } from './ui/features/snippets/codeSnippets.js';
 import { createSearchFeature } from './ui/features/search/searchFeature.js';
 import { createMinimapFeature } from './ui/features/minimap/minimapFeature.js';
@@ -210,6 +211,33 @@ import {
       set: (value) => { activeMapVirtualId = value; }
     }
   });
+  const sidebarRefs = {};
+  Object.defineProperties(sidebarRefs, {
+    sidebarToggleButton: {
+      get: () => sidebarToggleButton,
+      set: (value) => { sidebarToggleButton = value; }
+    },
+    sidebarPanel: {
+      get: () => sidebarPanel,
+      set: (value) => { sidebarPanel = value; }
+    },
+    sidebarContentContainer: {
+      get: () => sidebarContentContainer,
+      set: (value) => { sidebarContentContainer = value; }
+    },
+    activeSidebarTab: {
+      get: () => activeSidebarTab,
+      set: (value) => { activeSidebarTab = value; }
+    },
+    hotkeyListenerBound: {
+      get: () => hotkeyListenerBound,
+      set: (value) => { hotkeyListenerBound = value; }
+    },
+    currentSidebarWidthPx: {
+      get: () => currentSidebarWidthPx,
+      set: (value) => { currentSidebarWidthPx = value; }
+    }
+  });
 
   const searchFeature = createSearchFeature({
     refs: searchRefs,
@@ -300,6 +328,40 @@ import {
       scrollToVirtualId,
       applyFloatingUiOffsets,
       applyThemeToUi
+    }
+  });
+
+  const sidebarShellFeature = createSidebarShellFeature({
+    refs: sidebarRefs,
+    constants: {
+      sidebarToggleRightOffsetPx: SIDEBAR_TOGGLE_RIGHT_OFFSET_PX,
+      sidebarToggleTopOffsetPx: SIDEBAR_TOGGLE_TOP_OFFSET_PX,
+      sidebarToggleSizePx: SIDEBAR_TOGGLE_SIZE_PX,
+      sidebarTransitionMs: SIDEBAR_TRANSITION_MS,
+      minSidebarWidthPx: 200,
+      minViewportGapPx: 100
+    },
+    deps: {
+      getThemeTokens,
+      styleSearchButton,
+      applyFloatingUiOffsets,
+      applySidebarLayoutOffset,
+      refreshArticleSideRailLayout,
+      clearSearchHighlight,
+      hideSearchPanel,
+      applyThemeToUi,
+      hotkeyMatchesKeyboardEvent,
+      getSidebarHotkey: () => uiSettings.sidebarHotkey,
+      renderSidebarTabContent: (tabId, container) => {
+        if (tabId === "search") renderSearchTabContent(container);
+        else if (tabId === "bookmarks") renderBookmarksTabContent(container);
+        else if (tabId === "map") renderMapTabContent(container);
+        else if (tabId === "outline") renderOutlineTabContent(container);
+        else if (tabId === "snippets") renderSnippetsTabContent(container);
+        else renderSettingsTabContent(container);
+      },
+      onMapTabActivated: () => updateMapViewportState(true),
+      isEnabled: () => state.enabled
     }
   });
 
@@ -1091,26 +1153,7 @@ import {
   }
 
   function createSidebarTabButton(tabId, label, icon) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = `${icon} ${label}`;
-    btn.style.border = "none";
-    btn.style.borderRadius = "8px";
-    btn.style.padding = "6px 8px";
-    btn.style.fontSize = "11px";
-    btn.style.cursor = "pointer";
-    btn.style.fontFamily = "inherit";
-    btn.style.background = "transparent";
-    btn.style.color = "inherit";
-    btn.dataset.gptBoostSidebarTab = tabId;
-    btn.addEventListener("click", () => {
-      if (isSidebarOpen()) {
-        renderSidebarTab(tabId);
-      } else {
-        openSidebar(tabId);
-      }
-    });
-    return btn;
+    return sidebarShellFeature.createSidebarTabButton(tabId, label, icon);
   }
 
   function renderSearchTabContent(container) {
@@ -1324,290 +1367,35 @@ import {
   }
 
   function renderSidebarTab(tabId) {
-    if (!sidebarContentContainer) return;
-    activeSidebarTab = tabId;
-    sidebarContentContainer.innerHTML = "";
-
-    const tabs = sidebarPanel ? sidebarPanel.querySelectorAll("[data-gpt-boost-sidebar-tab]") : [];
-    tabs.forEach((tab) => {
-      if (!(tab instanceof HTMLElement)) return;
-      const isActive = tab.dataset.gptBoostSidebarTab === tabId;
-      tab.style.opacity = isActive ? "1" : "0.72";
-      tab.style.background = "transparent";
-      tab.style.borderRadius = "0";
-      tab.style.padding = "4px 0";
-      tab.style.borderBottom = isActive ? `2px solid ${getThemeTokens().text}` : "2px solid transparent";
-    });
-
-    if (tabId === "search") renderSearchTabContent(sidebarContentContainer);
-    else if (tabId === "bookmarks") renderBookmarksTabContent(sidebarContentContainer);
-    else if (tabId === "map") renderMapTabContent(sidebarContentContainer);
-    else if (tabId === "outline") renderOutlineTabContent(sidebarContentContainer);
-    else if (tabId === "snippets") renderSnippetsTabContent(sidebarContentContainer);
-    else renderSettingsTabContent(sidebarContentContainer);
-
-    if (tabId === "map") {
-      updateMapViewportState(true);
-    }
+    sidebarShellFeature.renderSidebarTab(tabId);
   }
 
   function hideSidebar() {
-    if (sidebarPanel) {
-      sidebarPanel.setAttribute("data-open", "false");
-      sidebarPanel.style.transform = "translateX(100%)";
-    }
-    applySidebarLayoutOffset(0);
-    applyFloatingUiOffsets();
-    refreshArticleSideRailLayout();
-    clearSearchHighlight();
+    sidebarShellFeature.hideSidebar();
   }
 
   function openSidebar(tabId) {
-    const panel = ensureSidebarPanel();
-    if (!panel) return;
-    const wasOpen = panel.getAttribute("data-open") === "true";
-    hideSearchPanel();
-    if (!wasOpen) {
-      applySidebarLayoutOffset(currentSidebarWidthPx);
-    }
-    panel.setAttribute("data-open", "true");
-    panel.style.transform = "translateX(0px)";
-    applyFloatingUiOffsets();
-    if (!wasOpen) refreshArticleSideRailLayout();
-    renderSidebarTab(tabId || activeSidebarTab);
-    applyThemeToUi();
+    sidebarShellFeature.openSidebar(tabId);
   }
 
   function toggleSidebar(tabId) {
-    const panel = ensureSidebarPanel();
-    if (!panel) return;
-    const requested = tabId || activeSidebarTab;
-    if (isSidebarOpen() && requested === activeSidebarTab) {
-      hideSidebar();
-      return;
-    }
-    openSidebar(requested);
+    sidebarShellFeature.toggleSidebar(tabId);
   }
 
   function bindSidebarHotkey() {
-    if (hotkeyListenerBound) return;
-    window.addEventListener("keydown", (event) => {
-      if (!state.enabled) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return;
-      }
-      if (!hotkeyMatchesKeyboardEvent(uiSettings.sidebarHotkey, event)) return;
-      event.preventDefault();
-      toggleSidebar(activeSidebarTab || "search");
-    });
-    hotkeyListenerBound = true;
+    sidebarShellFeature.bindSidebarHotkey();
   }
 
   function ensureSidebarToggleButton() {
-    if (sidebarToggleButton && sidebarToggleButton.isConnected) return sidebarToggleButton;
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("aria-label", "Open tools sidebar");
-    button.style.position = "fixed";
-    button.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${SIDEBAR_TOGGLE_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "10002";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-    styleSearchButton(button, SIDEBAR_TOGGLE_SIZE_PX);
-    button.style.display = "none";
-    button.textContent = "☰";
-    button.addEventListener("click", () => toggleSidebar(activeSidebarTab));
-
-    document.body.appendChild(button);
-    sidebarToggleButton = button;
-    applyFloatingUiOffsets();
-    return button;
+    return sidebarShellFeature.ensureSidebarToggleButton();
   }
 
   function ensureSidebarPanel() {
-    if (sidebarPanel && sidebarPanel.isConnected) return sidebarPanel;
-    if (!document.body) return null;
-    const theme = getThemeTokens();
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-gpt-boost-sidebar", "panel");
-    panel.setAttribute("data-open", "false");
-    panel.style.position = "fixed";
-    panel.style.top = "0";
-    panel.style.right = "0";
-    panel.style.bottom = "0";
-    panel.style.zIndex = "10000";
-    panel.style.width = `${currentSidebarWidthPx}px`;
-    panel.style.display = "flex";
-    panel.style.transform = "translateX(100%)";
-    panel.style.transition = `transform ${SIDEBAR_TRANSITION_MS}ms ease`;
-    panel.style.flexDirection = "column";
-    panel.style.gap = "0";
-    panel.style.padding = "12px";
-    panel.style.background = theme.panelBg;
-    panel.style.boxShadow = "none";
-    panel.style.borderLeft = `1px solid ${theme.panelBorder}`;
-    panel.style.color = theme.text;
-    panel.style.backdropFilter = "";
-    panel.style.boxSizing = "border-box";
-    panel.style.overflow = "hidden";
-
-    const resizer = document.createElement("div");
-    resizer.style.position = "absolute";
-    resizer.style.left = "0";
-    resizer.style.top = "0";
-    resizer.style.bottom = "0";
-    resizer.style.width = "4px";
-    resizer.style.cursor = "ew-resize";
-    resizer.style.zIndex = "10";
-    resizer.style.background = "transparent";
-
-    let isResizing = false;
-    resizer.addEventListener("mousedown", (e) => {
-      isResizing = true;
-      document.body.style.userSelect = "none";
-    });
-
-    window.addEventListener("mousemove", (e) => {
-      if (!isResizing) return;
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth > 200 && newWidth < window.innerWidth - 100) {
-        currentSidebarWidthPx = newWidth;
-        panel.style.width = `${currentSidebarWidthPx}px`;
-        if (isSidebarOpen()) {
-          applySidebarLayoutOffset(currentSidebarWidthPx, 0);
-          applyFloatingUiOffsets();
-        }
-      }
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (isResizing) {
-        isResizing = false;
-        document.body.style.userSelect = "";
-      }
-    });
-
-    panel.appendChild(resizer);
-
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.flexDirection = "column";
-    header.style.gap = "6px";
-    header.style.marginBottom = "16px";
-
-    const headingRow = document.createElement("div");
-    headingRow.style.display = "flex";
-    headingRow.style.alignItems = "center";
-    headingRow.style.justifyContent = "space-between";
-    headingRow.style.gap = "10px";
-
-    const headingCopy = document.createElement("div");
-    headingCopy.style.display = "flex";
-    headingCopy.style.flexDirection = "column";
-    headingCopy.style.gap = "1px";
-
-    const title = document.createElement("div");
-    title.textContent = "GPT Boost";
-    title.style.fontSize = "14px";
-    title.style.fontWeight = "600";
-    title.style.letterSpacing = "0.02em";
-    title.style.opacity = "0.95";
-
-    const tag = document.createElement("div");
-    tag.textContent = "Productivity / Speed / Virtualization";
-    tag.style.fontSize = "10px";
-    tag.style.opacity = "0.72";
-
-    const headerActions = document.createElement("div");
-    headerActions.style.display = "flex";
-    headerActions.style.alignItems = "center";
-    headerActions.style.gap = "6px";
-
-    const settingsBtn = document.createElement("button");
-    settingsBtn.type = "button";
-    settingsBtn.textContent = "⚙";
-    settingsBtn.setAttribute("aria-label", "Open sidebar settings");
-    styleSearchButton(settingsBtn, 24);
-    settingsBtn.style.display = "flex";
-    settingsBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    settingsBtn.addEventListener("click", () => {
-      if (isSidebarOpen()) {
-        renderSidebarTab("settings");
-      } else {
-        openSidebar("settings");
-      }
-    });
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.textContent = "×";
-    closeBtn.setAttribute("aria-label", "Close sidebar");
-    styleSearchButton(closeBtn, 24);
-    closeBtn.style.display = "flex";
-    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    closeBtn.addEventListener("click", hideSidebar);
-
-    headerActions.appendChild(settingsBtn);
-    headerActions.appendChild(closeBtn);
-    headingCopy.appendChild(title);
-    headingCopy.appendChild(tag);
-    headingRow.appendChild(headingCopy);
-    headingRow.appendChild(headerActions);
-
-    const subtitle = document.createElement("div");
-    subtitle.textContent = "Intelligent message virtualization that keeps long chats fast and focused.";
-    subtitle.style.fontSize = "11px";
-    subtitle.style.lineHeight = "1.35";
-    subtitle.style.opacity = "0.76";
-
-    header.appendChild(headingRow);
-    header.appendChild(subtitle);
-
-    const tabs = document.createElement("div");
-    tabs.style.display = "flex";
-    tabs.style.gap = "8px";
-    tabs.style.marginBottom = "12px";
-    tabs.style.paddingBottom = "6px";
-    tabs.style.borderBottom = `1px solid ${theme.panelBorder}`;
-
-    tabs.appendChild(createSidebarTabButton("search", "Search", "🔎"));
-    tabs.appendChild(createSidebarTabButton("bookmarks", "Marks", "🔖"));
-    tabs.appendChild(createSidebarTabButton("snippets", "Code", "⌨"));
-    tabs.appendChild(createSidebarTabButton("outline", "Outline", "🧭"));
-    tabs.appendChild(createSidebarTabButton("settings", "Settings", "⚙"));
-
-    const content = document.createElement("div");
-    content.style.display = "flex";
-    content.style.flexDirection = "column";
-    content.style.gap = "8px";
-    content.style.flex = "1";
-    content.style.minHeight = "0";
-    content.style.overflow = "hidden";
-
-    panel.appendChild(header);
-    panel.appendChild(tabs);
-    panel.appendChild(content);
-    document.body.appendChild(panel);
-    sidebarPanel = panel;
-    sidebarContentContainer = content;
-    applyFloatingUiOffsets();
-    return panel;
+    return sidebarShellFeature.ensureSidebarPanel();
   }
 
   function updateSidebarVisibility(totalMessages) {
-    const shouldShow = state.enabled;
-    const button = ensureSidebarToggleButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) hideSidebar();
+    sidebarShellFeature.updateSidebarVisibility(totalMessages);
   }
 
   function ensureSearchButton() {

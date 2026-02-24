@@ -13,7 +13,7 @@
   - `src/ui/features/search/` contains search behavior (`searchFeature.js`) and match-highlighting utilities (`searchHighlighting.js`).
   - `src/ui/features/minimap/` contains minimap rendering/interaction (`minimapFeature.js`) and geometry math helpers (`minimapMath.js`).
   - `src/ui/features/map/mapFeature.js` contains sidebar map-tab rendering/state logic.
-  - `src/ui/features/sidebar/` contains tab-specific sidebar renderers (`settingsTab.js`, `snippetsTab.js`).
+  - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`).
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/adapters/chromeApi.ts` contains extension API wrappers/fallback behavior.
   - `src/background.js` is the service worker.

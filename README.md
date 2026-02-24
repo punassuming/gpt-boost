@@ -117,7 +117,7 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/search/           # Search feature + highlighting helpers
 ├── src/ui/features/minimap/          # Minimap UI + geometry helpers
 ├── src/ui/features/map/              # Sidebar map tab feature
-├── src/ui/features/sidebar/          # Sidebar settings/snippets tab renderers
+├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
 ├── src/ui/features/snippets/         # Snippet extraction/normalization
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
 ├── src/background.js                 # Service worker
