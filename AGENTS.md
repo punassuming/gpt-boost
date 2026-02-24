@@ -15,6 +15,7 @@
   - `src/ui/features/map/mapFeature.js` contains sidebar map-tab rendering/state logic.
   - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`).
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
+  - `src/ui/features/snippets/markdownExport.js` contains markdown export conversion logic.
   - `src/adapters/chromeApi.ts` contains extension API wrappers/fallback behavior.
   - `src/background.js` is the service worker.
   - `src/popup.html`, `src/popup.css`, `src/popup.js` implement popup/options UI (shared with `options_ui`).

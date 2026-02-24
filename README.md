@@ -118,7 +118,7 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/minimap/          # Minimap UI + geometry helpers
 ├── src/ui/features/map/              # Sidebar map tab feature
 ├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
-├── src/ui/features/snippets/         # Snippet extraction/normalization
+├── src/ui/features/snippets/         # Snippet extraction + markdown export
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
 ├── src/background.js                 # Service worker
 └── src/adapters/chromeApi.ts         # Extension API wrappers/fallbacks
