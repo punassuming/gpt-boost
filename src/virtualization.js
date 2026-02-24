@@ -2,6 +2,10 @@ import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessag
 import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey, loadFlagsStore, loadKnownConversationsStore, summarizeConversationCaches } from './core/storage.js';
 import { createVirtualizerStore } from './core/virtualizer/store.ts';
 import { setupScrollTracking, createDebouncedObserver } from './core/virtualizer/observer.ts';
+import { createFeatureRegistry } from './core/runtime/featureRegistry.ts';
+import { createServiceContainer } from './core/services/container.ts';
+import { createVirtualizationEngine } from './core/runtime/virtualizationEngine.ts';
+import { createLifecycleManager } from './core/runtime/lifecycleManager.ts';
 import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
 import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
 import { renderSidebarSettingsTab } from './ui/features/sidebar/settingsTab.js';
@@ -9,6 +13,7 @@ import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
 import { createSidebarShellFeature } from './ui/features/sidebar/shellFeature.js';
 import { createBookmarksFeature } from './ui/features/bookmarks/bookmarksFeature.js';
 import { createOutlineFeature } from './ui/features/outline/outlineFeature.js';
+import { createArticleActionsFeature } from './ui/features/articleActions/articleActionsFeature.js';
 import { createMarkdownExportFeature } from './ui/features/snippets/markdownExport.js';
 import { createDownloadFeature } from './ui/features/download/downloadFeature.js';
 import { createTokenGaugeFeature } from './ui/features/tokenGauge/tokenGaugeFeature.js';
@@ -62,7 +67,6 @@ import {
   let searchCloseButton = null;
   let searchDebounceTimer = null;
   let highlightedSearchElement = null;
-  let themeObserver = null;
   let sidebarToggleButton = null;
   let sidebarPanel = null;
   let sidebarContentContainer = null;
@@ -254,6 +258,39 @@ import {
       set: (value) => { tokenGaugeElement = value; }
     }
   });
+  const runtimeRefs = {};
+  Object.defineProperties(runtimeRefs, {
+    activeSidebarTab: { get: () => activeSidebarTab },
+    sidebarPanel: { get: () => sidebarPanel },
+    sidebarContentContainer: { get: () => sidebarContentContainer },
+    searchPanel: { get: () => searchPanel },
+    minimapPanel: { get: () => minimapPanel },
+    indicatorElement: { get: () => indicatorElement }
+  });
+
+  const serviceContainer = createServiceContainer();
+  const featureRegistry = createFeatureRegistry();
+
+  function getRuntimeContext() {
+    return {
+      state,
+      config,
+      services: serviceContainer,
+      refs: runtimeRefs
+    };
+  }
+
+  function dispatchSidebarTabContent(tabId, container) {
+    return featureRegistry.dispatchSidebarTabRender(tabId, container, getRuntimeContext());
+  }
+
+  function dispatchVisibilityUpdate(totalMessages, renderedMessages) {
+    featureRegistry.dispatchVisibilityUpdate(
+      totalMessages,
+      renderedMessages,
+      getRuntimeContext()
+    );
+  }
 
   const searchFeature = createSearchFeature({
     refs: searchRefs,
@@ -369,12 +406,9 @@ import {
       hotkeyMatchesKeyboardEvent,
       getSidebarHotkey: () => uiSettings.sidebarHotkey,
       renderSidebarTabContent: (tabId, container) => {
-        if (tabId === "search") renderSearchTabContent(container);
-        else if (tabId === "bookmarks") renderBookmarksTabContent(container);
-        else if (tabId === "map") renderMapTabContent(container);
-        else if (tabId === "outline") renderOutlineTabContent(container);
-        else if (tabId === "snippets") renderSnippetsTabContent(container);
-        else renderSettingsTabContent(container);
+        if (!dispatchSidebarTabContent(tabId, container)) {
+          renderSettingsTabContent(container);
+        }
       },
       onMapTabActivated: () => updateMapViewportState(true),
       isEnabled: () => state.enabled
@@ -444,6 +478,210 @@ import {
       tokenGaugeMaxTokens: TOKEN_GAUGE_MAX_TOKENS,
       tokenGaugeYellowRatio: TOKEN_GAUGE_YELLOW_RATIO,
       tokenGaugeRedRatio: TOKEN_GAUGE_RED_RATIO
+    }
+  });
+  const articleActionsFeature = createArticleActionsFeature({
+    state,
+    constants: {
+      articleSnippetLength: ARTICLE_SNIPPET_LENGTH,
+      articleHoverHighlightShadow: ARTICLE_HOVER_HIGHLIGHT_SHADOW,
+      messageRailInsideLeftPx: MESSAGE_RAIL_INSIDE_LEFT_PX,
+      messageRailInsidePaddingPx: MESSAGE_RAIL_INSIDE_PADDING_PX
+    },
+    deps: {
+      togglePin,
+      toggleBookmark,
+      refreshSidebarTab
+    }
+  });
+
+  function registerRuntimeServices() {
+    serviceContainer.register("theme", {
+      getMode: getThemeMode,
+      getTokens: getThemeTokens
+    });
+    serviceContainer.register("sidebar", {
+      isOpen: isSidebarOpen,
+      open: openSidebar,
+      close: hideSidebar,
+      toggle: toggleSidebar,
+      getActiveTab: () => activeSidebarTab,
+      renderTab: renderSidebarTab
+    });
+    serviceContainer.register("viewport", {
+      getMetrics: getViewportMetrics,
+      getScrollTarget,
+      getMaxScrollTop,
+      scrollToVirtualId
+    });
+    serviceContainer.register("layout", {
+      applyFloatingUiOffsets,
+      applySidebarLayoutOffset,
+      applyConversationLayoutSettings
+    });
+    serviceContainer.register("settings", {
+      get: () => uiSettings,
+      apply: applyUiSettings
+    });
+  }
+
+  function registerRuntimeFeatures() {
+    featureRegistry.register({
+      id: "sidebar-tab-search",
+      priority: 10,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "search") return false;
+        renderSearchTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "sidebar-tab-bookmarks",
+      priority: 20,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "bookmarks") return false;
+        renderBookmarksTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "sidebar-tab-map",
+      priority: 30,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "map") return false;
+        renderMapTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "sidebar-tab-outline",
+      priority: 40,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "outline") return false;
+        renderOutlineTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "sidebar-tab-snippets",
+      priority: 50,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "snippets") return false;
+        renderSnippetsTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "sidebar-tab-settings",
+      priority: 60,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "settings") return false;
+        renderSettingsTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "visibility-search",
+      priority: 70,
+      onVisibilityUpdate: (totalMessages) => {
+        updateSearchVisibility(totalMessages);
+      }
+    });
+    featureRegistry.register({
+      id: "visibility-minimap",
+      priority: 80,
+      onVisibilityUpdate: (totalMessages) => {
+        updateMinimapVisibility(totalMessages);
+      }
+    });
+    featureRegistry.register({
+      id: "visibility-code-panel-legacy",
+      priority: 90,
+      onVisibilityUpdate: (totalMessages) => {
+        updateCodePanelVisibility(totalMessages);
+      }
+    });
+    featureRegistry.register({
+      id: "visibility-download",
+      priority: 100,
+      onVisibilityUpdate: (totalMessages) => {
+        updateDownloadVisibility(totalMessages);
+      }
+    });
+    featureRegistry.register({
+      id: "visibility-bookmarks",
+      priority: 110,
+      onVisibilityUpdate: (totalMessages) => {
+        updateBookmarksVisibility(totalMessages);
+      }
+    });
+    featureRegistry.register({
+      id: "visibility-token-gauge",
+      priority: 120,
+      onVisibilityUpdate: () => {
+        updateTokenGauge();
+      }
+    });
+    featureRegistry.dispatchInit(getRuntimeContext());
+  }
+
+  registerRuntimeServices();
+  registerRuntimeFeatures();
+  const virtualizationEngine = createVirtualizationEngine({
+    state,
+    config,
+    deps: {
+      log,
+      attachOrUpdateScrollListener,
+      ensureVirtualIds,
+      getActiveConversationNodes,
+      getViewportMetrics,
+      isVirtualSpacerNode,
+      queueDeferredVirtualizationRetry,
+      updateIndicator,
+      hideAllUiElements,
+      updateMapViewportState,
+      updateStandaloneMinimapViewportState,
+      refreshSidebarTab,
+      populateMinimapPanel,
+      getMinimapPanel: () => minimapPanel,
+      dispatchStatsUpdated: () => featureRegistry.dispatchStatsUpdated(getRuntimeContext()),
+      dispatchVirtualizeTick: () => featureRegistry.dispatchVirtualizeTick(getRuntimeContext())
+    }
+  });
+  const lifecycleManager = createLifecycleManager({
+    state,
+    config,
+    deps: {
+      log,
+      hasAnyMessages,
+      findScrollContainer,
+      setupScrollTracking,
+      scheduleVirtualization,
+      updateMapViewportState,
+      updateStandaloneMinimapViewportState,
+      isSidebarOpen,
+      getCurrentSidebarWidthPx: () => currentSidebarWidthPx,
+      applySidebarLayoutOffset,
+      applyFloatingUiOffsets,
+      refreshArticleSideRailLayout,
+      applyThemeToUi,
+      bindSidebarHotkey,
+      applyRoleColorSettings,
+      applyConversationLayoutSettings,
+      findConversationRoot,
+      createDebouncedObserver,
+      setCurrentConversationKey,
+      getConversationStorageKey,
+      loadPersistedFlagsForConversation,
+      syncFlagsFromPersistedKeys,
+      dispatchBoot: () => featureRegistry.dispatchBoot(getRuntimeContext()),
+      dispatchTeardown: () => featureRegistry.dispatchTeardown(getRuntimeContext()),
+      virtualizeNow,
+      clearDeferredVirtualizationTimer,
+      cleanupUiState: teardownUiState,
+      getActiveSidebarTab: () => activeSidebarTab,
+      openSidebar
     }
   });
 
@@ -714,6 +952,12 @@ import {
     if (scheduleDeferredVirtualization()) {
       state.emptyVirtualizationRetryCount += 1;
     }
+  }
+
+  function clearDeferredVirtualizationTimer() {
+    if (deferredVirtualizationTimer === null) return;
+    clearTimeout(deferredVirtualizationTimer);
+    deferredVirtualizationTimer = null;
   }
 
   function getScrollTarget() {
@@ -1008,6 +1252,7 @@ import {
       pinnedBarElement.style.borderBottom = `1px solid ${theme.panelBorder}`;
       pinnedBarElement.style.boxShadow = theme.panelShadow;
     }
+    featureRegistry.dispatchThemeChanged(getRuntimeContext());
   }
 
   function escapeSelectorValue(value) {
@@ -1430,352 +1675,51 @@ import {
   // ---------------------------------------------------------------------------
 
   function setArticleActionIcon(btn, iconName) {
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    svg.style.width = "13px";
-    svg.style.height = "13px";
-    svg.style.fill = "none";
-    svg.style.stroke = "currentColor";
-    svg.style.strokeWidth = "2";
-    svg.style.strokeLinecap = "round";
-    svg.style.strokeLinejoin = "round";
-
-    const path = document.createElementNS(ns, "path");
-    if (iconName === "collapse") {
-      path.setAttribute("d", "M6 9l6 6 6-6");
-    } else if (iconName === "expand") {
-      path.setAttribute("d", "M6 15l6-6 6 6");
-    } else if (iconName === "pin") {
-      path.setAttribute("d", "M12 17v5M8 3l8 8M6 5l5 5-6 4 4-6 5 5");
-    } else if (iconName === "bookmark") {
-      path.setAttribute("d", "M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z");
-    }
-    svg.appendChild(path);
-    btn.replaceChildren(svg);
+    articleActionsFeature.setArticleActionIcon(btn, iconName);
   }
 
   function createArticleActionButton(iconName, label) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.setAttribute("aria-label", label);
-    btn.style.width = "24px";
-    btn.style.height = "24px";
-    btn.style.borderRadius = "6px";
-    btn.style.border = "none";
-    btn.style.cursor = "pointer";
-    btn.style.display = "flex";
-    btn.style.alignItems = "center";
-    btn.style.justifyContent = "center";
-    btn.style.padding = "0";
-    btn.style.opacity = "0.85";
-    btn.style.background = "rgba(17,24,39,0.7)";
-    btn.style.color = "#f9fafb";
-    btn.style.border = "1px solid rgba(148,163,184,0.45)";
-    btn.style.transition = "opacity 0.15s, background 0.15s";
-    setArticleActionIcon(btn, iconName);
-    btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
-    btn.addEventListener("mouseleave", () => { btn.style.opacity = "0.85"; });
-    return btn;
+    return articleActionsFeature.createArticleActionButton(iconName, label);
   }
 
   function applyCollapseState(article, virtualId) {
-    const isCollapsed = state.collapsedMessages.has(virtualId);
-    const contentArea = article.querySelector("[data-message-author-role]");
-    const snippet = article.querySelector("[data-gpt-boost-snippet]");
-    const sideRail = article.querySelector("[data-gpt-boost-side-rail]");
-    const collapseBtn = sideRail && sideRail.querySelector("[data-gpt-boost-collapse-btn]");
-    const nativeActionRows = getArticleNativeActionRows(article);
-
-    if (contentArea) {
-      contentArea.style.display = isCollapsed ? "none" : "";
-    }
-    nativeActionRows.forEach((row) => {
-      if (!row.dataset.gptBoostOrigDisplay) {
-        row.dataset.gptBoostOrigDisplay = row.style.display || "";
-      }
-      row.style.display = isCollapsed ? "none" : row.dataset.gptBoostOrigDisplay;
-    });
-    if (snippet) {
-      snippet.style.display = isCollapsed ? "block" : "none";
-    }
-    if (sideRail instanceof HTMLElement) {
-      updateArticleSideRailLayout(article, sideRail);
-      if (isCollapsed) {
-        sideRail.style.opacity = "1";
-        sideRail.style.pointerEvents = "auto";
-      } else {
-        sideRail.style.opacity = "0";
-        sideRail.style.pointerEvents = "none";
-      }
-    }
-    if (collapseBtn) {
-      setArticleActionIcon(collapseBtn, isCollapsed ? "expand" : "collapse");
-      collapseBtn.setAttribute("aria-label", isCollapsed ? "Expand message" : "Collapse message");
-    }
-    // Apply visual treatment to the article itself so it is always visible
-    // and constrains height, even when the inner content is hidden.
-    article.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
-    article.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
-    article.style.borderRadius = isCollapsed ? "10px" : "";
+    articleActionsFeature.applyCollapseState(article, virtualId);
   }
 
   function toggleCollapse(virtualId) {
-    if (state.collapsedMessages.has(virtualId)) {
-      state.collapsedMessages.delete(virtualId);
-    } else {
-      state.collapsedMessages.add(virtualId);
-    }
-    const article = state.articleMap.get(virtualId);
-    if (article) applyCollapseState(article, virtualId);
-    refreshSidebarTab();
+    articleActionsFeature.toggleCollapse(virtualId);
   }
 
   function updatePinButtonAppearance(article, virtualId) {
-    const pinBtn = article.querySelector("[data-gpt-boost-pin-btn]");
-    if (!pinBtn) return;
-    const isPinned = state.pinnedMessages.has(virtualId);
-    pinBtn.style.opacity = isPinned ? "1" : "0.85";
-    pinBtn.style.background = isPinned ? "rgba(234,179,8,0.75)" : "rgba(17,24,39,0.7)";
-    pinBtn.setAttribute("aria-label", isPinned ? "Unpin message" : "Pin message to top");
+    articleActionsFeature.updatePinButtonAppearance(article, virtualId);
   }
 
   function updateBookmarkButtonAppearance(article, virtualId) {
-    const bookmarkBtn = article.querySelector("[data-gpt-boost-bookmark-btn]");
-    if (!bookmarkBtn) return;
-    const isBookmarked = state.bookmarkedMessages.has(virtualId);
-    bookmarkBtn.style.opacity = isBookmarked ? "1" : "0.85";
-    bookmarkBtn.style.background = isBookmarked ? "rgba(59,130,246,0.75)" : "rgba(17,24,39,0.7)";
-    bookmarkBtn.setAttribute("aria-label", isBookmarked ? "Remove bookmark" : "Bookmark message");
+    articleActionsFeature.updateBookmarkButtonAppearance(article, virtualId);
   }
 
   function getArticleHoverTarget(article) {
-    if (!(article instanceof HTMLElement)) return article;
-    const messageContainer =
-      article.querySelector("[data-message-author-role]") ||
-      article.querySelector(".markdown") ||
-      article;
-    return messageContainer instanceof HTMLElement ? messageContainer : article;
+    return articleActionsFeature.getArticleHoverTarget(article);
   }
 
   function getDirectChildAncestor(container, node) {
-    if (!(container instanceof HTMLElement) || !(node instanceof HTMLElement)) return null;
-    let current = node;
-    while (current && current.parentElement && current.parentElement !== container) {
-      current = current.parentElement;
-    }
-    return current && current.parentElement === container ? current : null;
+    return articleActionsFeature.getDirectChildAncestor(container, node);
   }
 
   function getArticleNativeActionRows(article) {
-    if (!(article instanceof HTMLElement)) return [];
-
-    const markerSelector = [
-      'button[data-testid="copy-turn-action-button"]',
-      'button[data-testid="good-response-turn-action-button"]',
-      'button[data-testid="bad-response-turn-action-button"]',
-      'button[aria-label="More actions"]',
-      'button[aria-label="Switch model"]'
-    ].join(",");
-
-    const rows = new Set();
-    article.querySelectorAll(markerSelector).forEach((btn) => {
-      if (!(btn instanceof HTMLElement)) return;
-      const directChild = getDirectChildAncestor(article, btn.closest("div") || btn);
-      if (!(directChild instanceof HTMLElement)) return;
-      if (directChild.hasAttribute("data-gpt-boost-side-rail")) return;
-      if (directChild.hasAttribute("data-gpt-boost-snippet")) return;
-      rows.add(directChild);
-    });
-
-    return Array.from(rows);
+    return articleActionsFeature.getArticleNativeActionRows(article);
   }
 
   function injectArticleUi(article, virtualId) {
-    if (article.dataset.gptBoostUiInjected) return;
-    article.dataset.gptBoostUiInjected = "1";
-
-    if (getComputedStyle(article).position === "static") {
-      article.style.position = "relative";
-    }
-    if (!article.dataset.gptBoostOrigPaddingLeft) {
-      article.dataset.gptBoostOrigPaddingLeft = article.style.paddingLeft || "";
-    }
-    article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft;
-    article.style.transition = "box-shadow 0.15s ease";
-    const hoverTarget = getArticleHoverTarget(article);
-    if (hoverTarget instanceof HTMLElement && getComputedStyle(hoverTarget).position === "static") {
-      hoverTarget.style.position = "relative";
-    }
-    if (hoverTarget instanceof HTMLElement && !hoverTarget.dataset.gptBoostOrigPaddingLeft) {
-      hoverTarget.dataset.gptBoostOrigPaddingLeft = hoverTarget.style.paddingLeft || "";
-    }
-
-    const sideRail = document.createElement("div");
-    sideRail.setAttribute("data-gpt-boost-side-rail", "1");
-    sideRail.style.position = "absolute";
-    sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
-    sideRail.style.top = "8px";
-    sideRail.style.transform = "none";
-    sideRail.style.display = "flex";
-    sideRail.style.flexDirection = "column";
-    sideRail.style.gap = "4px";
-    sideRail.style.zIndex = "103";
-    sideRail.style.alignItems = "center";
-    sideRail.style.padding = "2px";
-    sideRail.style.borderRadius = "8px";
-    sideRail.style.background = "rgba(15,23,42,0.35)";
-    sideRail.style.opacity = "0";
-    sideRail.style.pointerEvents = "none";
-    sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
-    sideRail.style.transition = "background 0.15s ease, opacity 0.15s ease";
-
-    const collapseBtn = createArticleActionButton("collapse", "Collapse message");
-    collapseBtn.setAttribute("data-gpt-boost-collapse-btn", "1");
-    collapseBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleCollapse(virtualId);
-    });
-
-    const pinBtn = createArticleActionButton("pin", "Pin message to top");
-    pinBtn.setAttribute("data-gpt-boost-pin-btn", "1");
-    pinBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      togglePin(virtualId);
-    });
-
-    const bookmarkBtn = createArticleActionButton("bookmark", "Bookmark message");
-    bookmarkBtn.setAttribute("data-gpt-boost-bookmark-btn", "1");
-    bookmarkBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleBookmark(virtualId);
-    });
-
-    sideRail.appendChild(collapseBtn);
-    sideRail.appendChild(pinBtn);
-    sideRail.appendChild(bookmarkBtn);
-    (hoverTarget instanceof HTMLElement ? hoverTarget : article).appendChild(sideRail);
-    updateArticleSideRailLayout(article, sideRail);
-
-    article.addEventListener("mouseenter", () => {
-      const isCollapsed = state.collapsedMessages.has(virtualId);
-      if (hoverTarget instanceof HTMLElement) {
-        hoverTarget.style.boxShadow = ARTICLE_HOVER_HIGHLIGHT_SHADOW;
-        hoverTarget.style.borderRadius = "12px";
-        hoverTarget.style.outline = "1px solid rgba(59,130,246,0.18)";
-        hoverTarget.style.outlineOffset = "4px";
-      }
-      if (!isCollapsed) {
-        sideRail.style.background = "rgba(59,130,246,0.2)";
-        sideRail.style.opacity = "1";
-        sideRail.style.pointerEvents = "auto";
-      }
-    });
-    article.addEventListener("mouseleave", () => {
-      const isCollapsed = state.collapsedMessages.has(virtualId);
-      if (hoverTarget instanceof HTMLElement) {
-        hoverTarget.style.boxShadow = "";
-        hoverTarget.style.borderRadius = "";
-        hoverTarget.style.outline = "";
-        hoverTarget.style.outlineOffset = "";
-      }
-      if (!isCollapsed) {
-        sideRail.style.background = "rgba(15,23,42,0.35)";
-        sideRail.style.opacity = "0";
-        sideRail.style.pointerEvents = "none";
-      }
-    });
-
-    const snippet = document.createElement("div");
-    snippet.setAttribute("data-gpt-boost-snippet", "1");
-    snippet.style.display = "none";
-    snippet.style.fontSize = "13px";
-    snippet.style.opacity = "0.65";
-    snippet.style.overflow = "hidden";
-    snippet.style.whiteSpace = "nowrap";
-    snippet.style.textOverflow = "ellipsis";
-    snippet.style.padding = "6px 8px";
-    snippet.style.marginTop = "6px";
-    snippet.style.maxWidth = "100%";
-    snippet.style.boxSizing = "border-box";
-    snippet.style.border = "1px solid rgba(148,163,184,0.35)";
-    snippet.style.borderRadius = "8px";
-    snippet.style.background = "rgba(148,163,184,0.08)";
-
-    const textSource = article.querySelector("[data-message-author-role]") || article;
-    const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-    snippet.textContent = rawText.length > ARTICLE_SNIPPET_LENGTH
-      ? rawText.slice(0, ARTICLE_SNIPPET_LENGTH) + "…"
-      : rawText;
-
-    article.appendChild(snippet);
+    articleActionsFeature.injectArticleUi(article, virtualId);
   }
 
   function updateArticleSideRailLayout(article, sideRail) {
-    if (!(article instanceof HTMLElement) || !(sideRail instanceof HTMLElement)) return;
-    const virtualId = article.dataset.virtualId;
-    const isCollapsed = !!(virtualId && state.collapsedMessages.has(virtualId));
-    const hoverTarget = getArticleHoverTarget(article);
-
-    if (isCollapsed) {
-      if (hoverTarget instanceof HTMLElement) {
-        hoverTarget.style.paddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
-      } else {
-        article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft || "";
-      }
-
-      sideRail.style.position = "static";
-      sideRail.style.top = "";
-      sideRail.style.left = "";
-      sideRail.style.transform = "";
-      sideRail.style.marginTop = "4px";
-      sideRail.style.alignSelf = "flex-end";
-      sideRail.style.flexDirection = "row";
-      sideRail.style.gap = "4px";
-      sideRail.style.padding = "0";
-      sideRail.style.border = "none";
-      sideRail.style.background = "transparent";
-      if (sideRail.parentElement !== article) {
-        article.appendChild(sideRail);
-      } else {
-        article.appendChild(sideRail);
-      }
-      return;
-    }
-
-    sideRail.style.position = "absolute";
-    sideRail.style.top = "8px";
-    sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
-    sideRail.style.transform = "none";
-    sideRail.style.marginTop = "";
-    sideRail.style.alignSelf = "";
-    sideRail.style.flexDirection = "column";
-    sideRail.style.gap = "4px";
-    sideRail.style.padding = "2px";
-    sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
-    sideRail.style.background = "rgba(15,23,42,0.35)";
-    if (hoverTarget instanceof HTMLElement) {
-      if (sideRail.parentElement !== hoverTarget) {
-        hoverTarget.appendChild(sideRail);
-      }
-      hoverTarget.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
-    } else {
-      if (sideRail.parentElement !== article) {
-        article.appendChild(sideRail);
-      }
-      article.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
-    }
+    articleActionsFeature.updateArticleSideRailLayout(article, sideRail);
   }
 
   function refreshArticleSideRailLayout() {
-    document.querySelectorAll('[data-gpt-boost-ui-injected="1"]').forEach((el) => {
-      if (!(el instanceof HTMLElement)) return;
-      const sideRail = el.querySelector("[data-gpt-boost-side-rail]");
-      if (sideRail instanceof HTMLElement) {
-        updateArticleSideRailLayout(el, sideRail);
-      }
-    });
+    articleActionsFeature.refreshArticleSideRailLayout();
   }
 
   // ---------------------------------------------------------------------------
@@ -2009,12 +1953,7 @@ import {
       return;
     }
 
-    updateSearchVisibility(totalMessages);
-    updateMinimapVisibility(totalMessages);
-    updateCodePanelVisibility(totalMessages);
-    updateDownloadVisibility(totalMessages);
-    updateBookmarksVisibility(totalMessages);
-    updateTokenGauge();
+    dispatchVisibilityUpdate(totalMessages, renderedMessages);
     applyFloatingUiOffsets();
 
     const hidden = totalMessages - renderedMessages;
@@ -2055,142 +1994,27 @@ import {
   }
 
   function convertArticleToSpacer(articleElement) {
-    const id = articleElement.dataset.virtualId;
-    if (!id || !articleElement.isConnected) return;
-
-    const rect = articleElement.getBoundingClientRect();
-    const height = rect.height || 24;
-
-    const spacer = document.createElement("div");
-    spacer.dataset.chatgptVirtualSpacer = "1";
-    spacer.dataset.virtualId = id;
-    spacer.style.height = `${height}px`;
-    spacer.style.pointerEvents = "none";
-    spacer.style.opacity = "0";
-
-    articleElement.replaceWith(spacer);
-    state.articleMap.set(id, articleElement);
+    virtualizationEngine.convertArticleToSpacer(articleElement);
   }
 
   function convertSpacerToArticle(spacerElement) {
-    const id = spacerElement.dataset.virtualId;
-    if (!id) return;
-
-    const original = state.articleMap.get(id);
-    if (!original || original.isConnected) return;
-
-    spacerElement.replaceWith(original);
+    virtualizationEngine.convertSpacerToArticle(spacerElement);
   }
 
   function updateStats() {
-    const activeNodes = getActiveConversationNodes();
-    const spacers = document.querySelectorAll('div[data-chatgpt-virtual-spacer="1"]');
-    const nodes = [...activeNodes, ...spacers];
-
-    let total = 0;
-    let rendered = 0;
-
-    nodes.forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      if (!node.dataset.virtualId) return;
-
-      total += 1;
-      if (!isVirtualSpacerNode(node)) rendered += 1;
-    });
-
-    const isTotalChanged = state.stats.totalMessages !== total;
-
-    state.stats.totalMessages = total;
-    state.stats.renderedMessages = rendered;
-    updateIndicator(total, rendered);
-
-    if (isTotalChanged) {
-      refreshSidebarTab();
-      if (minimapPanel && minimapPanel.style.display !== "none") {
-        populateMinimapPanel(minimapPanel);
-      }
-    }
-    updateMapViewportState();
-    updateStandaloneMinimapViewportState();
+    virtualizationEngine.updateStats();
   }
 
   function virtualizeNow() {
-    log("virtualizeNow", { enabled: state.enabled, lifecycle: state.lifecycleStatus });
-    if (!state.enabled) {
-      hideAllUiElements();
-      return;
-    }
-
-    if (!state.scrollElement) {
-      attachOrUpdateScrollListener();
-    }
-
-    ensureVirtualIds();
-
-    const activeNodes = getActiveConversationNodes();
-    const spacers = document.querySelectorAll('div[data-chatgpt-virtual-spacer="1"]');
-    const nodes = [...activeNodes, ...spacers];
-    if (!nodes.length) {
-      log("virtualize: no messages yet");
-      updateIndicator(0, 0);
-      queueDeferredVirtualizationRetry();
-      return;
-    }
-
-    const viewport = getViewportMetrics();
-    if (viewport.height <= 0) {
-      log("virtualize: skipped due to unavailable viewport height");
-      queueDeferredVirtualizationRetry();
-      return;
-    }
-    state.emptyVirtualizationRetryCount = 0;
-
-    nodes.forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-
-      const rect = node.getBoundingClientRect();
-      const relativeTop = rect.top - viewport.top;
-      const relativeBottom = rect.bottom - viewport.top;
-
-      const isOutside =
-        relativeBottom < -config.MARGIN_PX ||
-        relativeTop > viewport.height + config.MARGIN_PX;
-
-      if (isVirtualSpacerNode(node)) {
-        if (!isOutside) convertSpacerToArticle(node);
-      } else {
-        if (isOutside) convertArticleToSpacer(node);
-      }
-    });
-
-    updateStats();
-    log(
-      `virtualize: total=${state.stats.totalMessages}, rendered=${state.stats.renderedMessages}`
-    );
+    virtualizationEngine.virtualizeNow();
   }
 
   function scheduleVirtualization() {
-    if (state.requestAnimationScheduled) return;
-    state.requestAnimationScheduled = true;
-    log("scheduleVirtualization: queuing rAF");
-    requestAnimationFrame(() => {
-      state.requestAnimationScheduled = false;
-      virtualizeNow();
-    });
+    virtualizationEngine.scheduleVirtualization();
   }
 
   function getStatsSnapshot() {
-    const { totalMessages, renderedMessages } = state.stats;
-    const saved =
-      totalMessages > 0
-        ? Math.round((1 - renderedMessages / totalMessages) * 100)
-        : 0;
-
-    return {
-      totalMessages,
-      renderedMessages,
-      memorySavedPercent: saved
-    };
+    return virtualizationEngine.getStatsSnapshot();
   }
 
   // ---------------------------------------------------------------------------
@@ -2198,140 +2022,23 @@ import {
   // ---------------------------------------------------------------------------
 
   function attachOrUpdateScrollListener() {
-    if (!hasAnyMessages()) return;
-
-    const container = findScrollContainer();
-    if (!container) return;
-
-    if (container === state.scrollElement && state.cleanupScrollListener) {
-      return; // already correct
-    }
-
-    if (state.cleanupScrollListener) {
-      state.cleanupScrollListener();
-      state.cleanupScrollListener = null;
-    }
-
-    state.scrollElement = container;
-    state.cleanupScrollListener = setupScrollTracking(
-      container,
-      config.SCROLL_THROTTLE_MS,
-      () => {
-        scheduleVirtualization();
-        updateMapViewportState();
-        updateStandaloneMinimapViewportState();
-      }
-    );
-    if (isSidebarOpen()) {
-      applySidebarLayoutOffset(currentSidebarWidthPx);
-      applyFloatingUiOffsets();
-    }
-
-    log(
-      "Scroll listener attached to:",
-      container === window
-        ? "window"
-        : `${container.tagName} ${container.className || ""}`
-    );
+    lifecycleManager.attachOrUpdateScrollListener();
   }
 
   function handleResize() {
-    attachOrUpdateScrollListener();
-    refreshArticleSideRailLayout();
-    scheduleVirtualization();
+    lifecycleManager.handleResize();
   }
 
   function bootVirtualizer() {
-    log("bootVirtualizer called", { lifecycle: state.lifecycleStatus });
-    if (state.lifecycleStatus !== "IDLE") {
-      log("bootVirtualizer: already active, aborting");
-      return;
-    }
-
-    if (!themeObserver) {
-      themeObserver = new MutationObserver(() => applyThemeToUi());
-      themeObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["class"]
-      });
-    }
-    bindSidebarHotkey();
-    applyRoleColorSettings();
-    applyConversationLayoutSettings();
-
-    const root = findConversationRoot();
-    state.conversationRoot = root;
-
-    const mutationObserver = createDebouncedObserver(() => {
-      attachOrUpdateScrollListener();
-      scheduleVirtualization();
-    }, config.MUTATION_DEBOUNCE_MS);
-    // Observe the conversation root (not document.body): a narrower target means
-    // far fewer mutations per second, preventing debounce starvation on load.
-    mutationObserver.observe(root, {
-      childList: true,
-      subtree: true
-    });
-    // Also observe body for SPA navigation mutations (new root appearing).
-    const bodyObserver = createDebouncedObserver(() => {
-      const newRoot = findConversationRoot();
-      if (newRoot !== state.conversationRoot) {
-        state.conversationRoot = newRoot;
-        mutationObserver.disconnect();
-        mutationObserver.observe(newRoot, { childList: true, subtree: true });
-      }
-      attachOrUpdateScrollListener();
-      scheduleVirtualization();
-    }, 300);
-    bodyObserver.observe(document.body, { childList: true, subtree: false });
-    state.bodyObserver = bodyObserver;
-
-    state.lifecycleStatus = "OBSERVING";
-    state.observer = mutationObserver;
-
-    log("Virtualizer booted.");
-    setCurrentConversationKey(getConversationStorageKey());
-
-    // Ensure we start tracking even if messages already exist
-    attachOrUpdateScrollListener();
-    scheduleVirtualization();
-    // Belt-and-suspenders: call virtualizeNow directly (no rAF) in case rAF is
-    // delayed or throttled in the Firefox content script context at page load.
-    setTimeout(() => {
-      attachOrUpdateScrollListener();
-      virtualizeNow();
-    }, 0);
-    setTimeout(() => {
-      attachOrUpdateScrollListener();
-      virtualizeNow();
-    }, 250);
-    loadPersistedFlagsForConversation(syncFlagsFromPersistedKeys).catch(() => { });
+    lifecycleManager.bootVirtualizer();
   }
 
   function teardownVirtualizer() {
-    applySidebarLayoutOffset(0);
+    lifecycleManager.teardownVirtualizer();
+  }
 
-    if (state.observer) state.observer.disconnect();
-    if (state.bodyObserver) { state.bodyObserver.disconnect(); state.bodyObserver = null; }
-    if (state.cleanupScrollListener) state.cleanupScrollListener();
-    if (deferredVirtualizationTimer !== null) {
-      clearTimeout(deferredVirtualizationTimer);
-      deferredVirtualizationTimer = null;
-    }
-
-    if (themeObserver) {
-      themeObserver.disconnect();
-      themeObserver = null;
-    }
-
-    state.scrollElement = null;
-    state.cleanupScrollListener = null;
-    state.observer = null;
-    state.conversationRoot = null;
-    state.lifecycleStatus = "IDLE";
-    state.requestAnimationScheduled = false;
-
-    // Restore all original elements BEFORE clearing the map so React can unmount them cleanly
+  function teardownUiState() {
+    // Restore all original elements before clearing the map so React can unmount them cleanly.
     document
       .querySelectorAll('div[data-chatgpt-virtual-spacer="1"]')
       .forEach((spacer) => convertSpacerToArticle(spacer));
@@ -2454,22 +2161,7 @@ import {
   }
 
   function startUrlWatcher() {
-    setInterval(() => {
-      if (window.location.href !== state.lastUrl) {
-        state.lastUrl = window.location.href;
-        log("URL changed → rebooting virtualizer");
-        // Capture sidebar state before tearing down so we can restore it.
-        const wasSidebarOpen = isSidebarOpen();
-        const previousSidebarTab = activeSidebarTab;
-        teardownVirtualizer();
-        bootVirtualizer();
-        // Re-open the sidebar to the same tab so outline/snippets refresh for
-        // the new conversation instead of disappearing.
-        if (wasSidebarOpen) {
-          openSidebar(previousSidebarTab);
-        }
-      }
-    }, config.URL_CHECK_INTERVAL);
+    lifecycleManager.startUrlWatcher();
   }
 
   // ---------------------------------------------------------------------------

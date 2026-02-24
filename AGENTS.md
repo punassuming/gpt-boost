@@ -6,6 +6,8 @@
   - `src/boot.js` is the entry point that initializes the virtualizer and UI.
   - `src/constants.js` defines shared config and state.
   - `src/utils/`, `src/core/`, `src/ui/`, and `src/adapters/` contain extracted sub-modules.
+  - `src/core/runtime/` contains runtime orchestration modules (feature registry, lifecycle manager, virtualization engine helpers).
+  - `src/core/services/` contains the typed service container used by runtime features.
   - `src/core/settings.js` is the shared settings source of truth (defaults, normalization, hotkey parsing, storage helpers).
   - `src/core/virtualizer/` contains virtualizer-domain modules (`store.ts`, `observer.ts`, `types.ts`).
   - `src/ui/shell/theme.ts` contains theme token logic.
@@ -17,6 +19,7 @@
   - `src/ui/features/outline/outlineFeature.js` contains outline-tab rendering and collapse controls.
   - `src/ui/features/download/downloadFeature.js` contains markdown-download button lifecycle behavior.
   - `src/ui/features/tokenGauge/tokenGaugeFeature.js` contains token pressure gauge lifecycle behavior.
+  - `src/ui/features/articleActions/articleActionsFeature.js` contains per-message collapse/pin/bookmark side-rail behavior.
   - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`).
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/ui/features/snippets/markdownExport.js` contains markdown export conversion logic.
@@ -95,9 +98,8 @@
 
 ## Current Refactor Priorities
 - Continue reducing `src/virtualization.js` orchestration size by extracting:
-  - Per-article action rail/collapse injection lifecycle.
-  - Remaining sidebar tab renderers (especially outline/settings) into feature modules.
-  - Sidebar marks/bookmarks integration cleanup (sidebar-only path, no floating panel).
+  - Shared UI factory/service abstractions to reduce repeated inline style/button construction.
+  - Unified settings schema used by popup/options and sidebar settings renderers.
 - Keep behavior stable by using wrapper delegates in `virtualization.js` and implementing feature modules under `src/ui/features/`.
 
 ## Commit & Pull Request Guidelines

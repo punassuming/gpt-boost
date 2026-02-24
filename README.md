@@ -112,6 +112,8 @@ It makes massive message lists behave like small ones.
 ├── src/core/settings.js              # Settings defaults/normalizers/storage helpers
 ├── src/core/storage.js               # Conversation cache + pin/bookmark persistence
 ├── src/core/virtualizer/             # Core store/observer/types
+├── src/core/runtime/                 # Feature registry + lifecycle + runtime engine modules
+├── src/core/services/                # Typed shared service container
 ├── src/ui/shell/theme.ts             # Theme mode/tokens
 ├── src/ui/features/roleStyles.ts     # Role chip/surface styling rules
 ├── src/ui/features/search/           # Search feature + highlighting helpers
@@ -121,6 +123,7 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/outline/          # Outline tab render + collapse controls
 ├── src/ui/features/download/         # Markdown download button lifecycle
 ├── src/ui/features/tokenGauge/       # Token pressure gauge lifecycle
+├── src/ui/features/articleActions/   # Per-message collapse/pin/bookmark side-rail UI
 ├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
 ├── src/ui/features/snippets/         # Snippet extraction + markdown export
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
@@ -156,12 +159,12 @@ It makes massive message lists behave like small ones.
   - Validate with `npm run build` and `npm run build:firefox`
 
 ### Modularization Status and Next Targets
-- Recent extractions moved search, minimap, and map behavior into `src/ui/features/*`.
-- `src/virtualization.js` remains the primary orchestration layer and largest file.
+- Recent extractions moved search/minimap/map/outline/bookmarks/download/token-gauge/article-actions into `src/ui/features/*`.
+- Runtime orchestration now includes a feature registry, lifecycle manager, and typed service container in `src/core/runtime` and `src/core/services`.
+- `src/virtualization.js` remains the primary compatibility wrapper and is still being reduced.
 - Next high-value extraction targets:
-  - Per-message action rail and collapse/pin/bookmark injection lifecycle
-  - Remaining sidebar tab renderers (`outline`/`settings`) into dedicated feature modules
-  - Bookmarks/marks controls integration cleanup with sidebar-only architecture
+  - Additional shared UI factory/service consolidation for control/button creation and tab rendering
+  - Settings schema unification between popup/options and sidebar settings tab
 
 ### Firefox signing (unlisted/private)
 - Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).
