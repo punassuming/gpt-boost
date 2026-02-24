@@ -104,10 +104,16 @@ It makes massive message lists behave like small ones.
 ```
 ├── manifest.json            # Extension manifest (Manifest V3)
 ├── src/boot.js              # Initialization logic (entry point)
-├── src/virtualization.js    # Core virtual scrolling logic
-├── src/constants.js         # Config values
+├── src/virtualization.js    # Main UI/virtualization orchestration
+├── src/constants.js         # Shared runtime config + state
+├── src/core/settings.js     # Shared settings defaults/normalizers/hotkey helpers
+├── src/core/storage.js      # Persisted message pin/bookmark flags
+├── src/core/virtualizer/    # Extracted virtualizer modules (store/observer/types)
+├── src/ui/shell/theme.ts    # Theme token utilities
+├── src/ui/features/roleStyles.ts # User/agent styling logic
+├── src/adapters/chromeApi.ts # Browser API wrappers/fallbacks
 ├── src/background.js        # Service worker for settings & lifecycle
-├── src/popup.html/css/js    # Extension UI and settings
+├── src/popup.html/css/js    # Toolbar popup + options page UI/settings
 └── icons/                   # Extension icons
 ```
 
@@ -119,6 +125,17 @@ It makes massive message lists behave like small ones.
 - Open the browser console on ChatGPT and look for debug logs (if enabled)
 - Use the popup toggle to enable/disable virtualization
 - When making changes, hit **Reload** on the extension page (for Chrome)
+
+### Settings Architecture (Developer Notes)
+- Shared settings defaults and normalization live in `src/core/settings.js`.
+- `boot.js` is responsible for loading persisted settings from extension storage and applying runtime updates on storage changes.
+- In-chat sidebar settings and toolbar popup/options settings should remain parity UI: when adding a new setting, update both surfaces in the same change.
+- Persisted message-level state (pins/bookmarks by conversation) is separate from global UI settings and lives in `src/core/storage.js`.
+- If you add a new persisted setting:
+  - Add default + normalization in `src/core/settings.js`
+  - Apply runtime behavior in `src/boot.js` and `src/virtualization.js`
+  - Expose controls in both sidebar settings and popup/options UI
+  - Validate with `npm run build` and `npm run build:firefox`
 
 ### Firefox signing (unlisted/private)
 - Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).

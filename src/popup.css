@@ -206,6 +206,76 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+#sidebarHotkey {
+  width: 110px;
+  text-align: left;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.color-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.color-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--md-text);
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--md-outline);
+  background: #f8faff;
+}
+
+.color-item input[type="color"] {
+  width: 28px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cache-view {
+  margin: 0;
+  max-height: 140px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--md-outline);
+  background: #f8faff;
+  padding: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--md-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.inline-button {
+  border: 1px solid var(--md-outline);
+  background: #f8faff;
+  color: var(--md-text);
+  border-radius: 10px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.inline-button:hover {
+  border-color: var(--md-primary);
+}
+
 .buffer-control input:focus {
   outline: none;
   border-color: var(--md-primary);

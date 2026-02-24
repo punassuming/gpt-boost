@@ -1,12 +1,40 @@
 import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
-import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey } from './core/storage.js';
+import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey, loadFlagsStore, loadKnownConversationsStore, summarizeConversationCaches } from './core/storage.js';
 import hljs from 'highlight.js/lib/common';
+import { createVirtualizerStore } from './core/virtualizer/store.ts';
+import { setupScrollTracking, createDebouncedObserver } from './core/virtualizer/observer.ts';
+import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
+import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
+import {
+  DEFAULT_EXTENSION_SETTINGS,
+  normalizeExtensionSettings,
+  normalizeColorHex,
+  normalizeSidebarHotkey,
+  hotkeyMatchesKeyboardEvent,
+  getSettingsStorageArea,
+  normalizeSidebarWidthPx,
+  normalizeConversationPaddingPx,
+  normalizeComposerWidthPx,
+  normalizeScrollThrottleMs,
+  normalizeMutationDebounceMs,
+  SIDEBAR_WIDTH_MIN_PX,
+  SIDEBAR_WIDTH_MAX_PX,
+  CONVERSATION_PADDING_MIN_PX,
+  CONVERSATION_PADDING_MAX_PX,
+  COMPOSER_WIDTH_MIN_PX,
+  COMPOSER_WIDTH_MAX_PX,
+  SCROLL_THROTTLE_MIN_MS,
+  SCROLL_THROTTLE_MAX_MS,
+  MUTATION_DEBOUNCE_MIN_MS,
+  MUTATION_DEBOUNCE_MAX_MS
+} from './core/settings.js';
 
 // virtualization.js
 (function initializeVirtualizationModule() {
   const scroller = window.ChatGPTVirtualScroller;
-  const config = scroller.config;
-  const state = scroller.state;
+  const store = createVirtualizerStore(scroller);
+  const config = store.config;
+  const state = store.state;
   const log = scroller.log;
   let indicatorElement = null;
   let scrollToTopButton = null;
@@ -38,6 +66,9 @@ import hljs from 'highlight.js/lib/common';
   let settingsEnabledInput = null;
   let settingsDebugInput = null;
   let settingsMarginInput = null;
+  let settingsConversationPaddingInput = null;
+  let settingsComposerWidthInput = null;
+  let conversationLayoutStyleElement = null;
   const searchState = {
     query: "",
     results: [],
@@ -56,6 +87,7 @@ import hljs from 'highlight.js/lib/common';
   let tokenGaugeElement = null;
   let pinnedBarElement = null;
   let deferredVirtualizationTimer = null;
+  let hotkeyListenerBound = false;
   const SCROLL_BUTTON_SIZE_PX = 30;
   const SCROLL_BUTTON_OFFSET_PX = 12;
   const TOP_BUTTON_STACK_OFFSET_PX = 56;
@@ -117,6 +149,26 @@ import hljs from 'highlight.js/lib/common';
   const SIDEBAR_TOGGLE_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
   const SIDEBAR_PANEL_WIDTH_PX = 380;
+  const DEFAULT_CONVERSATION_PADDING_PX = DEFAULT_EXTENSION_SETTINGS.conversationPaddingPx;
+  const DEFAULT_COMPOSER_WIDTH_PX = DEFAULT_EXTENSION_SETTINGS.composerWidthPx;
+  const DEFAULT_SIDEBAR_HOTKEY = DEFAULT_EXTENSION_SETTINGS.sidebarHotkey;
+  const DEFAULT_ROLE_COLORS = {
+    userDark: DEFAULT_EXTENSION_SETTINGS.userColorDark,
+    assistantDark: DEFAULT_EXTENSION_SETTINGS.assistantColorDark,
+    userLight: DEFAULT_EXTENSION_SETTINGS.userColorLight,
+    assistantLight: DEFAULT_EXTENSION_SETTINGS.assistantColorLight
+  };
+  let uiSettings = {
+    sidebarWidthPx: SIDEBAR_PANEL_WIDTH_PX,
+    minimapVisible: true,
+    sidebarHotkey: DEFAULT_SIDEBAR_HOTKEY,
+    conversationPaddingPx: DEFAULT_CONVERSATION_PADDING_PX,
+    composerWidthPx: DEFAULT_COMPOSER_WIDTH_PX,
+    userColorDark: DEFAULT_ROLE_COLORS.userDark,
+    assistantColorDark: DEFAULT_ROLE_COLORS.assistantDark,
+    userColorLight: DEFAULT_ROLE_COLORS.userLight,
+    assistantColorLight: DEFAULT_ROLE_COLORS.assistantLight
+  };
   let currentSidebarWidthPx = SIDEBAR_PANEL_WIDTH_PX;
   const SIDEBAR_TRANSITION_MS = 300;
   const SIDEBAR_MAP_TRACK_HEIGHT_PX = 300;
@@ -162,57 +214,6 @@ import hljs from 'highlight.js/lib/common';
   // ---------------------------------------------------------------------------
   // Selectors
   // ---------------------------------------------------------------------------
-
-  function getThemeMode() {
-    const root = document.documentElement;
-    if (root && root.classList.contains("dark")) return "dark";
-    if (root && root.classList.contains("light")) return "light";
-    if (typeof window !== "undefined" && window.matchMedia) {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    }
-    return "light";
-  }
-
-  function getThemeTokens() {
-    const mode = getThemeMode();
-    if (mode === "dark") {
-      return {
-        text: "#ececf1",
-        mutedText: "rgba(236, 236, 241, 0.72)",
-        panelBg: "rgba(32, 33, 35, 0.96)",
-        panelBorder: "rgba(255, 255, 255, 0.1)",
-        panelShadow: "0 8px 20px rgba(0, 0, 0, 0.45)",
-        inputBg: "rgba(52, 53, 65, 0.92)",
-        inputBorder: "rgba(255, 255, 255, 0.18)",
-        buttonBg: "rgba(255, 255, 255, 0.12)",
-        buttonText: "#ececf1",
-        buttonShadow: "0 6px 16px rgba(0, 0, 0, 0.35)",
-        buttonMutedBg: "rgba(255, 255, 255, 0.08)",
-        buttonMutedText: "#ececf1",
-        indicatorBg: "rgba(16, 163, 127, 0.7)",
-        indicatorShadow: "0 4px 10px rgba(0, 0, 0, 0.35)"
-      };
-    }
-
-    return {
-      text: "#202123",
-      mutedText: "rgba(32, 33, 35, 0.62)",
-      panelBg: "rgba(255, 255, 255, 0.98)",
-      panelBorder: "rgba(32, 33, 35, 0.1)",
-      panelShadow: "0 8px 20px rgba(0, 0, 0, 0.12)",
-      inputBg: "rgba(247, 247, 248, 0.95)",
-      inputBorder: "rgba(32, 33, 35, 0.16)",
-      buttonBg: "rgba(32, 33, 35, 0.85)",
-      buttonText: "#ffffff",
-      buttonShadow: "0 6px 16px rgba(0, 0, 0, 0.16)",
-      buttonMutedBg: "rgba(32, 33, 35, 0.08)",
-      buttonMutedText: "#202123",
-      indicatorBg: "rgba(16, 163, 127, 0.66)",
-      indicatorShadow: "0 4px 10px rgba(0, 0, 0, 0.12)"
-    };
-  }
 
   function collectSidebarLayoutTargets() {
     const targets = [];
@@ -495,6 +496,8 @@ import hljs from 'highlight.js/lib/common';
     }
 
     const element = document.createElement("div");
+    const theme = getThemeTokens();
+    const userRoleStyle = getRoleSurfaceStyle("user", theme);
     element.setAttribute("data-chatgpt-virtual-indicator", "1");
     element.style.position = "fixed";
     element.style.right = `${INDICATOR_RIGHT_OFFSET_PX}px`;
@@ -505,7 +508,8 @@ import hljs from 'highlight.js/lib/common';
     element.style.width = "4px";
     element.style.height = `${INDICATOR_BASE_MIN_HEIGHT_PX}px`;
     element.style.borderRadius = "999px";
-    element.style.background = "rgba(17, 24, 39, 0.6)";
+    element.style.background = userRoleStyle.accentColor;
+    element.style.border = `1px solid ${userRoleStyle.borderColor}`;
     element.style.boxShadow = "0 4px 10px rgba(15, 23, 42, 0.18)";
     element.style.opacity = String(INDICATOR_MIN_OPACITY);
     element.style.pointerEvents = "none";
@@ -688,8 +692,10 @@ import hljs from 'highlight.js/lib/common';
     const theme = getThemeTokens();
 
     if (indicatorElement) {
-      indicatorElement.style.background = theme.indicatorBg;
+      const userRoleStyle = getRoleSurfaceStyle("user", theme);
+      indicatorElement.style.background = userRoleStyle.accentColor;
       indicatorElement.style.boxShadow = theme.indicatorShadow;
+      indicatorElement.style.border = `1px solid ${userRoleStyle.borderColor}`;
     }
 
     const buttons = [scrollToTopButton, scrollToBottomButton, searchButton, minimapButton,
@@ -928,91 +934,6 @@ import hljs from 'highlight.js/lib/common';
     return entries;
   }
 
-  function getRoleDisplayLabel(role) {
-    const normalized = (role || "").toLowerCase();
-    if (normalized === "user") return "User";
-    if (normalized === "assistant") return "Agent";
-    if (!normalized || normalized === "unknown" || normalized === "message") return "Message";
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-  }
-
-  function getRoleSurfaceStyle(role, theme) {
-    const normalized = (role || "").toLowerCase();
-    const isDarkMode = getThemeMode() === "dark";
-
-    if (normalized === "user") {
-      if (isDarkMode) {
-        return {
-          label: "User",
-          surfaceBg: "rgba(48, 48, 48, 0.22)",
-          activeSurfaceBg: "rgba(48, 48, 48, 0.32)",
-          borderColor: "#303030",
-          accentColor: "#303030",
-          chipBg: "#303030",
-          chipText: "#f9fafb"
-        };
-      }
-      return {
-        label: "User",
-        surfaceBg: "#F4F4F4",
-        activeSurfaceBg: "#ECECEC",
-        borderColor: "#DDDDDD",
-        accentColor: "#D0D0D0",
-        chipBg: "#F4F4F4",
-        chipText: "#202123"
-      };
-    }
-
-    if (normalized === "assistant") {
-      if (isDarkMode) {
-        return {
-          label: "Agent",
-          surfaceBg: "#202020",
-          activeSurfaceBg: "#2A2A2A",
-          borderColor: "#2E2E2E",
-          accentColor: "#3A3A3A",
-          chipBg: "#202020",
-          chipText: "#ececf1"
-        };
-      }
-      return {
-        label: "Agent",
-        surfaceBg: "#FFFFFF",
-        activeSurfaceBg: "#F8F8F8",
-        borderColor: "#E8E8E8",
-        accentColor: "#DADADA",
-        chipBg: "#FFFFFF",
-        chipText: "#202123"
-      };
-    }
-
-    return {
-      label: getRoleDisplayLabel(role),
-      surfaceBg: theme.buttonMutedBg,
-      activeSurfaceBg: theme.buttonMutedBg,
-      borderColor: theme.panelBorder,
-      accentColor: theme.panelBorder,
-      chipBg: theme.buttonMutedBg,
-      chipText: theme.mutedText
-    };
-  }
-
-  function createRoleChip(roleStyle) {
-    const chip = document.createElement("div");
-    chip.textContent = roleStyle.label;
-    chip.style.display = "inline-flex";
-    chip.style.alignItems = "center";
-    chip.style.width = "fit-content";
-    chip.style.padding = "2px 7px";
-    chip.style.borderRadius = "999px";
-    chip.style.fontSize = "10px";
-    chip.style.fontWeight = "600";
-    chip.style.letterSpacing = "0.01em";
-    chip.style.background = roleStyle.chipBg;
-    chip.style.color = roleStyle.chipText;
-    return chip;
-  }
-
   function getMessageTextSnippet(virtualId, maxLength = ARTICLE_SNIPPET_LENGTH) {
     const article = state.articleMap.get(virtualId);
     if (!(article instanceof HTMLElement)) return `Message ${virtualId}`;
@@ -1246,6 +1167,47 @@ import hljs from 'highlight.js/lib/common';
     }, 200);
   }
 
+  function rerenderSearchSidebarPreservingInputFocus() {
+    if (!isSidebarOpen() || activeSidebarTab !== "search" || !sidebarContentContainer) return;
+
+    const activeEl = document.activeElement;
+    const isSidebarSearchInput =
+      activeEl instanceof HTMLInputElement &&
+      activeEl.getAttribute("aria-label") === "Search chat" &&
+      sidebarContentContainer.contains(activeEl);
+
+    const selectionStart = isSidebarSearchInput ? activeEl.selectionStart : null;
+    const selectionEnd = isSidebarSearchInput ? activeEl.selectionEnd : null;
+
+    renderSidebarTab("search");
+
+    if (!isSidebarSearchInput) return;
+
+    const restoreFocus = () => {
+      if (!sidebarContentContainer) return;
+      const nextInput = sidebarContentContainer.querySelector('input[aria-label="Search chat"]');
+      if (!(nextInput instanceof HTMLInputElement)) return;
+      nextInput.focus();
+      const max = nextInput.value.length;
+      const nextStart =
+        typeof selectionStart === "number"
+          ? Math.max(0, Math.min(max, selectionStart))
+          : max;
+      const nextEnd =
+        typeof selectionEnd === "number"
+          ? Math.max(nextStart, Math.min(max, selectionEnd))
+          : nextStart;
+      try {
+        nextInput.setSelectionRange(nextStart, nextEnd);
+      } catch (_err) {
+        // Ignore selection failures on unsupported input types/contexts.
+      }
+    };
+
+    setTimeout(restoreFocus, 0);
+    requestAnimationFrame(restoreFocus);
+  }
+
   function runSearch(query) {
     const normalized = query.trim().toLowerCase();
     searchState.query = query;
@@ -1257,6 +1219,7 @@ import hljs from 'highlight.js/lib/common';
       searchState.matchCount = 0;
       updateSearchCountLabel();
       clearSearchHighlight();
+      rerenderSearchSidebarPreservingInputFocus();
       return;
     }
 
@@ -1285,7 +1248,10 @@ import hljs from 'highlight.js/lib/common';
     if (!results.length) {
       clearSearchHighlight();
     }
-    refreshSidebarTab();
+    rerenderSearchSidebarPreservingInputFocus();
+    if (isSidebarOpen() && activeSidebarTab !== "search") {
+      refreshSidebarTab();
+    }
   }
 
   function scheduleSearch(query) {
@@ -1366,20 +1332,95 @@ import hljs from 'highlight.js/lib/common';
     button.style.padding = "0";
   }
 
-  function getSettingsStorageArea() {
-    return (typeof chrome !== "undefined" && chrome.storage)
-      ? (chrome.storage.sync || chrome.storage.local || null)
-      : null;
-  }
-
   function normalizeMargin(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return config.DEFAULT_MARGIN_PX;
     return Math.min(config.MAX_MARGIN_PX, Math.max(config.MIN_MARGIN_PX, Math.round(parsed)));
   }
 
+  function ensureConversationLayoutStyleElement() {
+    if (conversationLayoutStyleElement && conversationLayoutStyleElement.isConnected) {
+      return conversationLayoutStyleElement;
+    }
+    const style = document.createElement("style");
+    style.id = "gpt-boost-layout-settings";
+    document.head.appendChild(style);
+    conversationLayoutStyleElement = style;
+    return style;
+  }
+
+  function applyRoleColorSettings() {
+    const rootStyle = document.documentElement && document.documentElement.style;
+    if (!rootStyle) return;
+    rootStyle.setProperty("--gpt-boost-user-dark", uiSettings.userColorDark || DEFAULT_ROLE_COLORS.userDark);
+    rootStyle.setProperty("--gpt-boost-assistant-dark", uiSettings.assistantColorDark || DEFAULT_ROLE_COLORS.assistantDark);
+    rootStyle.setProperty("--gpt-boost-user-light", uiSettings.userColorLight || DEFAULT_ROLE_COLORS.userLight);
+    rootStyle.setProperty("--gpt-boost-assistant-light", uiSettings.assistantColorLight || DEFAULT_ROLE_COLORS.assistantLight);
+  }
+
+  function applyConversationLayoutSettings() {
+    const styleEl = ensureConversationLayoutStyleElement();
+    styleEl.textContent = `
+      .composer-parent {
+        --composer-bar_current-width: ${uiSettings.composerWidthPx}px !important;
+        --composer-bar_width: ${uiSettings.composerWidthPx}px !important;
+      }
+      [class*="thread-content-margin"] {
+        --thread-content-margin: ${uiSettings.conversationPaddingPx}px !important;
+      }
+      [class*="thread-content-max-width"] {
+        --thread-content-max-width: ${uiSettings.composerWidthPx}px !important;
+      }
+    `;
+
+    const composerWidthValue = `${uiSettings.composerWidthPx}px`;
+    const conversationPaddingValue = `${uiSettings.conversationPaddingPx}px`;
+    document.querySelectorAll(".composer-parent").forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.style.setProperty("--composer-bar_current-width", composerWidthValue, "important");
+      node.style.setProperty("--composer-bar_width", composerWidthValue, "important");
+    });
+    document.querySelectorAll('[class*="thread-content-margin"]').forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.style.setProperty("--thread-content-margin", conversationPaddingValue, "important");
+    });
+    document.querySelectorAll('[class*="thread-content-max-width"]').forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.style.setProperty("--thread-content-max-width", composerWidthValue, "important");
+    });
+  }
+
+  function applyUiSettings(nextSettings = {}) {
+    uiSettings = normalizeExtensionSettings(
+      {
+        ...uiSettings,
+        ...nextSettings
+      },
+      {
+        minMarginPx: config.MIN_MARGIN_PX,
+        maxMarginPx: config.MAX_MARGIN_PX,
+        defaultMarginPx: config.DEFAULT_MARGIN_PX
+      }
+    );
+
+    currentSidebarWidthPx = uiSettings.sidebarWidthPx;
+    if (sidebarPanel && sidebarPanel.isConnected) {
+      sidebarPanel.style.width = `${currentSidebarWidthPx}px`;
+    }
+    if (isSidebarOpen()) {
+      applySidebarLayoutOffset(currentSidebarWidthPx, 0);
+    }
+    applyRoleColorSettings();
+    applyConversationLayoutSettings();
+    updateMinimapVisibility(state.stats.totalMessages);
+    applyFloatingUiOffsets();
+    if (activeSidebarTab === "settings") {
+      refreshSidebarTab();
+    }
+  }
+
   function refreshSidebarTab() {
-    if (!sidebarContentContainer || !sidebarPanel || sidebarPanel.style.display === "none") return;
+    if (!sidebarContentContainer || !sidebarPanel || !isSidebarOpen()) return;
     renderSidebarTab(activeSidebarTab);
   }
 
@@ -1404,35 +1445,6 @@ import hljs from 'highlight.js/lib/common';
       }
     });
     return btn;
-  }
-
-  function openExtensionSettingsPage() {
-    const openFallback = () => {
-      if (typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.getURL === "function") {
-        const settingsUrl = chrome.runtime.getURL("src/popup.html");
-        const opened = window.open(settingsUrl, "_blank", "noopener,noreferrer");
-        if (!opened) {
-          window.location.href = settingsUrl;
-        }
-        return;
-      }
-      window.open("about:blank", "_blank");
-    };
-
-    if (typeof chrome === "undefined" || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") {
-      openFallback();
-      return;
-    }
-
-    try {
-      chrome.runtime.sendMessage({ type: "openSettingsPage" }, (response) => {
-        if (chrome.runtime.lastError || !response || !response.ok) {
-          openFallback();
-        }
-      });
-    } catch (_err) {
-      openFallback();
-    }
   }
 
   function renderSearchTabContent(container) {
@@ -1500,6 +1512,7 @@ import hljs from 'highlight.js/lib/common';
     container.appendChild(count);
 
     const resultsList = document.createElement("div");
+    resultsList.setAttribute("data-gpt-boost-search-results", "1");
     resultsList.style.display = "flex";
     resultsList.style.flexDirection = "column";
     resultsList.style.gap = "6px";
@@ -1535,10 +1548,18 @@ import hljs from 'highlight.js/lib/common';
         item.style.flexDirection = "column";
         item.style.gap = "4px";
         item.addEventListener("click", () => {
+          const previousScrollTop = resultsList.scrollTop;
           searchState.activeIndex = idx;
           updateSearchCountLabel();
           focusSearchResult(id);
           renderSidebarTab("search");
+          setTimeout(() => {
+            if (!sidebarContentContainer) return;
+            const nextList = sidebarContentContainer.querySelector('[data-gpt-boost-search-results="1"]');
+            if (nextList instanceof HTMLElement) {
+              nextList.scrollTop = previousScrollTop;
+            }
+          }, 0);
         });
 
         const roleChip = createRoleChip(roleStyle);
@@ -1834,19 +1855,114 @@ import hljs from 'highlight.js/lib/common';
 
   function renderSettingsTabContent(container) {
     const storage = getSettingsStorageArea();
-    const row = (labelText, inputEl) => {
-      const wrap = document.createElement("label");
-      wrap.style.display = "flex";
-      wrap.style.alignItems = "center";
-      wrap.style.justifyContent = "space-between";
-      wrap.style.gap = "10px";
-      wrap.style.fontSize = "12px";
-      wrap.style.padding = "6px 0";
-      const txt = document.createElement("span");
-      txt.textContent = labelText;
-      wrap.appendChild(txt);
-      wrap.appendChild(inputEl);
-      return wrap;
+    const theme = getThemeTokens();
+    const controlList = document.createElement("div");
+    controlList.style.display = "flex";
+    controlList.style.flexDirection = "column";
+    controlList.style.gap = "10px";
+    controlList.style.overflowY = "auto";
+    controlList.style.flex = "1";
+    controlList.style.minHeight = "0";
+    container.appendChild(controlList);
+
+    const sectionTitle = (text) => {
+      const el = document.createElement("div");
+      el.textContent = text;
+      el.style.fontSize = "10px";
+      el.style.letterSpacing = "0.12em";
+      el.style.textTransform = "uppercase";
+      el.style.opacity = "0.72";
+      el.style.marginTop = "4px";
+      return el;
+    };
+
+    const createInputShell = () => {
+      const shell = document.createElement("div");
+      shell.style.display = "inline-flex";
+      shell.style.alignItems = "center";
+      shell.style.gap = "6px";
+      shell.style.flexShrink = "0";
+      return shell;
+    };
+
+    const settingRow = (titleText, descriptionText, control) => {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.justifyContent = "space-between";
+      row.style.gap = "10px";
+      row.style.padding = "8px 0";
+      row.style.borderBottom = `1px solid ${theme.panelBorder}`;
+
+      const textWrap = document.createElement("div");
+      textWrap.style.display = "flex";
+      textWrap.style.flexDirection = "column";
+      textWrap.style.gap = "2px";
+      textWrap.style.minWidth = "0";
+
+      const title = document.createElement("div");
+      title.textContent = titleText;
+      title.style.fontSize = "12px";
+      title.style.fontWeight = "600";
+      title.style.color = theme.text;
+
+      const desc = document.createElement("div");
+      desc.textContent = descriptionText;
+      desc.style.fontSize = "10px";
+      desc.style.color = theme.mutedText;
+      desc.style.lineHeight = "1.3";
+
+      textWrap.appendChild(title);
+      textWrap.appendChild(desc);
+      row.appendChild(textWrap);
+      row.appendChild(control);
+      return row;
+    };
+
+    const persist = (patch) => {
+      if (storage) storage.set(patch);
+    };
+
+    const createCheckbox = (checked, onChange) => {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = !!checked;
+      input.addEventListener("change", () => onChange(input.checked));
+      return input;
+    };
+
+    const createNumberInput = (value, min, max, onChange) => {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.value = String(value);
+      input.min = String(min);
+      input.max = String(max);
+      input.style.width = "96px";
+      input.style.height = "30px";
+      input.style.borderRadius = "8px";
+      input.style.border = `1px solid ${theme.inputBorder}`;
+      input.style.padding = "0 8px";
+      input.style.fontSize = "12px";
+      input.style.fontFamily = "inherit";
+      input.style.background = theme.inputBg;
+      input.style.color = theme.text;
+      input.addEventListener("change", () => onChange(input));
+      return input;
+    };
+
+    const createColorInput = (value, onChange) => {
+      const input = document.createElement("input");
+      input.type = "color";
+      input.value = value;
+      input.style.width = "44px";
+      input.style.height = "30px";
+      input.style.border = "none";
+      input.style.background = "transparent";
+      input.style.padding = "0";
+      input.style.cursor = "pointer";
+      input.addEventListener("input", () => onChange(input.value));
+      input.addEventListener("change", () => onChange(input.value));
+      return input;
     };
 
     const enabledInput = document.createElement("input");
@@ -1854,8 +1970,10 @@ import hljs from 'highlight.js/lib/common';
     enabledInput.checked = !!state.enabled;
     enabledInput.addEventListener("change", () => {
       state.enabled = enabledInput.checked;
-      if (storage) storage.set({ enabled: state.enabled });
+      persist({ enabled: state.enabled });
+      applyUiSettings({});
       scheduleVirtualization();
+      updateSearchVisibility(state.stats.totalMessages);
       updateSidebarVisibility(state.stats.totalMessages);
     });
 
@@ -1864,30 +1982,279 @@ import hljs from 'highlight.js/lib/common';
     debugInput.checked = !!state.debug;
     debugInput.addEventListener("change", () => {
       state.debug = debugInput.checked;
-      if (storage) storage.set({ debug: state.debug });
+      persist({ debug: state.debug });
     });
 
-    const marginInput = document.createElement("input");
-    marginInput.type = "number";
-    marginInput.min = String(config.MIN_MARGIN_PX);
-    marginInput.max = String(config.MAX_MARGIN_PX);
-    marginInput.value = String(config.MARGIN_PX);
-    marginInput.style.width = "110px";
-    marginInput.addEventListener("change", () => {
-      const next = normalizeMargin(marginInput.value);
-      marginInput.value = String(next);
+    const marginInput = createNumberInput(config.MARGIN_PX, config.MIN_MARGIN_PX, config.MAX_MARGIN_PX, (input) => {
+      const next = normalizeMargin(input.value);
+      input.value = String(next);
       config.MARGIN_PX = next;
-      if (storage) storage.set({ marginPx: next });
+      persist({ marginPx: next });
       scheduleVirtualization();
+    });
+
+    const sidebarWidthInput = createNumberInput(
+      uiSettings.sidebarWidthPx,
+      SIDEBAR_WIDTH_MIN_PX,
+      SIDEBAR_WIDTH_MAX_PX,
+      (input) => {
+        const next = normalizeSidebarWidthPx(input.value, SIDEBAR_PANEL_WIDTH_PX);
+        input.value = String(next);
+        applyUiSettings({ sidebarWidthPx: next });
+        persist({ sidebarWidthPx: next });
+      }
+    );
+
+    const minimapVisibleInput = createCheckbox(uiSettings.minimapVisible, (checked) => {
+      applyUiSettings({ minimapVisible: checked });
+      persist({ minimapVisible: checked });
+    });
+
+    const hotkeyInput = document.createElement("input");
+    hotkeyInput.type = "text";
+    hotkeyInput.value = uiSettings.sidebarHotkey;
+    hotkeyInput.placeholder = "Alt+Shift+B";
+    hotkeyInput.style.width = "120px";
+    hotkeyInput.style.height = "30px";
+    hotkeyInput.style.borderRadius = "8px";
+    hotkeyInput.style.border = `1px solid ${theme.inputBorder}`;
+    hotkeyInput.style.padding = "0 8px";
+    hotkeyInput.style.fontSize = "12px";
+    hotkeyInput.style.fontFamily = "inherit";
+    hotkeyInput.style.background = theme.inputBg;
+    hotkeyInput.style.color = theme.text;
+    hotkeyInput.addEventListener("change", () => {
+      const next = normalizeSidebarHotkey(hotkeyInput.value, DEFAULT_SIDEBAR_HOTKEY);
+      hotkeyInput.value = next;
+      applyUiSettings({ sidebarHotkey: next });
+      persist({ sidebarHotkey: next });
+    });
+
+    const conversationPaddingInput = createNumberInput(
+      uiSettings.conversationPaddingPx,
+      CONVERSATION_PADDING_MIN_PX,
+      CONVERSATION_PADDING_MAX_PX,
+      (input) => {
+        const next = normalizeConversationPaddingPx(input.value, DEFAULT_CONVERSATION_PADDING_PX);
+        input.value = String(next);
+        applyUiSettings({ conversationPaddingPx: next });
+        persist({ conversationPaddingPx: next });
+      }
+    );
+
+    const composerWidthInput = createNumberInput(
+      uiSettings.composerWidthPx,
+      COMPOSER_WIDTH_MIN_PX,
+      COMPOSER_WIDTH_MAX_PX,
+      (input) => {
+        const next = normalizeComposerWidthPx(input.value, DEFAULT_COMPOSER_WIDTH_PX);
+        input.value = String(next);
+        applyUiSettings({ composerWidthPx: next });
+        persist({ composerWidthPx: next });
+      }
+    );
+
+    const scrollThrottleInput = createNumberInput(
+      config.SCROLL_THROTTLE_MS,
+      SCROLL_THROTTLE_MIN_MS,
+      SCROLL_THROTTLE_MAX_MS,
+      (input) => {
+        const next = normalizeScrollThrottleMs(input.value, config.SCROLL_THROTTLE_MS);
+        input.value = String(next);
+        config.SCROLL_THROTTLE_MS = next;
+        persist({ scrollThrottleMs: next });
+      }
+    );
+
+    const mutationDebounceInput = createNumberInput(
+      config.MUTATION_DEBOUNCE_MS,
+      MUTATION_DEBOUNCE_MIN_MS,
+      MUTATION_DEBOUNCE_MAX_MS,
+      (input) => {
+        const next = normalizeMutationDebounceMs(input.value, config.MUTATION_DEBOUNCE_MS);
+        input.value = String(next);
+        config.MUTATION_DEBOUNCE_MS = next;
+        persist({ mutationDebounceMs: next });
+      }
+    );
+
+    const colorUserDark = createColorInput(uiSettings.userColorDark, (value) => {
+      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.userDark);
+      applyUiSettings({ userColorDark: next });
+      persist({ userColorDark: next });
+    });
+    const colorAssistantDark = createColorInput(uiSettings.assistantColorDark, (value) => {
+      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.assistantDark);
+      applyUiSettings({ assistantColorDark: next });
+      persist({ assistantColorDark: next });
+    });
+    const colorUserLight = createColorInput(uiSettings.userColorLight, (value) => {
+      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.userLight);
+      applyUiSettings({ userColorLight: next });
+      persist({ userColorLight: next });
+    });
+    const colorAssistantLight = createColorInput(uiSettings.assistantColorLight, (value) => {
+      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.assistantLight);
+      applyUiSettings({ assistantColorLight: next });
+      persist({ assistantColorLight: next });
+    });
+
+    const resetColorsButton = document.createElement("button");
+    resetColorsButton.type = "button";
+    resetColorsButton.textContent = "Reset Colors";
+    resetColorsButton.style.height = "30px";
+    resetColorsButton.style.padding = "0 10px";
+    resetColorsButton.style.borderRadius = "8px";
+    resetColorsButton.style.border = `1px solid ${theme.panelBorder}`;
+    resetColorsButton.style.background = theme.buttonMutedBg;
+    resetColorsButton.style.color = theme.text;
+    resetColorsButton.style.cursor = "pointer";
+    resetColorsButton.style.fontSize = "11px";
+    resetColorsButton.style.fontFamily = "inherit";
+    resetColorsButton.addEventListener("click", () => {
+      const colorPatch = {
+        userColorDark: DEFAULT_ROLE_COLORS.userDark,
+        assistantColorDark: DEFAULT_ROLE_COLORS.assistantDark,
+        userColorLight: DEFAULT_ROLE_COLORS.userLight,
+        assistantColorLight: DEFAULT_ROLE_COLORS.assistantLight
+      };
+      applyUiSettings(colorPatch);
+      persist(colorPatch);
+      renderSidebarTab("settings");
     });
 
     settingsEnabledInput = enabledInput;
     settingsDebugInput = debugInput;
     settingsMarginInput = marginInput;
+    settingsConversationPaddingInput = conversationPaddingInput;
+    settingsComposerWidthInput = composerWidthInput;
 
-    container.appendChild(row("Enable Virtual Scrolling", enabledInput));
-    container.appendChild(row("Debug Mode", debugInput));
-    container.appendChild(row("Virtualization Margin", marginInput));
+    controlList.appendChild(sectionTitle("Behavior"));
+    controlList.appendChild(settingRow("Enable Virtual Scrolling", "Toggle virtualization and GPT Boost UI.", enabledInput));
+    controlList.appendChild(settingRow("Debug Mode", "Show GPT Boost debug logs in DevTools.", debugInput));
+
+    controlList.appendChild(sectionTitle("Virtualization"));
+    controlList.appendChild(settingRow("Virtualization Margin", "Buffer around viewport (px).", marginInput));
+    controlList.appendChild(settingRow("Scroll Throttle", "Scroll update throttle in ms.", scrollThrottleInput));
+    controlList.appendChild(settingRow("Mutation Debounce", "DOM observer debounce in ms.", mutationDebounceInput));
+
+    controlList.appendChild(sectionTitle("Layout"));
+    controlList.appendChild(settingRow("Sidebar Width", "Default sidebar width (px).", sidebarWidthInput));
+    controlList.appendChild(settingRow("Show Minimap", "Toggle minimap visibility.", minimapVisibleInput));
+    controlList.appendChild(settingRow("Sidebar Hotkey", "Toggle tools sidebar from keyboard.", hotkeyInput));
+    controlList.appendChild(
+      settingRow(
+        "Conversation Padding",
+        "Controls page-side padding for thread content (px).",
+        conversationPaddingInput
+      )
+    );
+    controlList.appendChild(
+      settingRow(
+        "Composer Width",
+        "Controls the ChatGPT composer/content width (px).",
+        composerWidthInput
+      )
+    );
+
+    controlList.appendChild(sectionTitle("Colors"));
+    const userDarkShell = createInputShell();
+    userDarkShell.appendChild(colorUserDark);
+    controlList.appendChild(settingRow("User (Dark)", "User bubble color in dark mode.", userDarkShell));
+    const agentDarkShell = createInputShell();
+    agentDarkShell.appendChild(colorAssistantDark);
+    controlList.appendChild(settingRow("Agent (Dark)", "Agent bubble color in dark mode.", agentDarkShell));
+    const userLightShell = createInputShell();
+    userLightShell.appendChild(colorUserLight);
+    controlList.appendChild(settingRow("User (Light)", "User bubble color in light mode.", userLightShell));
+    const agentLightShell = createInputShell();
+    agentLightShell.appendChild(colorAssistantLight);
+    controlList.appendChild(settingRow("Agent (Light)", "Agent bubble color in light mode.", agentLightShell));
+    const resetShell = createInputShell();
+    resetShell.appendChild(resetColorsButton);
+    controlList.appendChild(settingRow("Defaults", "Reset all role colors to extension defaults.", resetShell));
+
+    controlList.appendChild(sectionTitle("Status"));
+    const statsSnapshot = getStatsSnapshot();
+    const statsGrid = document.createElement("div");
+    statsGrid.style.display = "grid";
+    statsGrid.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+    statsGrid.style.gap = "8px";
+    statsGrid.style.marginBottom = "6px";
+
+    const mkStat = (label, value) => {
+      const card = document.createElement("div");
+      card.style.border = `1px solid ${theme.panelBorder}`;
+      card.style.borderRadius = "8px";
+      card.style.padding = "8px";
+      card.style.background = theme.inputBg;
+      const l = document.createElement("div");
+      l.textContent = label;
+      l.style.fontSize = "10px";
+      l.style.letterSpacing = "0.08em";
+      l.style.textTransform = "uppercase";
+      l.style.color = theme.mutedText;
+      const v = document.createElement("div");
+      v.textContent = value;
+      v.style.marginTop = "4px";
+      v.style.fontSize = "14px";
+      v.style.fontWeight = "600";
+      v.style.color = theme.text;
+      card.appendChild(l);
+      card.appendChild(v);
+      return card;
+    };
+
+    statsGrid.appendChild(mkStat("Total Messages", String(statsSnapshot.totalMessages)));
+    statsGrid.appendChild(mkStat("Rendered", String(statsSnapshot.renderedMessages)));
+    statsGrid.appendChild(mkStat("Memory Saved", `${statsSnapshot.memorySavedPercent}%`));
+    statsGrid.appendChild(mkStat("Status", state.enabled ? "Active" : "Disabled"));
+    controlList.appendChild(statsGrid);
+
+    controlList.appendChild(sectionTitle("Cached Conversations"));
+    const cacheDetails = document.createElement("pre");
+    cacheDetails.style.margin = "0";
+    cacheDetails.style.padding = "8px";
+    cacheDetails.style.fontSize = "10px";
+    cacheDetails.style.lineHeight = "1.35";
+    cacheDetails.style.whiteSpace = "pre-wrap";
+    cacheDetails.style.wordBreak = "break-word";
+    cacheDetails.style.maxHeight = "180px";
+    cacheDetails.style.overflow = "auto";
+    cacheDetails.style.borderRadius = "8px";
+    cacheDetails.style.border = `1px solid ${theme.panelBorder}`;
+    cacheDetails.style.background = theme.inputBg;
+    cacheDetails.style.color = theme.text;
+    cacheDetails.textContent = "Loading cached conversation data...";
+    controlList.appendChild(cacheDetails);
+
+    Promise.all([loadFlagsStore(), loadKnownConversationsStore()]).then(([flagsStore, knownStore]) => {
+      const summary = summarizeConversationCaches(flagsStore, knownStore);
+      const flagKeys = Object.keys(flagsStore || {});
+      const knownKeys = Object.keys(knownStore || {});
+      const payload = {
+        totalCachedConversations: summary.totalKnownConversations,
+        totalFlaggedConversations: summary.totalFlaggedConversations,
+        currentConversationKey: currentConversationKey || "(none)",
+        cachedPinnedMessages: summary.cachedPinnedMessages,
+        cachedBookmarkedMessages: summary.cachedBookmarkedMessages,
+        approxFlagsBytes: summary.approxFlagsBytes,
+        approxKnownBytes: summary.approxKnownBytes,
+        flaggedConversations: flagKeys.slice(0, 10).map((key) => ({
+          key,
+          pinned: Array.isArray(flagsStore[key]?.pinned) ? flagsStore[key].pinned.length : 0,
+          bookmarked: Array.isArray(flagsStore[key]?.bookmarked) ? flagsStore[key].bookmarked.length : 0
+        })),
+        knownConversations: knownKeys.slice(0, 10).map((key) => ({
+          key,
+          visits: Number(knownStore[key]?.visits || 0),
+          lastSeenAt: knownStore[key]?.lastSeenAt || ""
+        }))
+      };
+      cacheDetails.textContent = JSON.stringify(payload, null, 2);
+    }).catch(() => {
+      cacheDetails.textContent = "Cached conversation stats unavailable.";
+    });
   }
 
   function renderSidebarTab(tabId) {
@@ -1954,6 +2321,25 @@ import hljs from 'highlight.js/lib/common';
       return;
     }
     openSidebar(requested);
+  }
+
+  function bindSidebarHotkey() {
+    if (hotkeyListenerBound) return;
+    window.addEventListener("keydown", (event) => {
+      if (!state.enabled) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!hotkeyMatchesKeyboardEvent(uiSettings.sidebarHotkey, event)) return;
+      event.preventDefault();
+      toggleSidebar(activeSidebarTab || "search");
+    });
+    hotkeyListenerBound = true;
   }
 
   function ensureSidebarToggleButton() {
@@ -2082,11 +2468,17 @@ import hljs from 'highlight.js/lib/common';
     const settingsBtn = document.createElement("button");
     settingsBtn.type = "button";
     settingsBtn.textContent = "⚙";
-    settingsBtn.setAttribute("aria-label", "Open extension settings");
+    settingsBtn.setAttribute("aria-label", "Open sidebar settings");
     styleSearchButton(settingsBtn, 24);
     settingsBtn.style.display = "flex";
     settingsBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    settingsBtn.addEventListener("click", openExtensionSettingsPage);
+    settingsBtn.addEventListener("click", () => {
+      if (isSidebarOpen()) {
+        renderSidebarTab("settings");
+      } else {
+        openSidebar("settings");
+      }
+    });
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
@@ -2124,6 +2516,7 @@ import hljs from 'highlight.js/lib/common';
     tabs.appendChild(createSidebarTabButton("bookmarks", "Marks", "🔖"));
     tabs.appendChild(createSidebarTabButton("snippets", "Code", "⌨"));
     tabs.appendChild(createSidebarTabButton("outline", "Outline", "🧭"));
+    tabs.appendChild(createSidebarTabButton("settings", "Settings", "⚙"));
 
     const content = document.createElement("div");
     content.style.display = "flex";
@@ -2470,9 +2863,9 @@ import hljs from 'highlight.js/lib/common';
   function applyStandaloneMinimapViewportThumbTheme(viewportThumb) {
     if (!(viewportThumb instanceof HTMLElement)) return;
     if (getThemeMode() === "dark") {
-      viewportThumb.style.background = "rgba(255,255,255,0.5)";
-      viewportThumb.style.border = "1px solid rgba(255,255,255,0.35)";
-      viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.2)";
+      viewportThumb.style.background = "rgba(2,6,23,0.72)";
+      viewportThumb.style.border = "1px solid rgba(2,6,23,0.92)";
+      viewportThumb.style.boxShadow = "0 1px 3px rgba(0,0,0,0.38)";
       return;
     }
     viewportThumb.style.background = "rgba(32,33,35,0.36)";
@@ -2753,7 +3146,7 @@ import hljs from 'highlight.js/lib/common';
   }
 
   function updateMinimapVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
+    const shouldShow = state.enabled && uiSettings.minimapVisible && totalMessages > 0;
     if (minimapButton) minimapButton.style.display = "none";
     const panel = ensureMinimapPanel();
     if (!panel) return;
@@ -2895,10 +3288,17 @@ import hljs from 'highlight.js/lib/common';
     const snippet = article.querySelector("[data-gpt-boost-snippet]");
     const sideRail = article.querySelector("[data-gpt-boost-side-rail]");
     const collapseBtn = sideRail && sideRail.querySelector("[data-gpt-boost-collapse-btn]");
+    const nativeActionRows = getArticleNativeActionRows(article);
 
     if (contentArea) {
       contentArea.style.display = isCollapsed ? "none" : "";
     }
+    nativeActionRows.forEach((row) => {
+      if (!row.dataset.gptBoostOrigDisplay) {
+        row.dataset.gptBoostOrigDisplay = row.style.display || "";
+      }
+      row.style.display = isCollapsed ? "none" : row.dataset.gptBoostOrigDisplay;
+    });
     if (snippet) {
       snippet.style.display = isCollapsed ? "block" : "none";
     }
@@ -2959,6 +3359,39 @@ import hljs from 'highlight.js/lib/common';
       article.querySelector(".markdown") ||
       article;
     return messageContainer instanceof HTMLElement ? messageContainer : article;
+  }
+
+  function getDirectChildAncestor(container, node) {
+    if (!(container instanceof HTMLElement) || !(node instanceof HTMLElement)) return null;
+    let current = node;
+    while (current && current.parentElement && current.parentElement !== container) {
+      current = current.parentElement;
+    }
+    return current && current.parentElement === container ? current : null;
+  }
+
+  function getArticleNativeActionRows(article) {
+    if (!(article instanceof HTMLElement)) return [];
+
+    const markerSelector = [
+      'button[data-testid="copy-turn-action-button"]',
+      'button[data-testid="good-response-turn-action-button"]',
+      'button[data-testid="bad-response-turn-action-button"]',
+      'button[aria-label="More actions"]',
+      'button[aria-label="Switch model"]'
+    ].join(",");
+
+    const rows = new Set();
+    article.querySelectorAll(markerSelector).forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return;
+      const directChild = getDirectChildAncestor(article, btn.closest("div") || btn);
+      if (!(directChild instanceof HTMLElement)) return;
+      if (directChild.hasAttribute("data-gpt-boost-side-rail")) return;
+      if (directChild.hasAttribute("data-gpt-boost-snippet")) return;
+      rows.add(directChild);
+    });
+
+    return Array.from(rows);
   }
 
   function injectArticleUi(article, virtualId) {
@@ -3312,6 +3745,136 @@ import hljs from 'highlight.js/lib/common';
     document.head.appendChild(style);
   }
 
+  function normalizeLanguageTag(value) {
+    const raw = String(value || "")
+      .toLowerCase()
+      .trim()
+      .replace(/^language[-:_\s]*/, "")
+      .replace(/[`"'()[\]{}:;,.]/g, "")
+      .replace(/\s+/g, "");
+
+    if (!raw) return "";
+
+    const aliasMap = {
+      js: "javascript",
+      jsx: "javascript",
+      ts: "typescript",
+      tsx: "typescript",
+      py: "python",
+      sh: "bash",
+      shell: "bash",
+      zsh: "bash",
+      csharp: "c#",
+      cs: "c#",
+      "c++": "cpp",
+      yml: "yaml",
+      md: "markdown",
+      txt: "text",
+      plaintext: "text",
+      plain: "text"
+    };
+
+    return aliasMap[raw] || raw;
+  }
+
+  function normalizeSnippetHeaderLine(value) {
+    return String(value || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  function isKnownSnippetLanguageTag(value) {
+    const normalized = normalizeLanguageTag(value);
+    if (!normalized) return false;
+
+    const known = new Set([
+      "bash",
+      "shell",
+      "yaml",
+      "json",
+      "ini",
+      "toml",
+      "xml",
+      "html",
+      "css",
+      "javascript",
+      "typescript",
+      "python",
+      "java",
+      "c",
+      "cpp",
+      "c#",
+      "go",
+      "rust",
+      "php",
+      "ruby",
+      "sql",
+      "dockerfile",
+      "makefile",
+      "text",
+      "markdown",
+      "powershell"
+    ]);
+
+    if (known.has(normalized)) return true;
+    if (normalized === "c#" && hljs.getLanguage("csharp")) return true;
+    return !!hljs.getLanguage(normalized);
+  }
+
+  function stripSnippetLeadingHeaderLines(text, inferredLang) {
+    const lines = toUnixNewlines(text).split("\n");
+    let normalizedLang = normalizeLanguageTag(inferredLang);
+    let guard = 0;
+
+    while (lines.length > 0 && guard < 10) {
+      guard += 1;
+      const normalizedLine = normalizeSnippetHeaderLine(lines[0]);
+      const compactLine = normalizedLine.replace(/[\s`"'()[\]{}:;,.#+-]/g, "");
+
+      if (!normalizedLine) {
+        lines.shift();
+        continue;
+      }
+
+      if (compactLine === "copycode" || compactLine === "copy") {
+        lines.shift();
+        continue;
+      }
+
+      const candidateFromLine = normalizeLanguageTag(normalizedLine);
+      const candidateFromCompact = normalizeLanguageTag(compactLine);
+      const candidateLang = normalizedLang || candidateFromLine || candidateFromCompact;
+      const candidateCompact = candidateLang
+        ? candidateLang.replace(/[^a-z0-9#]/g, "")
+        : "";
+
+      if (candidateLang && isKnownSnippetLanguageTag(candidateLang) && candidateCompact) {
+        const isLanguageOnlyLine =
+          compactLine === candidateCompact ||
+          compactLine === `language${candidateCompact}` ||
+          compactLine === `${candidateCompact}copycode` ||
+          compactLine === `${candidateCompact}copy` ||
+          compactLine === `${candidateCompact}code` ||
+          compactLine === `copy${candidateCompact}`;
+
+        if (isLanguageOnlyLine) {
+          if (!normalizedLang) normalizedLang = candidateLang;
+          lines.shift();
+          continue;
+        }
+      }
+
+      break;
+    }
+
+    return {
+      text: lines.join("\n").trimEnd(),
+      normalizedLang
+    };
+  }
+
   function renderSnippetsTabContent(container) {
     ensureHighlightJsStyles();
 
@@ -3360,32 +3923,14 @@ import hljs from 'highlight.js/lib/common';
         if (!text) return;
 
         let lang = inferCodeLanguage(source, pre);
-
-        // Robust cleanup of the first few lines if they match the language name or "Copy code"
-        const lines = text.split('\n');
-        while (lines.length > 0) {
-          const l = lines[0].trim().toLowerCase();
-          if ((lang && l === lang.toLowerCase()) || l === 'copy code' || l === '') {
-            lines.shift();
-          } else if (lang && l.startsWith(lang.toLowerCase())) {
-            // Example: "Python# INPUTS" 
-            const remainder = lines[0].substring(lang.length).trim();
-            if (remainder.length > 0) {
-              lines[0] = remainder;
-            } else {
-              lines.shift();
-            }
-            break;
-          } else if (!lang && /^[a-z]+$/i.test(l) && ['python', 'javascript', 'html', 'css', 'bash', 'json', 'typescript', 'java', 'cpp', 'c', 'sql'].includes(l)) {
-            lang = l;
-            lines.shift();
-          } else {
-            break;
-          }
+        const cleaned = stripSnippetLeadingHeaderLines(text, lang);
+        text = cleaned.text;
+        if (!lang && cleaned.normalizedLang) {
+          lang = cleaned.normalizedLang;
         }
-        text = lines.join('\n').trimEnd();
         if (!text) return;
 
+        const lines = text.split("\n");
         let titleLine = lines.find(l => l.trim().length > 0) || "";
         titleLine = titleLine.trim();
         if (titleLine.length > 45) {
@@ -3583,8 +4128,12 @@ import hljs from 'highlight.js/lib/common';
   function extractCodeSnippetText(pre) {
     if (!(pre instanceof HTMLElement)) return "";
 
+    const codeViewerContent = pre.querySelector("#code-block-viewer .cm-content, .cm-editor .cm-content");
     const codeEl = pre.querySelector("code");
-    let rawText = extractTextPreservingNewlines(codeEl);
+    let rawText = extractTextPreservingNewlines(codeViewerContent);
+    if (!rawText || !rawText.trim()) {
+      rawText = extractTextPreservingNewlines(codeEl);
+    }
     if (!rawText || !rawText.trim()) {
       rawText = extractTextPreservingNewlines(pre);
     }
@@ -3676,6 +4225,21 @@ import hljs from 'highlight.js/lib/common';
         if (lang.length > 20 || lang.includes('\n')) {
           // False positive, grabbed the code or a large title
           lang = "";
+        }
+      }
+    }
+
+    // Fallback for newer ChatGPT code block renderer (CodeMirror viewer shell).
+    if (!lang && preEl && preEl instanceof HTMLElement) {
+      const headerLabel = preEl.querySelector(
+        '[id="code-block-viewer"] ~ div [class*="font-medium"], [class*="font-medium"][class*="text-sm"]'
+      );
+      if (headerLabel instanceof HTMLElement) {
+        const labelText = normalizeSnippetHeaderLine(headerLabel.textContent || "");
+        const compact = labelText.replace(/[\s`"'()[\]{}:;,.#+-]/g, "");
+        const candidate = normalizeLanguageTag(compact || labelText);
+        if (candidate && candidate.length <= 20 && isKnownSnippetLanguageTag(candidate)) {
+          lang = candidate;
         }
       }
     }
@@ -3864,72 +4428,93 @@ import hljs from 'highlight.js/lib/common';
     listContainer.innerHTML = "";
     const theme = getThemeTokens();
 
-    if (!state.bookmarkedMessages.size) {
-      const empty = document.createElement("div");
-      empty.style.fontSize = "12px";
-      empty.style.opacity = "0.6";
-      empty.style.padding = "4px 2px";
-      empty.textContent = "No bookmarked messages.";
-      listContainer.appendChild(empty);
-      return;
-    }
+    const appendSection = (titleText, ids, emptyText) => {
+      const section = document.createElement("div");
+      section.style.display = "flex";
+      section.style.flexDirection = "column";
+      section.style.gap = "6px";
+      section.style.padding = "4px 0";
 
-    const sortedIds = Array.from(state.bookmarkedMessages)
-      .sort((a, b) => Number(a) - Number(b));
+      const title = document.createElement("div");
+      title.textContent = `${titleText} (${ids.length})`;
+      title.style.fontSize = "10px";
+      title.style.letterSpacing = "0.12em";
+      title.style.textTransform = "uppercase";
+      title.style.opacity = "0.72";
+      section.appendChild(title);
 
-    sortedIds.forEach((id, index) => {
-      const article = state.articleMap.get(id);
-      if (!article) return;
+      if (!ids.length) {
+        const empty = document.createElement("div");
+        empty.style.fontSize = "12px";
+        empty.style.opacity = "0.6";
+        empty.style.padding = "4px 2px";
+        empty.textContent = emptyText;
+        section.appendChild(empty);
+        listContainer.appendChild(section);
+        return;
+      }
 
-      const role = getMessageRole(article);
-      const roleStyle = getRoleSurfaceStyle(role, theme);
-      const textSource = article.querySelector("[data-message-author-role]") || article;
-      const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-      const snippet = rawText.length > MINIMAP_PROMPT_SNIPPET_LENGTH
-        ? rawText.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "…"
-        : rawText;
+      ids.forEach((id, index) => {
+        const article = state.articleMap.get(id);
+        if (!article) return;
 
-      const item = document.createElement("button");
-      item.type = "button";
-      item.style.display = "flex";
-      item.style.flexDirection = "column";
-      item.style.gap = "4px";
-      item.style.flexShrink = "0";
-      item.style.width = "100%";
-      item.style.textAlign = "left";
-      item.style.background = roleStyle.surfaceBg;
-      item.style.border = `1px solid ${roleStyle.borderColor}`;
-      item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
-      item.style.borderRadius = "10px";
-      item.style.padding = "6px 8px";
-      item.style.cursor = "pointer";
-      item.style.color = theme.text;
-      item.style.wordBreak = "break-word";
-      item.style.fontFamily = "inherit";
-      item.addEventListener("mouseenter", () => { item.style.background = roleStyle.activeSurfaceBg; });
-      item.addEventListener("mouseleave", () => { item.style.background = roleStyle.surfaceBg; });
-      item.addEventListener("click", () => {
-        hideBookmarksPanel();
-        scrollToVirtualId(id);
+        const role = getMessageRole(article);
+        const roleStyle = getRoleSurfaceStyle(role, theme);
+        const textSource = article.querySelector("[data-message-author-role]") || article;
+        const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
+        const snippet = rawText.length > MINIMAP_PROMPT_SNIPPET_LENGTH
+          ? rawText.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "…"
+          : rawText;
+
+        const item = document.createElement("button");
+        item.type = "button";
+        item.style.display = "flex";
+        item.style.flexDirection = "column";
+        item.style.gap = "4px";
+        item.style.flexShrink = "0";
+        item.style.width = "100%";
+        item.style.textAlign = "left";
+        item.style.background = roleStyle.surfaceBg;
+        item.style.border = `1px solid ${roleStyle.borderColor}`;
+        item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
+        item.style.borderRadius = "10px";
+        item.style.padding = "6px 8px";
+        item.style.cursor = "pointer";
+        item.style.color = theme.text;
+        item.style.wordBreak = "break-word";
+        item.style.fontFamily = "inherit";
+        item.addEventListener("mouseenter", () => { item.style.background = roleStyle.activeSurfaceBg; });
+        item.addEventListener("mouseleave", () => { item.style.background = roleStyle.surfaceBg; });
+        item.addEventListener("click", () => {
+          hideBookmarksPanel();
+          scrollToVirtualId(id);
+        });
+
+        const roleChip = createRoleChip(roleStyle);
+
+        const snippetLine = document.createElement("div");
+        snippetLine.textContent = `${index + 1}. ${snippet}`;
+        snippetLine.style.fontSize = "12px";
+        snippetLine.style.lineHeight = "1.4";
+
+        const metaLine = document.createElement("div");
+        metaLine.textContent = `#${id} • ${index + 1}/${ids.length}`;
+        metaLine.style.fontSize = "10px";
+        metaLine.style.opacity = "0.72";
+
+        item.appendChild(roleChip);
+        item.appendChild(snippetLine);
+        item.appendChild(metaLine);
+        section.appendChild(item);
       });
 
-      const roleChip = createRoleChip(roleStyle);
+      listContainer.appendChild(section);
+    };
 
-      const snippetLine = document.createElement("div");
-      snippetLine.textContent = `${index + 1}. ${snippet}`;
-      snippetLine.style.fontSize = "12px";
-      snippetLine.style.lineHeight = "1.4";
-
-      const metaLine = document.createElement("div");
-      metaLine.textContent = `#${id} • ${index + 1}/${sortedIds.length}`;
-      metaLine.style.fontSize = "10px";
-      metaLine.style.opacity = "0.72";
-
-      item.appendChild(roleChip);
-      item.appendChild(snippetLine);
-      item.appendChild(metaLine);
-      listContainer.appendChild(item);
-    });
+    const sortedPinnedIds = Array.from(state.pinnedMessages).sort((a, b) => Number(a) - Number(b));
+    const sortedBookmarkedIds = Array.from(state.bookmarkedMessages).sort((a, b) => Number(a) - Number(b));
+    appendSection("Pinned", sortedPinnedIds, "No pinned messages.");
+    appendSection("Bookmarked", sortedBookmarkedIds, "No bookmarked messages.");
   }
 
   function showBookmarksPanel() {
@@ -4240,57 +4825,6 @@ import hljs from 'highlight.js/lib/common';
   }
 
   // ---------------------------------------------------------------------------
-  // Observers
-  // ---------------------------------------------------------------------------
-
-  function setupScrollTracking(scrollContainer, onScrollChange) {
-    let lastCheckTime = 0;
-    let frameId = null;
-
-    const now =
-      typeof performance !== "undefined" && performance.now
-        ? () => performance.now()
-        : () => Date.now();
-
-    const runCheck = () => {
-      const currentTime = now();
-      if (currentTime - lastCheckTime < config.SCROLL_THROTTLE_MS) return;
-      lastCheckTime = currentTime;
-      onScrollChange();
-      updateMapViewportState();
-      updateStandaloneMinimapViewportState();
-    };
-
-    const handleScroll = () => {
-      if (frameId !== null) return;
-      frameId = requestAnimationFrame(() => {
-        frameId = null;
-        runCheck();
-      });
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
-    runCheck();
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", handleScroll);
-      if (frameId !== null) cancelAnimationFrame(frameId);
-    };
-  }
-
-  function createDebouncedObserver(onMutation, delayMs) {
-    let timerId = null;
-
-    return new MutationObserver(() => {
-      if (timerId !== null) clearTimeout(timerId);
-      timerId = setTimeout(() => {
-        timerId = null;
-        onMutation();
-      }, delayMs);
-    });
-  }
-
-  // ---------------------------------------------------------------------------
   // Main: boot, teardown, URL watcher
   // ---------------------------------------------------------------------------
 
@@ -4310,9 +4844,15 @@ import hljs from 'highlight.js/lib/common';
     }
 
     state.scrollElement = container;
-    state.cleanupScrollListener = setupScrollTracking(container, () => {
-      scheduleVirtualization();
-    });
+    state.cleanupScrollListener = setupScrollTracking(
+      container,
+      config.SCROLL_THROTTLE_MS,
+      () => {
+        scheduleVirtualization();
+        updateMapViewportState();
+        updateStandaloneMinimapViewportState();
+      }
+    );
     if (isSidebarOpen()) {
       applySidebarLayoutOffset(currentSidebarWidthPx);
       applyFloatingUiOffsets();
@@ -4346,6 +4886,9 @@ import hljs from 'highlight.js/lib/common';
         attributeFilter: ["class"]
       });
     }
+    bindSidebarHotkey();
+    applyRoleColorSettings();
+    applyConversationLayoutSettings();
 
     const root = findConversationRoot();
     state.conversationRoot = root;
@@ -4498,6 +5041,8 @@ import hljs from 'highlight.js/lib/common';
     settingsEnabledInput = null;
     settingsDebugInput = null;
     settingsMarginInput = null;
+    settingsConversationPaddingInput = null;
+    settingsComposerWidthInput = null;
 
     if (tokenGaugeElement && tokenGaugeElement.isConnected) tokenGaugeElement.remove();
     tokenGaugeElement = null;
@@ -4519,6 +5064,11 @@ import hljs from 'highlight.js/lib/common';
       if (sideRail) sideRail.remove();
       const snippet = el.querySelector("[data-gpt-boost-snippet]");
       if (snippet) snippet.remove();
+      el.querySelectorAll("[data-gpt-boost-orig-display]").forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.style.display = row.dataset.gptBoostOrigDisplay || "";
+        delete row.dataset.gptBoostOrigDisplay;
+      });
       if (el instanceof HTMLElement) {
         el.style.boxShadow = "";
         const hoverTarget = getArticleHoverTarget(el);
@@ -4574,6 +5124,7 @@ import hljs from 'highlight.js/lib/common';
     startUrlWatcher,
     handleResize,
     getStatsSnapshot,
+    applyUiSettings,
     // Direct virtualizeNow bypass (no rAF) — used by the warmup poll in boot.js
     // to guard against requestAnimationFrame throttling in Firefox content scripts.
     forceVirtualize() {

@@ -67,6 +67,63 @@
           </label>
         </div>
 
+        <div class="section-title advanced-section-title">LAYOUT</div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Sidebar Width</div>
+            <div class="setting-description">Default tools sidebar width.</div>
+          </div>
+          <div class="buffer-control">
+            <input type="number" id="sidebarWidth" step="10" value="320" />
+            <span class="buffer-unit">px</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Show Minimap</div>
+            <div class="setting-description">Enable or hide the standalone minimap.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggleMinimapVisible" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Sidebar Hotkey</div>
+            <div class="setting-description">Toggle the sidebar from keyboard.</div>
+          </div>
+          <div class="buffer-control">
+            <input type="text" id="sidebarHotkey" value="Alt+Shift+B" />
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Conversation Padding</div>
+            <div class="setting-description">Horizontal padding on conversation content.</div>
+          </div>
+          <div class="buffer-control">
+            <input type="number" id="conversationPadding" step="1" value="16" />
+            <span class="buffer-unit">px</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Composer Width</div>
+            <div class="setting-description">Chat/composer content width target.</div>
+          </div>
+          <div class="buffer-control">
+            <input type="number" id="composerWidth" step="10" value="768" />
+            <span class="buffer-unit">px</span>
+          </div>
+        </div>
+
+        <div class="section-title advanced-section-title">VIRTUALIZATION</div>
         <div class="setting-row">
           <div class="setting-text">
             <div class="setting-title">Buffer Size</div>
@@ -75,10 +132,58 @@
             </div>
           </div>
           <div class="buffer-control">
-            <input type="number" id="bufferSize" step="250" value="2000" />
+            <input type="number" id="bufferSize" step="50" value="2000" />
             <span class="buffer-unit">px</span>
           </div>
         </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Scroll Throttle</div>
+            <div class="setting-description">Minimum time between scroll-driven updates.</div>
+          </div>
+          <div class="buffer-control">
+            <input type="number" id="scrollThrottle" step="1" value="50" />
+            <span class="buffer-unit">ms</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <div class="setting-title">Mutation Debounce</div>
+            <div class="setting-description">Delay for batching DOM mutation bursts.</div>
+          </div>
+          <div class="buffer-control">
+            <input type="number" id="mutationDebounce" step="1" value="50" />
+            <span class="buffer-unit">ms</span>
+          </div>
+        </div>
+
+        <div class="section-title advanced-section-title">ROLE COLORS</div>
+        <div class="color-grid">
+          <label class="color-item">
+            <span>User Dark</span>
+            <input type="color" id="userColorDark" value="#303030" />
+          </label>
+          <label class="color-item">
+            <span>Agent Dark</span>
+            <input type="color" id="assistantColorDark" value="#202020" />
+          </label>
+          <label class="color-item">
+            <span>User Light</span>
+            <input type="color" id="userColorLight" value="#F4F4F4" />
+          </label>
+          <label class="color-item">
+            <span>Agent Light</span>
+            <input type="color" id="assistantColorLight" value="#FFFFFF" />
+          </label>
+        </div>
+        <div class="color-actions">
+          <button type="button" class="inline-button" id="resetColors">Reset Color Defaults</button>
+        </div>
+
+        <div class="section-title advanced-section-title">CACHED CONVERSATIONS</div>
+        <pre class="cache-view" id="cacheDetails">Loading...</pre>
       </div>
 
       <div class="footer">

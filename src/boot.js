@@ -1,5 +1,6 @@
 import './constants.js';
 import './virtualization.js';
+import { DEFAULT_EXTENSION_SETTINGS, normalizeExtensionSettings } from './core/settings.js';
 
 // boot.js
 (function initializeContentScript() {
@@ -8,6 +9,10 @@ import './virtualization.js';
   const log = scroller.log;
   const virtualizer = scroller.virtualizer;
   const config = scroller.config;
+  let extensionSettings = {
+    ...DEFAULT_EXTENSION_SETTINGS,
+    marginPx: config.DEFAULT_MARGIN_PX
+  };
   let promoInterval = null;
 
   function normalizeMargin(value) {
@@ -19,38 +24,100 @@ import './virtualization.js';
     );
   }
 
+  function applyVirtualizationConfig(settings) {
+    config.MARGIN_PX = normalizeMargin(settings.marginPx);
+    if (Number.isFinite(settings.scrollThrottleMs)) {
+      config.SCROLL_THROTTLE_MS = Math.round(settings.scrollThrottleMs);
+    }
+    if (Number.isFinite(settings.mutationDebounceMs)) {
+      config.MUTATION_DEBOUNCE_MS = Math.round(settings.mutationDebounceMs);
+    }
+  }
+
   // ---- Storage: enabled + debug flags -----------------------------------
 
   function initializeStorageListeners() {
     chrome.storage.sync.get(
-      { enabled: true, debug: false, marginPx: config.DEFAULT_MARGIN_PX },
+      {
+        ...DEFAULT_EXTENSION_SETTINGS,
+        marginPx: config.DEFAULT_MARGIN_PX
+      },
       (data) => {
-        state.enabled = data.enabled;
-        state.debug = data.debug;
-        config.MARGIN_PX = normalizeMargin(data.marginPx);
+        const normalized = normalizeExtensionSettings(data, {
+          minMarginPx: config.MIN_MARGIN_PX,
+          maxMarginPx: config.MAX_MARGIN_PX,
+          defaultMarginPx: config.DEFAULT_MARGIN_PX
+        });
+        extensionSettings = normalized;
+
+        state.enabled = normalized.enabled;
+        state.debug = normalized.debug;
+        applyVirtualizationConfig(normalized);
+        if (virtualizer.applyUiSettings) {
+          virtualizer.applyUiSettings(normalized);
+        }
 
         startPromoLogging();
+        if (virtualizer.teardownVirtualizer && virtualizer.bootVirtualizer) {
+          virtualizer.teardownVirtualizer();
+          virtualizer.bootVirtualizer();
+        }
         virtualizer.handleResize();
       }
     );
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== "sync") return;
+      let nextSettings = { ...extensionSettings };
       let needsResize = false;
       if (changes.enabled) {
-        state.enabled = changes.enabled.newValue;
+        nextSettings.enabled = changes.enabled.newValue;
         needsResize = true;
       }
       if (changes.marginPx) {
-        config.MARGIN_PX = normalizeMargin(changes.marginPx.newValue);
+        nextSettings.marginPx = changes.marginPx.newValue;
         needsResize = true;
       }
       if (changes.debug) {
-        state.debug = changes.debug.newValue;
+        nextSettings.debug = changes.debug.newValue;
+      }
+      if (changes.sidebarWidthPx) nextSettings.sidebarWidthPx = changes.sidebarWidthPx.newValue;
+      if (changes.minimapVisible) nextSettings.minimapVisible = changes.minimapVisible.newValue;
+      if (changes.sidebarHotkey) nextSettings.sidebarHotkey = changes.sidebarHotkey.newValue;
+      if (changes.conversationPaddingPx) nextSettings.conversationPaddingPx = changes.conversationPaddingPx.newValue;
+      if (changes.composerWidthPx) nextSettings.composerWidthPx = changes.composerWidthPx.newValue;
+      if (changes.scrollThrottleMs) nextSettings.scrollThrottleMs = changes.scrollThrottleMs.newValue;
+      if (changes.mutationDebounceMs) nextSettings.mutationDebounceMs = changes.mutationDebounceMs.newValue;
+      if (changes.userColorDark) nextSettings.userColorDark = changes.userColorDark.newValue;
+      if (changes.assistantColorDark) nextSettings.assistantColorDark = changes.assistantColorDark.newValue;
+      if (changes.userColorLight) nextSettings.userColorLight = changes.userColorLight.newValue;
+      if (changes.assistantColorLight) nextSettings.assistantColorLight = changes.assistantColorLight.newValue;
+
+      const normalized = normalizeExtensionSettings(nextSettings, {
+        minMarginPx: config.MIN_MARGIN_PX,
+        maxMarginPx: config.MAX_MARGIN_PX,
+        defaultMarginPx: config.DEFAULT_MARGIN_PX
+      });
+      extensionSettings = normalized;
+      state.enabled = normalized.enabled;
+      state.debug = normalized.debug;
+      applyVirtualizationConfig(normalized);
+      if (virtualizer.applyUiSettings) {
+        virtualizer.applyUiSettings(normalized);
+      }
+      if (changes.debug) {
         scroller.logPromoMessage();
       }
+
       if (needsResize) {
         virtualizer.handleResize();
+      }
+
+      if ((changes.scrollThrottleMs || changes.mutationDebounceMs) &&
+        virtualizer.teardownVirtualizer &&
+        virtualizer.bootVirtualizer) {
+        virtualizer.teardownVirtualizer();
+        virtualizer.bootVirtualizer();
       }
     });
   }
