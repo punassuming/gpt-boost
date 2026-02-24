@@ -7,6 +7,7 @@ import { createServiceContainer } from './core/services/container.ts';
 import { createVirtualizationEngine } from './core/runtime/virtualizationEngine.ts';
 import { createLifecycleManager } from './core/runtime/lifecycleManager.ts';
 import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
+import { styleFloatingRoundControl } from './ui/shell/floatingControls.js';
 import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
 import { renderSidebarSettingsTab } from './ui/features/sidebar/settingsTab.js';
 import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
@@ -1355,18 +1356,7 @@ import {
   }
 
   function styleSearchButton(button, sizePx) {
-    button.style.width = `${sizePx}px`;
-    button.style.height = `${sizePx}px`;
-    button.style.borderRadius = "999px";
-    button.style.border = "none";
-    button.style.cursor = "pointer";
-    button.style.background = "rgba(17, 24, 39, 0.75)";
-    button.style.color = "#f9fafb";
-    button.style.fontSize = "12px";
-    button.style.fontWeight = "600";
-    button.style.alignItems = "center";
-    button.style.justifyContent = "center";
-    button.style.padding = "0";
+    styleFloatingRoundControl(button, sizePx);
   }
 
   function normalizeMargin(value) {

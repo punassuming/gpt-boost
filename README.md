@@ -115,9 +115,10 @@ It makes massive message lists behave like small ones.
 ├── src/core/runtime/                 # Feature registry + lifecycle + runtime engine modules
 ├── src/core/services/                # Typed shared service container
 ├── src/ui/shell/theme.ts             # Theme mode/tokens
+├── src/ui/shell/floatingControls.js  # Shared floating round-control styling helper
 ├── src/ui/features/roleStyles.ts     # Role chip/surface styling rules
-├── src/ui/features/search/           # Search feature + highlighting helpers
-├── src/ui/features/minimap/          # Minimap UI + geometry helpers
+├── src/ui/features/search/           # Search feature + indexing + highlighting helpers
+├── src/ui/features/minimap/          # Minimap UI + geometry/model helpers
 ├── src/ui/features/map/              # Sidebar map tab feature
 ├── src/ui/features/bookmarks/        # Sidebar-only marks/bookmarks feature
 ├── src/ui/features/outline/          # Outline tab render + collapse controls

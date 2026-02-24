@@ -2,6 +2,11 @@ import {
   clearSearchTextHighlights as clearHighlightsInElement,
   highlightMatchesInElement as highlightMatches
 } from './searchHighlighting.js';
+import {
+  collectSearchTargets as collectTargets,
+  summarizeSearchResult,
+  findSearchMatches
+} from './searchIndex.js';
 
 export function createSearchFeature({
   refs,
@@ -59,42 +64,22 @@ export function createSearchFeature({
   }
 
   function collectSearchTargets() {
-    deps.ensureVirtualIds();
-    const entries = new Map();
-
-    deps.getActiveConversationNodes().forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      const id = node.dataset.virtualId;
-      if (!id) return;
-      entries.set(id, node);
+    return collectTargets({
+      ensureVirtualIds: deps.ensureVirtualIds,
+      getActiveConversationNodes: deps.getActiveConversationNodes,
+      articleMap: state.articleMap
     });
-
-    state.articleMap.forEach((node, id) => {
-      if (!(node instanceof HTMLElement)) return;
-      entries.set(id, node);
-    });
-
-    return entries;
   }
 
   function getSearchResultSummary(id, index, total) {
-    const node = state.articleMap.get(id);
-    if (!(node instanceof HTMLElement)) {
-      return {
-        title: `Result ${index + 1}`,
-        subtitle: `#${id} • ${index + 1}/${total}`,
-        role: "message"
-      };
-    }
-    const role = deps.getMessageRole(node);
-    const textSource = node.querySelector("[data-message-author-role]") || node;
-    const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-    const snippet = raw.length > constants.articleSnippetLength ? raw.slice(0, constants.articleSnippetLength) + "…" : raw;
-    return {
-      title: snippet || `Message ${id}`,
-      subtitle: `#${id} • ${index + 1}/${total}`,
-      role
-    };
+    return summarizeSearchResult({
+      id,
+      index,
+      total,
+      articleMap: state.articleMap,
+      getMessageRole: deps.getMessageRole,
+      articleSnippetLength: constants.articleSnippetLength
+    });
   }
 
   function focusSearchResult(id) {
@@ -156,8 +141,9 @@ export function createSearchFeature({
   }
 
   function runSearch(query) {
-    const normalized = query.trim().toLowerCase();
     searchState.query = query;
+    const entries = collectSearchTargets();
+    const { normalized, results, matchCount } = findSearchMatches(entries, query);
 
     if (!normalized) {
       searchState.results = [];
@@ -169,22 +155,6 @@ export function createSearchFeature({
       rerenderSearchSidebarPreservingInputFocus();
       return;
     }
-
-    const entries = collectSearchTargets();
-    const results = [];
-    let matchCount = 0;
-
-    entries.forEach((node, id) => {
-      const text = (node.textContent || "").toLowerCase();
-      if (!text) return;
-      let index = text.indexOf(normalized);
-      if (index === -1) return;
-      results.push(id);
-      while (index !== -1) {
-        matchCount += 1;
-        index = text.indexOf(normalized, index + normalized.length);
-      }
-    });
 
     searchState.results = results;
     searchState.activeIndex = results.length ? 0 : -1;

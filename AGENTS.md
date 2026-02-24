@@ -11,9 +11,10 @@
   - `src/core/settings.js` is the shared settings source of truth (defaults, normalization, hotkey parsing, storage helpers).
   - `src/core/virtualizer/` contains virtualizer-domain modules (`store.ts`, `observer.ts`, `types.ts`).
   - `src/ui/shell/theme.ts` contains theme token logic.
+  - `src/ui/shell/floatingControls.js` contains shared floating circular control styling helpers.
   - `src/ui/features/roleStyles.ts` contains user/agent role presentation rules.
-  - `src/ui/features/search/` contains search behavior (`searchFeature.js`) and match-highlighting utilities (`searchHighlighting.js`).
-  - `src/ui/features/minimap/` contains minimap rendering/interaction (`minimapFeature.js`) and geometry math helpers (`minimapMath.js`).
+  - `src/ui/features/search/` contains search behavior (`searchFeature.js`), indexing/model helpers (`searchIndex.js`), and match-highlighting utilities (`searchHighlighting.js`).
+  - `src/ui/features/minimap/` contains minimap rendering/interaction (`minimapFeature.js`), geometry/model helpers (`minimapMath.js`, `minimapModel.js`).
   - `src/ui/features/map/mapFeature.js` contains sidebar map-tab rendering/state logic.
   - `src/ui/features/bookmarks/bookmarksFeature.js` contains sidebar marks/bookmarks behavior.
   - `src/ui/features/outline/outlineFeature.js` contains outline-tab rendering and collapse controls.
