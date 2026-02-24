@@ -28,6 +28,8 @@ import hljs from 'highlight.js/lib/common';
   let sidebarToggleButton = null;
   let sidebarPanel = null;
   let sidebarContentContainer = null;
+  let activeMapVirtualId = null;
+  let activeStandaloneMinimapVirtualId = null;
   const sidebarLayoutOriginalStyles = new Map();
   let sidebarBodyMarginOriginal = "";
   let sidebarBodyTransitionOriginal = "";
@@ -75,10 +77,10 @@ import hljs from 'highlight.js/lib/common';
   const MINIMAP_BUTTON_GAP_PX = 8;
   const MINIMAP_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const MINIMAP_BUTTON_TOP_OFFSET_PX = TOP_BUTTON_STACK_OFFSET_PX;
-  const MINIMAP_PANEL_RIGHT_OFFSET_PX =
-    MINIMAP_BUTTON_RIGHT_OFFSET_PX + MINIMAP_BUTTON_SIZE_PX + MINIMAP_BUTTON_GAP_PX;
+  const MINIMAP_PANEL_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const MINIMAP_PANEL_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
-  const MINIMAP_PANEL_WIDTH_PX = 280;
+  const MINIMAP_PANEL_WIDTH_PX = SCROLL_BUTTON_SIZE_PX;
+  const MINIMAP_TRACK_HEIGHT_PX = 420;
   const MINIMAP_PROMPT_SNIPPET_LENGTH = 60;
   const SEARCH_BUTTON_SIZE_PX = 30;
   const SEARCH_BUTTON_GAP_PX = 8;
@@ -114,13 +116,16 @@ import hljs from 'highlight.js/lib/common';
   const SIDEBAR_TOGGLE_SIZE_PX = 30;
   const SIDEBAR_TOGGLE_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const SIDEBAR_TOGGLE_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
-  const SIDEBAR_PANEL_WIDTH_PX = 480;
+  const SIDEBAR_PANEL_WIDTH_PX = 380;
   let currentSidebarWidthPx = SIDEBAR_PANEL_WIDTH_PX;
   const SIDEBAR_TRANSITION_MS = 300;
+  const SIDEBAR_MAP_TRACK_HEIGHT_PX = 300;
+  const SIDEBAR_MAP_SNIPPET_LENGTH = 180;
+  const SIDEBAR_MAP_NEARBY_RADIUS = 3;
   const SIDEBAR_SNIPPET_MAX_HEIGHT_PX = 420;
 
 
-  const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "inset 0 0 0 1px rgba(59,130,246,0.35)";
+  const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "0 0 0 1px rgba(59,130,246,0.32)";
 
   function syncFlagsFromPersistedKeys() {
     const nextPinned = new Set();
@@ -306,8 +311,20 @@ import hljs from 'highlight.js/lib/common';
     // Scroll to bottom stays anchored to the bottom
     if (scrollToBottomButton) scrollToBottomButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
 
-    if (minimapButton) minimapButton.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-    if (minimapPanel) minimapPanel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX + offset}px`;
+    if (minimapPanel) {
+      const topButtonTop = scrollToTopButton && scrollToTopButton.style.top
+        ? parseFloat(scrollToTopButton.style.top) || SCROLL_BUTTON_TOP_OFFSET_PX
+        : SCROLL_BUTTON_TOP_OFFSET_PX;
+      const bottomButtonTop = window.innerHeight - SCROLL_BUTTON_OFFSET_PX - SCROLL_BUTTON_SIZE_PX;
+      const minimapTop = topButtonTop + SCROLL_BUTTON_SIZE_PX + MINIMAP_BUTTON_GAP_PX;
+      const minimapBottom = Math.max(minimapTop + 80, bottomButtonTop - MINIMAP_BUTTON_GAP_PX);
+      const minimapHeight = Math.max(80, minimapBottom - minimapTop);
+
+      minimapPanel.style.top = `${Math.round(minimapTop)}px`;
+      minimapPanel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX + offset}px`;
+      minimapPanel.style.width = `${MINIMAP_PANEL_WIDTH_PX}px`;
+      minimapPanel.style.height = `${Math.round(minimapHeight)}px`;
+    }
   }
 
   function clearSidebarLayoutOffset() {
@@ -485,7 +502,7 @@ import hljs from 'highlight.js/lib/common';
     element.style.transform = "translateY(-50%)";
     element.style.zIndex = "10003";
     element.style.display = "none";
-    element.style.width = "6px";
+    element.style.width = "4px";
     element.style.height = `${INDICATOR_BASE_MIN_HEIGHT_PX}px`;
     element.style.borderRadius = "999px";
     element.style.background = "rgba(17, 24, 39, 0.6)";
@@ -714,10 +731,23 @@ import hljs from 'highlight.js/lib/common';
     }
 
     if (minimapPanel) {
-      minimapPanel.style.background = theme.panelBg;
-      minimapPanel.style.boxShadow = theme.panelShadow;
+      minimapPanel.style.background =
+        getThemeMode() === "dark"
+          ? "rgba(15, 23, 42, 0.5)"
+          : "rgba(255, 255, 255, 0.5)";
+      minimapPanel.style.boxShadow = "none";
       minimapPanel.style.border = `1px solid ${theme.panelBorder}`;
       minimapPanel.style.color = theme.text;
+
+      const track = minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
+      if (track instanceof HTMLElement) {
+        track.style.background =
+          getThemeMode() === "dark"
+            ? "linear-gradient(to bottom, rgba(148,163,184,0.2), rgba(148,163,184,0.08))"
+            : "linear-gradient(to bottom, rgba(32,33,35,0.2), rgba(32,33,35,0.08))";
+        const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
+        applyStandaloneMinimapViewportThumbTheme(viewportThumb);
+      }
     }
 
     if (codePanelPanel) {
@@ -908,28 +938,51 @@ import hljs from 'highlight.js/lib/common';
 
   function getRoleSurfaceStyle(role, theme) {
     const normalized = (role || "").toLowerCase();
+    const isDarkMode = getThemeMode() === "dark";
 
     if (normalized === "user") {
+      if (isDarkMode) {
+        return {
+          label: "User",
+          surfaceBg: "rgba(48, 48, 48, 0.22)",
+          activeSurfaceBg: "rgba(48, 48, 48, 0.32)",
+          borderColor: "#303030",
+          accentColor: "#303030",
+          chipBg: "#303030",
+          chipText: "#f9fafb"
+        };
+      }
       return {
         label: "User",
-        surfaceBg: "rgba(59, 130, 246, 0.12)",
-        activeSurfaceBg: "rgba(59, 130, 246, 0.2)",
-        borderColor: "rgba(59, 130, 246, 0.4)",
-        accentColor: "rgba(59, 130, 246, 0.75)",
-        chipBg: "rgba(59, 130, 246, 0.22)",
-        chipText: theme.text
+        surfaceBg: "#F4F4F4",
+        activeSurfaceBg: "#ECECEC",
+        borderColor: "#DDDDDD",
+        accentColor: "#D0D0D0",
+        chipBg: "#F4F4F4",
+        chipText: "#202123"
       };
     }
 
     if (normalized === "assistant") {
+      if (isDarkMode) {
+        return {
+          label: "Agent",
+          surfaceBg: "#202020",
+          activeSurfaceBg: "#2A2A2A",
+          borderColor: "#2E2E2E",
+          accentColor: "#3A3A3A",
+          chipBg: "#202020",
+          chipText: "#ececf1"
+        };
+      }
       return {
         label: "Agent",
-        surfaceBg: "rgba(16, 185, 129, 0.12)",
-        activeSurfaceBg: "rgba(16, 185, 129, 0.2)",
-        borderColor: "rgba(16, 185, 129, 0.4)",
-        accentColor: "rgba(16, 185, 129, 0.75)",
-        chipBg: "rgba(16, 185, 129, 0.22)",
-        chipText: theme.text
+        surfaceBg: "#FFFFFF",
+        activeSurfaceBg: "#F8F8F8",
+        borderColor: "#E8E8E8",
+        accentColor: "#DADADA",
+        chipBg: "#FFFFFF",
+        chipText: "#202123"
       };
     }
 
@@ -958,6 +1011,205 @@ import hljs from 'highlight.js/lib/common';
     chip.style.background = roleStyle.chipBg;
     chip.style.color = roleStyle.chipText;
     return chip;
+  }
+
+  function getMessageTextSnippet(virtualId, maxLength = ARTICLE_SNIPPET_LENGTH) {
+    const article = state.articleMap.get(virtualId);
+    if (!(article instanceof HTMLElement)) return `Message ${virtualId}`;
+    const textSource = article.querySelector("[data-message-author-role]") || article;
+    const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
+    if (!raw) return `Message ${virtualId}`;
+    return raw.length > maxLength ? raw.slice(0, maxLength) + "…" : raw;
+  }
+
+  function getMessageRoleById(virtualId) {
+    const article = state.articleMap.get(virtualId);
+    if (!(article instanceof HTMLElement)) return "unknown";
+    return getMessageRole(article);
+  }
+
+  function getViewportAnchorVirtualId() {
+    const viewport = getViewportMetrics();
+    if (viewport.height <= 0) return null;
+
+    const viewportTop = viewport.top;
+    const viewportBottom = viewportTop + viewport.height;
+    const viewportCenter = viewportTop + viewport.height / 2;
+
+    let bestVisibleId = null;
+    let bestVisibleDistance = Number.POSITIVE_INFINITY;
+    let nearestId = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    document.querySelectorAll("[data-virtual-id]").forEach((el) => {
+      if (!(el instanceof HTMLElement)) return;
+      const id = el.dataset.virtualId;
+      if (!id) return;
+
+      const rect = el.getBoundingClientRect();
+      const center = (rect.top + rect.bottom) / 2;
+      const isVisible = rect.bottom >= viewportTop && rect.top <= viewportBottom;
+
+      if (isVisible) {
+        const distance = Math.abs(center - viewportCenter);
+        if (distance < bestVisibleDistance) {
+          bestVisibleDistance = distance;
+          bestVisibleId = id;
+        }
+        return;
+      }
+
+      const distanceToViewport =
+        rect.bottom < viewportTop ? viewportTop - rect.bottom : rect.top - viewportBottom;
+      if (distanceToViewport < nearestDistance) {
+        nearestDistance = distanceToViewport;
+        nearestId = id;
+      }
+    });
+
+    return bestVisibleId || nearestId;
+  }
+
+  function applyMapMarkerStyle(marker, isActive) {
+    if (!(marker instanceof HTMLElement)) return;
+    const theme = getThemeTokens();
+    const role = marker.dataset.role || "unknown";
+    const roleStyle = getRoleSurfaceStyle(role, theme);
+    marker.style.background = roleStyle.accentColor;
+    marker.style.opacity = isActive ? "1" : "0.6";
+    marker.style.height = isActive ? "4px" : "2px";
+    marker.style.boxShadow = isActive ? `0 0 0 1px ${roleStyle.borderColor}` : "none";
+  }
+
+  function applyMapNearbyItemStyle(item, isActive) {
+    if (!(item instanceof HTMLElement)) return;
+    const theme = getThemeTokens();
+    const role = item.dataset.role || "unknown";
+    const roleStyle = getRoleSurfaceStyle(role, theme);
+    item.style.background = isActive ? roleStyle.activeSurfaceBg : roleStyle.surfaceBg;
+    item.style.border = `1px solid ${roleStyle.borderColor}`;
+    item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
+    item.style.color = theme.text;
+  }
+
+  function populateMapNearbyList(listContainer, track, activeId) {
+    if (!(listContainer instanceof HTMLElement) || !(track instanceof HTMLElement)) return;
+
+    const markers = Array.from(
+      track.querySelectorAll('[data-gpt-boost-map-marker="1"]')
+    ).filter((el) => el instanceof HTMLElement);
+
+    listContainer.innerHTML = "";
+    if (!markers.length) return;
+
+    const activeIndex = markers.findIndex((marker) => marker.dataset.virtualId === activeId);
+    const centerIndex = activeIndex >= 0 ? activeIndex : 0;
+    const start = Math.max(0, centerIndex - SIDEBAR_MAP_NEARBY_RADIUS);
+    const end = Math.min(markers.length - 1, centerIndex + SIDEBAR_MAP_NEARBY_RADIUS);
+
+    for (let idx = start; idx <= end; idx += 1) {
+      const marker = markers[idx];
+      const id = marker.dataset.virtualId;
+      if (!id) continue;
+      const role = marker.dataset.role || "unknown";
+      const position = marker.dataset.position || String(idx + 1);
+
+      const item = document.createElement("button");
+      item.type = "button";
+      item.setAttribute("data-gpt-boost-map-nearby-item", "1");
+      item.dataset.virtualId = id;
+      item.dataset.role = role;
+      item.style.display = "flex";
+      item.style.flexDirection = "column";
+      item.style.gap = "2px";
+      item.style.width = "100%";
+      item.style.textAlign = "left";
+      item.style.padding = "6px 8px";
+      item.style.borderRadius = "10px";
+      item.style.cursor = "pointer";
+      item.style.fontFamily = "inherit";
+      item.style.wordBreak = "break-word";
+
+      const title = document.createElement("div");
+      title.style.fontSize = "11px";
+      title.style.opacity = "0.78";
+      title.textContent = `${position}. ${getRoleDisplayLabel(role)} • #${id}`;
+
+      const snippet = document.createElement("div");
+      snippet.style.fontSize = "12px";
+      snippet.style.lineHeight = "1.3";
+      snippet.textContent = getMessageTextSnippet(id, 90);
+
+      item.appendChild(title);
+      item.appendChild(snippet);
+      applyMapNearbyItemStyle(item, id === activeId);
+      item.addEventListener("click", () => scrollToVirtualId(id));
+      listContainer.appendChild(item);
+    }
+  }
+
+  function updateMapViewportState(force = false) {
+    if (!isSidebarOpen() || activeSidebarTab !== "map" || !sidebarContentContainer) return;
+
+    const nextId = getViewportAnchorVirtualId();
+    if (!nextId) return;
+    if (!force && nextId === activeMapVirtualId) return;
+
+    const previousId = activeMapVirtualId;
+    activeMapVirtualId = nextId;
+
+    const previousMarker = previousId
+      ? sidebarContentContainer.querySelector(`[data-gpt-boost-map-marker][data-virtual-id="${escapeSelectorValue(previousId)}"]`)
+      : null;
+    if (previousMarker instanceof HTMLElement) {
+      applyMapMarkerStyle(previousMarker, false);
+    }
+
+    const nextMarker = sidebarContentContainer.querySelector(
+      `[data-gpt-boost-map-marker][data-virtual-id="${escapeSelectorValue(nextId)}"]`
+    );
+    if (!(nextMarker instanceof HTMLElement)) return;
+    applyMapMarkerStyle(nextMarker, true);
+
+    const statusEl = sidebarContentContainer.querySelector("[data-gpt-boost-map-status]");
+    if (statusEl instanceof HTMLElement) {
+      const total = Number(nextMarker.dataset.total || "0");
+      const position = Number(nextMarker.dataset.position || "0");
+      statusEl.textContent = total > 0 ? `Viewing ${position}/${total}` : "No messages";
+    }
+
+    const roleHost = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-role]");
+    const snippetEl = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-snippet]");
+    const metaEl = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-meta]");
+    const detailCard = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-card]");
+
+    const theme = getThemeTokens();
+    const role = nextMarker.dataset.role || getMessageRoleById(nextId);
+    const roleStyle = getRoleSurfaceStyle(role, theme);
+
+    if (roleHost instanceof HTMLElement) {
+      roleHost.innerHTML = "";
+      roleHost.appendChild(createRoleChip(roleStyle));
+    }
+    if (snippetEl instanceof HTMLElement) {
+      snippetEl.textContent = getMessageTextSnippet(nextId, SIDEBAR_MAP_SNIPPET_LENGTH);
+    }
+    if (metaEl instanceof HTMLElement) {
+      const position = nextMarker.dataset.position || "?";
+      const total = nextMarker.dataset.total || "?";
+      metaEl.textContent = `#${nextId} • ${position}/${total}`;
+    }
+    if (detailCard instanceof HTMLElement) {
+      detailCard.style.background = roleStyle.surfaceBg;
+      detailCard.style.border = `1px solid ${roleStyle.borderColor}`;
+      detailCard.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
+    }
+
+    const nearbyList = sidebarContentContainer.querySelector("[data-gpt-boost-map-nearby]");
+    const track = sidebarContentContainer.querySelector("[data-gpt-boost-map-track]");
+    if (nearbyList instanceof HTMLElement && track instanceof HTMLElement) {
+      populateMapNearbyList(nearbyList, track, nextId);
+    }
   }
 
   function getSearchResultSummary(id, index, total) {
@@ -1155,17 +1407,32 @@ import hljs from 'highlight.js/lib/common';
   }
 
   function openExtensionSettingsPage() {
-    if (typeof chrome !== "undefined" && chrome.runtime) {
-      if (typeof chrome.runtime.openOptionsPage === "function") {
-        chrome.runtime.openOptionsPage(() => { });
+    const openFallback = () => {
+      if (typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.getURL === "function") {
+        const settingsUrl = chrome.runtime.getURL("src/popup.html");
+        const opened = window.open(settingsUrl, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          window.location.href = settingsUrl;
+        }
         return;
       }
-      if (typeof chrome.runtime.getURL === "function") {
-        window.open(chrome.runtime.getURL("src/popup.html"), "_blank", "noopener,noreferrer");
-        return;
-      }
+      window.open("about:blank", "_blank");
+    };
+
+    if (typeof chrome === "undefined" || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") {
+      openFallback();
+      return;
     }
-    window.open("about:blank", "_blank");
+
+    try {
+      chrome.runtime.sendMessage({ type: "openSettingsPage" }, (response) => {
+        if (chrome.runtime.lastError || !response || !response.ok) {
+          openFallback();
+        }
+      });
+    } catch (_err) {
+      openFallback();
+    }
   }
 
   function renderSearchTabContent(container) {
@@ -1310,6 +1577,122 @@ import hljs from 'highlight.js/lib/common';
     list.setAttribute("data-chatgpt-bookmarks", "list");
     container.appendChild(list);
     populateBookmarksPanel(container);
+  }
+
+  function renderMapTabContent(container) {
+    const theme = getThemeTokens();
+    ensureVirtualIds();
+
+    const entries = Array.from(state.articleMap.entries())
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
+
+    const status = document.createElement("div");
+    status.setAttribute("data-gpt-boost-map-status", "1");
+    status.style.fontSize = "11px";
+    status.style.opacity = "0.8";
+    status.style.padding = "2px 2px 4px";
+    status.textContent = entries.length ? `Viewing 1/${entries.length}` : "No messages";
+    container.appendChild(status);
+
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.style.fontSize = "12px";
+      empty.style.opacity = "0.7";
+      empty.style.padding = "4px 2px";
+      empty.textContent = "No messages to map yet.";
+      container.appendChild(empty);
+      activeMapVirtualId = null;
+      return;
+    }
+
+    const trackShell = document.createElement("div");
+    trackShell.style.border = `1px solid ${theme.panelBorder}`;
+    trackShell.style.borderRadius = "10px";
+    trackShell.style.padding = "8px";
+    trackShell.style.background = theme.inputBg;
+
+    const track = document.createElement("div");
+    track.setAttribute("data-gpt-boost-map-track", "1");
+    track.style.position = "relative";
+    track.style.height = `${SIDEBAR_MAP_TRACK_HEIGHT_PX}px`;
+    track.style.borderRadius = "6px";
+    track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.18), rgba(148,163,184,0.05))";
+
+    entries.forEach(([id, article], index) => {
+      const role = article instanceof HTMLElement ? getMessageRole(article) : "unknown";
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.setAttribute("data-gpt-boost-map-marker", "1");
+      marker.dataset.virtualId = id;
+      marker.dataset.role = role;
+      marker.dataset.position = String(index + 1);
+      marker.dataset.total = String(entries.length);
+      marker.style.position = "absolute";
+      marker.style.left = "0";
+      marker.style.right = "0";
+      marker.style.top = entries.length <= 1
+        ? "0%"
+        : `${(index / (entries.length - 1)) * 100}%`;
+      marker.style.transform = "translateY(-50%)";
+      marker.style.border = "none";
+      marker.style.padding = "0";
+      marker.style.cursor = "pointer";
+      marker.style.transition = "height 120ms ease, opacity 120ms ease, box-shadow 120ms ease";
+      applyMapMarkerStyle(marker, false);
+      marker.addEventListener("click", () => scrollToVirtualId(id));
+      track.appendChild(marker);
+    });
+
+    trackShell.appendChild(track);
+    container.appendChild(trackShell);
+
+    const detailCard = document.createElement("div");
+    detailCard.setAttribute("data-gpt-boost-map-active-card", "1");
+    detailCard.style.display = "flex";
+    detailCard.style.flexDirection = "column";
+    detailCard.style.gap = "4px";
+    detailCard.style.marginTop = "8px";
+    detailCard.style.padding = "8px";
+    detailCard.style.borderRadius = "10px";
+
+    const roleHost = document.createElement("div");
+    roleHost.setAttribute("data-gpt-boost-map-active-role", "1");
+
+    const snippetEl = document.createElement("div");
+    snippetEl.setAttribute("data-gpt-boost-map-active-snippet", "1");
+    snippetEl.style.fontSize = "12px";
+    snippetEl.style.lineHeight = "1.35";
+    snippetEl.style.wordBreak = "break-word";
+
+    const metaEl = document.createElement("div");
+    metaEl.setAttribute("data-gpt-boost-map-active-meta", "1");
+    metaEl.style.fontSize = "10px";
+    metaEl.style.opacity = "0.72";
+
+    detailCard.appendChild(roleHost);
+    detailCard.appendChild(snippetEl);
+    detailCard.appendChild(metaEl);
+    container.appendChild(detailCard);
+
+    const nearbyTitle = document.createElement("div");
+    nearbyTitle.style.fontSize = "11px";
+    nearbyTitle.style.opacity = "0.8";
+    nearbyTitle.style.padding = "4px 2px 2px";
+    nearbyTitle.textContent = "Nearby";
+    container.appendChild(nearbyTitle);
+
+    const nearbyList = document.createElement("div");
+    nearbyList.setAttribute("data-gpt-boost-map-nearby", "1");
+    nearbyList.style.display = "flex";
+    nearbyList.style.flexDirection = "column";
+    nearbyList.style.gap = "6px";
+    nearbyList.style.overflowY = "auto";
+    nearbyList.style.minHeight = "0";
+    nearbyList.style.flex = "1";
+    container.appendChild(nearbyList);
+
+    activeMapVirtualId = null;
+    updateMapViewportState(true);
   }
 
   function collapseAllMessages() {
@@ -1525,9 +1908,14 @@ import hljs from 'highlight.js/lib/common';
 
     if (tabId === "search") renderSearchTabContent(sidebarContentContainer);
     else if (tabId === "bookmarks") renderBookmarksTabContent(sidebarContentContainer);
+    else if (tabId === "map") renderMapTabContent(sidebarContentContainer);
     else if (tabId === "outline") renderOutlineTabContent(sidebarContentContainer);
     else if (tabId === "snippets") renderSnippetsTabContent(sidebarContentContainer);
     else renderSettingsTabContent(sidebarContentContainer);
+
+    if (tabId === "map") {
+      updateMapViewportState(true);
+    }
   }
 
   function hideSidebar() {
@@ -1659,15 +2047,32 @@ import hljs from 'highlight.js/lib/common';
 
     const header = document.createElement("div");
     header.style.display = "flex";
-    header.style.alignItems = "center";
-    header.style.justifyContent = "space-between";
+    header.style.flexDirection = "column";
+    header.style.gap = "6px";
     header.style.marginBottom = "16px";
 
+    const headingRow = document.createElement("div");
+    headingRow.style.display = "flex";
+    headingRow.style.alignItems = "center";
+    headingRow.style.justifyContent = "space-between";
+    headingRow.style.gap = "10px";
+
+    const headingCopy = document.createElement("div");
+    headingCopy.style.display = "flex";
+    headingCopy.style.flexDirection = "column";
+    headingCopy.style.gap = "1px";
+
     const title = document.createElement("div");
-    title.textContent = "Tools";
+    title.textContent = "GPT Boost";
     title.style.fontSize = "14px";
     title.style.fontWeight = "600";
-    title.style.opacity = "0.9";
+    title.style.letterSpacing = "0.02em";
+    title.style.opacity = "0.95";
+
+    const tag = document.createElement("div");
+    tag.textContent = "Productivity / Speed / Virtualization";
+    tag.style.fontSize = "10px";
+    tag.style.opacity = "0.72";
 
     const headerActions = document.createElement("div");
     headerActions.style.display = "flex";
@@ -1694,8 +2099,19 @@ import hljs from 'highlight.js/lib/common';
 
     headerActions.appendChild(settingsBtn);
     headerActions.appendChild(closeBtn);
-    header.appendChild(title);
-    header.appendChild(headerActions);
+    headingCopy.appendChild(title);
+    headingCopy.appendChild(tag);
+    headingRow.appendChild(headingCopy);
+    headingRow.appendChild(headerActions);
+
+    const subtitle = document.createElement("div");
+    subtitle.textContent = "Intelligent message virtualization that keeps long chats fast and focused.";
+    subtitle.style.fontSize = "11px";
+    subtitle.style.lineHeight = "1.35";
+    subtitle.style.opacity = "0.76";
+
+    header.appendChild(headingRow);
+    header.appendChild(subtitle);
 
     const tabs = document.createElement("div");
     tabs.style.display = "flex";
@@ -1952,6 +2368,7 @@ import hljs from 'highlight.js/lib/common';
 
   function hideMinimapPanel() {
     if (minimapPanel) minimapPanel.style.display = "none";
+    activeStandaloneMinimapVirtualId = null;
   }
 
   function hideMinimapUi() {
@@ -1960,91 +2377,233 @@ import hljs from 'highlight.js/lib/common';
   }
 
   function buildMinimapItems() {
-    const items = [];
+    ensureVirtualIds();
     const sortedEntries = Array.from(state.articleMap.entries())
       .sort((a, b) => Number(a[0]) - Number(b[0]));
+    const total = sortedEntries.length;
+    if (!total) return [];
 
-    for (const [id, node] of sortedEntries) {
-      const userEl = node.querySelector('[data-message-author-role="user"]');
-      if (!userEl) {
-        const testId = node.getAttribute("data-testid") || "";
-        const match = testId.match(/conversation-turn-(\d+)/);
-        if (!match || Number(match[1]) % 2 === 0) continue;
+    const metrics = [];
+    let totalHeightPx = 0;
+
+    sortedEntries.forEach(([id, node], index) => {
+      const selectorId = escapeSelectorValue(id);
+      const liveNode = document.querySelector(`[data-virtual-id="${selectorId}"]`);
+
+      let heightPx = 24;
+      if (liveNode instanceof HTMLElement) {
+        const rectHeight = liveNode.getBoundingClientRect().height;
+        if (rectHeight > 0) {
+          heightPx = rectHeight;
+        } else if (liveNode.dataset.chatgptVirtualSpacer === "1") {
+          const parsed = Number.parseFloat(liveNode.style.height || "0");
+          if (Number.isFinite(parsed) && parsed > 0) heightPx = parsed;
+        }
+      } else if (node instanceof HTMLElement) {
+        const rectHeight = node.getBoundingClientRect().height;
+        if (rectHeight > 0) heightPx = rectHeight;
       }
-      const textSource = userEl || node;
-      const text = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-      if (!text) continue;
-      const snippet = text.length > MINIMAP_PROMPT_SNIPPET_LENGTH
-        ? text.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "…"
-        : text;
-      items.push({ id, snippet });
-    }
-    return items;
-  }
 
-  function scrollToMinimapItem(virtualId) {
-    hideMinimapPanel();
-    const selectorId = escapeSelectorValue(virtualId);
-    const target = document.querySelector(`[data-virtual-id="${selectorId}"]`);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    scheduleVirtualization();
-  }
-
-  function populateMinimapPanel(panel) {
-    const listContainer = panel.querySelector(
-      '[data-chatgpt-minimap="list"]'
-    );
-    if (!listContainer) return;
-
-    listContainer.innerHTML = "";
-    const items = buildMinimapItems();
-    const theme = getThemeTokens();
-
-    if (!items.length) {
-      const empty = document.createElement("div");
-      empty.style.fontSize = "12px";
-      empty.style.opacity = "0.6";
-      empty.style.padding = "4px 2px";
-      empty.textContent = "No user prompts found.";
-      listContainer.appendChild(empty);
-      return;
-    }
-
-    items.forEach(({ id, snippet }, index) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.textContent = `${index + 1}. ${snippet}`;
-      item.style.display = "block";
-      item.style.width = "100%";
-      item.style.textAlign = "left";
-      item.style.background = "transparent";
-      item.style.border = "none";
-      item.style.borderRadius = "8px";
-      item.style.padding = "6px 8px";
-      item.style.fontSize = "12px";
-      item.style.lineHeight = "1.4";
-      item.style.cursor = "pointer";
-      item.style.color = theme.text;
-      item.style.wordBreak = "break-word";
-      item.style.fontFamily = "inherit";
-      item.addEventListener("mouseenter", () => {
-        item.style.background = theme.buttonMutedBg;
+      const clampedHeightPx = Math.min(640, Math.max(12, heightPx));
+      metrics.push({
+        id,
+        role: node instanceof HTMLElement ? getMessageRole(node) : "unknown",
+        position: index + 1,
+        total,
+        heightPx: clampedHeightPx
       });
-      item.addEventListener("mouseleave", () => {
-        item.style.background = "transparent";
-      });
-      item.addEventListener("click", () => scrollToMinimapItem(id));
-      listContainer.appendChild(item);
+      totalHeightPx += clampedHeightPx;
+    });
+
+    let runningTopPx = 0;
+    return metrics.map((item) => {
+      const topRatio = totalHeightPx > 0 ? runningTopPx / totalHeightPx : 0;
+      const heightRatio = totalHeightPx > 0 ? item.heightPx / totalHeightPx : 0;
+      runningTopPx += item.heightPx;
+      return {
+        ...item,
+        topRatio,
+        heightRatio
+      };
     });
   }
 
+  function scrollToMinimapItem(virtualId) {
+    scrollToVirtualId(virtualId);
+  }
+
+  function scrollToMinimapRatio(ratio, behavior = "auto") {
+    const scrollTarget = getScrollTarget();
+    if (!scrollTarget) return;
+    const maxScrollTop = getMaxScrollTop(scrollTarget);
+    const clamped = Math.min(1, Math.max(0, ratio));
+    scrollTarget.scrollTo({ top: maxScrollTop * clamped, behavior });
+    scheduleVirtualization();
+  }
+
+  function applyStandaloneMinimapMarkerStyle(marker, isActive) {
+    if (!(marker instanceof HTMLElement)) return;
+    const role = marker.dataset.role || "unknown";
+    const isHovered = marker.dataset.gptBoostHovered === "1";
+    const isDarkMode = getThemeMode() === "dark";
+    const roleStyle = getRoleSurfaceStyle(role, getThemeTokens());
+    const baseHeight = Number.parseFloat(marker.dataset.baseHeightPx || "2");
+    const normalizedBase = Number.isFinite(baseHeight) ? Math.max(1, baseHeight) : 2;
+    marker.style.height = `${isActive ? Math.min(12, normalizedBase + 1) : normalizedBase}px`;
+
+    if (isDarkMode) {
+      marker.style.background = roleStyle.accentColor;
+      marker.style.opacity = isActive ? "1" : (isHovered ? "0.8" : "0.5");
+      marker.style.boxShadow = isActive ? `0 0 0 1px ${roleStyle.borderColor}` : "none";
+      return;
+    }
+
+    marker.style.background = isActive || isHovered
+      ? "rgba(32, 33, 35, 0.86)"
+      : "rgba(32, 33, 35, 0.56)";
+    marker.style.opacity = isActive ? "1" : (isHovered ? "0.9" : "0.62");
+    marker.style.boxShadow = isActive || isHovered
+      ? "0 0 0 1px rgba(32, 33, 35, 0.9)"
+      : "none";
+  }
+
+  function applyStandaloneMinimapViewportThumbTheme(viewportThumb) {
+    if (!(viewportThumb instanceof HTMLElement)) return;
+    if (getThemeMode() === "dark") {
+      viewportThumb.style.background = "rgba(255,255,255,0.5)";
+      viewportThumb.style.border = "1px solid rgba(255,255,255,0.35)";
+      viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.2)";
+      return;
+    }
+    viewportThumb.style.background = "rgba(32,33,35,0.36)";
+    viewportThumb.style.border = "1px solid rgba(32,33,35,0.7)";
+    viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.16)";
+  }
+
+  function updateStandaloneMinimapViewportRect(track) {
+    if (!(track instanceof HTMLElement)) return;
+    const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
+    if (!(viewportThumb instanceof HTMLElement)) return;
+
+    const scrollTarget = getScrollTarget();
+    if (!scrollTarget) return;
+
+    const trackHeight = track.clientHeight;
+    if (trackHeight <= 0) return;
+
+    const maxScrollTop = getMaxScrollTop(scrollTarget);
+    const visibleHeight = Math.max(1, scrollTarget.clientHeight || 1);
+    const contentHeight = Math.max(visibleHeight, scrollTarget.scrollHeight || visibleHeight);
+
+    const minViewportHeight = 24;
+    const viewportRatio = Math.min(1, visibleHeight / contentHeight);
+    const viewportHeight = Math.max(minViewportHeight, Math.round(trackHeight * viewportRatio));
+    const maxViewportTop = Math.max(0, trackHeight - viewportHeight);
+    const scrollRatio = maxScrollTop > 0 ? scrollTarget.scrollTop / maxScrollTop : 0;
+    const viewportTop = Math.round(maxViewportTop * scrollRatio);
+
+    viewportThumb.style.height = `${viewportHeight}px`;
+    viewportThumb.style.top = `${viewportTop}px`;
+  }
+
+  function updateStandaloneMinimapViewportState(force = false) {
+    if (!minimapPanel || minimapPanel.style.display === "none") return;
+
+    const track = minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
+    if (!(track instanceof HTMLElement)) return;
+    updateStandaloneMinimapViewportRect(track);
+
+    const nextId = getViewportAnchorVirtualId();
+    if (!nextId) return;
+    if (!force && nextId === activeStandaloneMinimapVirtualId) return;
+
+    const prevId = activeStandaloneMinimapVirtualId;
+    activeStandaloneMinimapVirtualId = nextId;
+
+    const prevMarker = prevId
+      ? track.querySelector(`[data-gpt-boost-minimap-marker][data-virtual-id="${escapeSelectorValue(prevId)}"]`)
+      : null;
+    if (prevMarker instanceof HTMLElement) {
+      applyStandaloneMinimapMarkerStyle(prevMarker, false);
+    }
+
+    const nextMarker = track.querySelector(
+      `[data-gpt-boost-minimap-marker][data-virtual-id="${escapeSelectorValue(nextId)}"]`
+    );
+    if (!(nextMarker instanceof HTMLElement)) return;
+    applyStandaloneMinimapMarkerStyle(nextMarker, true);
+  }
+
+  function populateMinimapPanel(panel) {
+    const track = panel.querySelector('[data-chatgpt-minimap="track"]');
+    if (!(track instanceof HTMLElement)) return;
+
+    track.querySelectorAll('[data-gpt-boost-minimap-marker="1"]').forEach((marker) => marker.remove());
+    const items = buildMinimapItems();
+
+    if (!items.length) {
+      activeStandaloneMinimapVirtualId = null;
+      return;
+    }
+
+    const trackHeight = Math.max(1, track.clientHeight);
+
+    items.forEach(({ id, role, position, total, topRatio, heightRatio }) => {
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.setAttribute("data-gpt-boost-minimap-marker", "1");
+      marker.dataset.virtualId = id;
+      marker.dataset.role = role;
+      marker.dataset.position = String(position);
+      marker.dataset.total = String(total);
+      const baseHeightPx = Math.max(1, Math.min(12, Math.round(trackHeight * heightRatio)));
+      marker.dataset.baseHeightPx = String(baseHeightPx);
+      marker.style.position = "absolute";
+      const isUser = role === "user";
+      marker.style.left = isUser ? "26%" : "6%";
+      marker.style.right = isUser ? "6%" : "6%";
+      marker.style.top = `${Math.round(Math.max(0, Math.min(trackHeight - 1, topRatio * trackHeight)))}px`;
+      marker.style.transform = "none";
+      marker.style.border = "none";
+      marker.style.borderRadius = "1px";
+      marker.style.padding = "0";
+      marker.style.cursor = "pointer";
+      marker.style.zIndex = "2";
+      marker.style.transition = "height 120ms ease, opacity 120ms ease, box-shadow 120ms ease";
+      applyStandaloneMinimapMarkerStyle(marker, false);
+      marker.addEventListener("mouseenter", () => {
+        marker.dataset.gptBoostHovered = "1";
+        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === activeStandaloneMinimapVirtualId);
+      });
+      marker.addEventListener("mouseleave", () => {
+        delete marker.dataset.gptBoostHovered;
+        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === activeStandaloneMinimapVirtualId);
+      });
+      marker.addEventListener("click", () => scrollToMinimapItem(id));
+      track.appendChild(marker);
+    });
+
+    activeStandaloneMinimapVirtualId = null;
+    updateStandaloneMinimapViewportState(true);
+  }
+
   function showMinimapPanel() {
-    openSidebar("outline");
+    const panel = ensureMinimapPanel();
+    if (!panel) return;
+    panel.style.display = "block";
+    populateMinimapPanel(panel);
+    applyFloatingUiOffsets();
   }
 
   function toggleMinimapPanel() {
-    toggleSidebar("outline");
+    const panel = ensureMinimapPanel();
+    if (!panel) return;
+    const isOpen = panel.style.display !== "none";
+    if (isOpen) {
+      hideMinimapPanel();
+      return;
+    }
+    showMinimapPanel();
   }
 
   function ensureMinimapButton() {
@@ -2079,7 +2638,7 @@ import hljs from 'highlight.js/lib/common';
     });
 
     button.appendChild(icon);
-    button.setAttribute("aria-label", "Open conversation outline");
+    button.setAttribute("aria-label", "Toggle conversation map");
     styleSearchButton(button, MINIMAP_BUTTON_SIZE_PX);
     button.style.display = "none";
     button.addEventListener("click", toggleMinimapPanel);
@@ -2104,51 +2663,87 @@ import hljs from 'highlight.js/lib/common';
     panel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX}px`;
     panel.style.zIndex = "10001";
     panel.style.width = `${MINIMAP_PANEL_WIDTH_PX}px`;
-    panel.style.maxHeight = `calc(100vh - ${MINIMAP_PANEL_TOP_OFFSET_PX + 16}px)`;
+    panel.style.height = `${MINIMAP_TRACK_HEIGHT_PX}px`;
     panel.style.display = "none";
-    panel.style.flexDirection = "column";
-    panel.style.gap = "8px";
-    panel.style.padding = "10px";
-    panel.style.borderRadius = "14px";
-    panel.style.background = "rgba(15, 23, 42, 0.92)";
-    panel.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.28)";
-    panel.style.color = "#f9fafb";
-    panel.style.backdropFilter = "blur(6px)";
+    panel.style.padding = "0";
+    panel.style.borderRadius = "4px";
+    panel.style.background = "rgba(15, 23, 42, 0.5)";
+    panel.style.backdropFilter = "blur(2px)";
+    panel.style.overflow = "hidden";
     panel.style.boxSizing = "border-box";
 
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.alignItems = "center";
-    header.style.justifyContent = "space-between";
-    header.style.gap = "8px";
+    const track = document.createElement("div");
+    track.setAttribute("data-chatgpt-minimap", "track");
+    track.style.position = "relative";
+    track.style.height = "100%";
+    track.style.width = "100%";
+    track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.2), rgba(148,163,184,0.08))";
+    track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)";
+    track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)";
 
-    const title = document.createElement("span");
-    title.textContent = "Conversation Outline";
-    title.style.fontSize = "12px";
-    title.style.fontWeight = "600";
-    title.style.lineHeight = "1.2";
+    const viewportThumb = document.createElement("div");
+    viewportThumb.setAttribute("data-chatgpt-minimap", "viewport");
+    viewportThumb.style.position = "absolute";
+    viewportThumb.style.left = "2px";
+    viewportThumb.style.right = "2px";
+    viewportThumb.style.top = "0";
+    viewportThumb.style.height = "24px";
+    viewportThumb.style.borderRadius = "2px";
+    viewportThumb.style.background = "rgba(255,255,255,0.5)";
+    viewportThumb.style.border = "1px solid rgba(255,255,255,0.35)";
+    viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.2)";
+    viewportThumb.style.cursor = "grab";
+    viewportThumb.style.pointerEvents = "auto";
+    viewportThumb.style.zIndex = "4";
+    applyStandaloneMinimapViewportThumbTheme(viewportThumb);
 
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.textContent = "×";
-    closeButton.setAttribute("aria-label", "Close outline");
-    styleSearchButton(closeButton, 22);
-    closeButton.style.display = "flex";
-    closeButton.style.background = "rgba(148, 163, 184, 0.2)";
-    closeButton.addEventListener("click", hideMinimapPanel);
+    let isDraggingViewport = false;
+    let dragOffsetY = 0;
 
-    header.appendChild(title);
-    header.appendChild(closeButton);
+    const pointerToRatio = (clientY, centerOnPointer = false) => {
+      const rect = track.getBoundingClientRect();
+      const thumbHeight = viewportThumb.getBoundingClientRect().height || 24;
+      const rawTop = centerOnPointer
+        ? (clientY - rect.top - thumbHeight / 2)
+        : (clientY - rect.top - dragOffsetY);
+      const maxTop = Math.max(1, rect.height - thumbHeight);
+      const clampedTop = Math.min(maxTop, Math.max(0, rawTop));
+      return maxTop > 0 ? clampedTop / maxTop : 0;
+    };
 
-    const listContainer = document.createElement("div");
-    listContainer.setAttribute("data-chatgpt-minimap", "list");
-    listContainer.style.overflowY = "auto";
-    listContainer.style.display = "flex";
-    listContainer.style.flexDirection = "column";
-    listContainer.style.gap = "2px";
+    viewportThumb.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      isDraggingViewport = true;
+      dragOffsetY = event.clientY - viewportThumb.getBoundingClientRect().top;
+      viewportThumb.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+    });
 
-    panel.appendChild(header);
-    panel.appendChild(listContainer);
+    track.addEventListener("mousedown", (event) => {
+      if (!(event.target instanceof HTMLElement)) return;
+      if (event.target.closest('[data-chatgpt-minimap="viewport"]')) return;
+      event.preventDefault();
+      const ratio = pointerToRatio(event.clientY, true);
+      scrollToMinimapRatio(ratio, "auto");
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      if (!isDraggingViewport) return;
+      const ratio = pointerToRatio(event.clientY, false);
+      scrollToMinimapRatio(ratio, "auto");
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!isDraggingViewport) return;
+      isDraggingViewport = false;
+      dragOffsetY = 0;
+      viewportThumb.style.cursor = "grab";
+      document.body.style.userSelect = "";
+    });
+
+    track.appendChild(viewportThumb);
+    panel.appendChild(track);
 
     document.body.appendChild(panel);
     minimapPanel = panel;
@@ -2158,8 +2753,19 @@ import hljs from 'highlight.js/lib/common';
   }
 
   function updateMinimapVisibility(totalMessages) {
+    const shouldShow = state.enabled && totalMessages > 0;
     if (minimapButton) minimapButton.style.display = "none";
-    updateSidebarVisibility(totalMessages);
+    const panel = ensureMinimapPanel();
+    if (!panel) return;
+    if (!shouldShow) {
+      hideMinimapPanel();
+      return;
+    }
+    panel.style.display = "block";
+    if (!panel.querySelector("[data-gpt-boost-minimap-marker]")) {
+      populateMinimapPanel(panel);
+    }
+    applyFloatingUiOffsets();
   }
 
   // ---------------------------------------------------------------------------
@@ -2287,10 +2893,8 @@ import hljs from 'highlight.js/lib/common';
     const isCollapsed = state.collapsedMessages.has(virtualId);
     const contentArea = article.querySelector("[data-message-author-role]");
     const snippet = article.querySelector("[data-gpt-boost-snippet]");
-    // The overlay lives on the article itself so it stays visible even when
-    // the inner contentArea is hidden (display:none) during collapse.
-    const overlay = article.querySelector(":scope > [data-gpt-boost-overlay]");
-    const collapseBtn = overlay && overlay.querySelector("[data-gpt-boost-collapse-btn]");
+    const sideRail = article.querySelector("[data-gpt-boost-side-rail]");
+    const collapseBtn = sideRail && sideRail.querySelector("[data-gpt-boost-collapse-btn]");
 
     if (contentArea) {
       contentArea.style.display = isCollapsed ? "none" : "";
@@ -2298,20 +2902,14 @@ import hljs from 'highlight.js/lib/common';
     if (snippet) {
       snippet.style.display = isCollapsed ? "block" : "none";
     }
-    if (overlay) {
+    if (sideRail instanceof HTMLElement) {
+      updateArticleSideRailLayout(article, sideRail);
       if (isCollapsed) {
-        // When collapsed, make the overlay always visible (not just on hover)
-        // and reposition it inline inside the snippet row (static flow).
-        overlay.style.position = "static";
-        overlay.style.display = "flex";
-        overlay.style.marginTop = "4px";
-        overlay.style.justifyContent = "flex-end";
+        sideRail.style.opacity = "1";
+        sideRail.style.pointerEvents = "auto";
       } else {
-        // Expanded: restore to hover-only absolute position
-        overlay.style.position = "absolute";
-        overlay.style.display = "none";
-        overlay.style.marginTop = "";
-        overlay.style.justifyContent = "";
+        sideRail.style.opacity = "0";
+        sideRail.style.pointerEvents = "none";
       }
     }
     if (collapseBtn) {
@@ -2383,29 +2981,6 @@ import hljs from 'highlight.js/lib/common';
       hoverTarget.dataset.gptBoostOrigPaddingLeft = hoverTarget.style.paddingLeft || "";
     }
 
-    const overlay = document.createElement("div");
-    overlay.setAttribute("data-gpt-boost-overlay", "1");
-    overlay.style.position = "absolute";
-    overlay.style.top = "6px";
-    overlay.style.right = "8px";
-    overlay.style.display = "none";
-    overlay.style.flexDirection = "row";
-    overlay.style.gap = "3px";
-    overlay.style.zIndex = "100";
-    overlay.style.alignItems = "center";
-
-    const collapseBtn = createArticleActionButton("collapse", "Collapse message");
-    collapseBtn.setAttribute("data-gpt-boost-collapse-btn", "1");
-    collapseBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleCollapse(virtualId);
-    });
-
-    overlay.appendChild(collapseBtn);
-    // Append overlay to the article (not hoverTarget) so the collapse/expand
-    // button remains visible and clickable even when hoverTarget is hidden.
-    article.appendChild(overlay);
-
     const sideRail = document.createElement("div");
     sideRail.setAttribute("data-gpt-boost-side-rail", "1");
     sideRail.style.position = "absolute";
@@ -2425,6 +3000,13 @@ import hljs from 'highlight.js/lib/common';
     sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
     sideRail.style.transition = "background 0.15s ease, opacity 0.15s ease";
 
+    const collapseBtn = createArticleActionButton("collapse", "Collapse message");
+    collapseBtn.setAttribute("data-gpt-boost-collapse-btn", "1");
+    collapseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCollapse(virtualId);
+    });
+
     const pinBtn = createArticleActionButton("pin", "Pin message to top");
     pinBtn.setAttribute("data-gpt-boost-pin-btn", "1");
     pinBtn.addEventListener("click", (e) => {
@@ -2439,30 +3021,39 @@ import hljs from 'highlight.js/lib/common';
       toggleBookmark(virtualId);
     });
 
+    sideRail.appendChild(collapseBtn);
     sideRail.appendChild(pinBtn);
     sideRail.appendChild(bookmarkBtn);
     (hoverTarget instanceof HTMLElement ? hoverTarget : article).appendChild(sideRail);
     updateArticleSideRailLayout(article, sideRail);
 
     article.addEventListener("mouseenter", () => {
-      overlay.style.display = "flex";
+      const isCollapsed = state.collapsedMessages.has(virtualId);
       if (hoverTarget instanceof HTMLElement) {
         hoverTarget.style.boxShadow = ARTICLE_HOVER_HIGHLIGHT_SHADOW;
-        hoverTarget.style.borderRadius = "10px";
+        hoverTarget.style.borderRadius = "12px";
+        hoverTarget.style.outline = "1px solid rgba(59,130,246,0.18)";
+        hoverTarget.style.outlineOffset = "4px";
       }
-      sideRail.style.background = "rgba(59,130,246,0.2)";
-      sideRail.style.opacity = "1";
-      sideRail.style.pointerEvents = "auto";
+      if (!isCollapsed) {
+        sideRail.style.background = "rgba(59,130,246,0.2)";
+        sideRail.style.opacity = "1";
+        sideRail.style.pointerEvents = "auto";
+      }
     });
     article.addEventListener("mouseleave", () => {
-      overlay.style.display = "none";
+      const isCollapsed = state.collapsedMessages.has(virtualId);
       if (hoverTarget instanceof HTMLElement) {
         hoverTarget.style.boxShadow = "";
         hoverTarget.style.borderRadius = "";
+        hoverTarget.style.outline = "";
+        hoverTarget.style.outlineOffset = "";
       }
-      sideRail.style.background = "rgba(15,23,42,0.35)";
-      sideRail.style.opacity = "0";
-      sideRail.style.pointerEvents = "none";
+      if (!isCollapsed) {
+        sideRail.style.background = "rgba(15,23,42,0.35)";
+        sideRail.style.opacity = "0";
+        sideRail.style.pointerEvents = "none";
+      }
     });
 
     const snippet = document.createElement("div");
@@ -2492,21 +3083,57 @@ import hljs from 'highlight.js/lib/common';
 
   function updateArticleSideRailLayout(article, sideRail) {
     if (!(article instanceof HTMLElement) || !(sideRail instanceof HTMLElement)) return;
+    const virtualId = article.dataset.virtualId;
+    const isCollapsed = !!(virtualId && state.collapsedMessages.has(virtualId));
     const hoverTarget = getArticleHoverTarget(article);
-    const forceInside = true;
-    const hasLeftGutter = false;
-    sideRail.style.top = "8px";
-    sideRail.style.transform = "none";
-    if (!forceInside && hasLeftGutter) {
-      sideRail.style.left = `${MESSAGE_RAIL_OUTSIDE_LEFT_PX}px`;
-      article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft || "";
-    } else {
-      sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
+
+    if (isCollapsed) {
       if (hoverTarget instanceof HTMLElement) {
-        hoverTarget.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+        hoverTarget.style.paddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
       } else {
-        article.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+        article.style.paddingLeft = article.dataset.gptBoostOrigPaddingLeft || "";
       }
+
+      sideRail.style.position = "static";
+      sideRail.style.top = "";
+      sideRail.style.left = "";
+      sideRail.style.transform = "";
+      sideRail.style.marginTop = "4px";
+      sideRail.style.alignSelf = "flex-end";
+      sideRail.style.flexDirection = "row";
+      sideRail.style.gap = "4px";
+      sideRail.style.padding = "0";
+      sideRail.style.border = "none";
+      sideRail.style.background = "transparent";
+      if (sideRail.parentElement !== article) {
+        article.appendChild(sideRail);
+      } else {
+        article.appendChild(sideRail);
+      }
+      return;
+    }
+
+    sideRail.style.position = "absolute";
+    sideRail.style.top = "8px";
+    sideRail.style.left = `${MESSAGE_RAIL_INSIDE_LEFT_PX}px`;
+    sideRail.style.transform = "none";
+    sideRail.style.marginTop = "";
+    sideRail.style.alignSelf = "";
+    sideRail.style.flexDirection = "column";
+    sideRail.style.gap = "4px";
+    sideRail.style.padding = "2px";
+    sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
+    sideRail.style.background = "rgba(15,23,42,0.35)";
+    if (hoverTarget instanceof HTMLElement) {
+      if (sideRail.parentElement !== hoverTarget) {
+        hoverTarget.appendChild(sideRail);
+      }
+      hoverTarget.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
+    } else {
+      if (sideRail.parentElement !== article) {
+        article.appendChild(sideRail);
+      }
+      article.style.paddingLeft = `${MESSAGE_RAIL_INSIDE_PADDING_PX}px`;
     }
   }
 
@@ -3525,11 +4152,16 @@ import hljs from 'highlight.js/lib/common';
 
     if (isTotalChanged) {
       refreshSidebarTab();
+      if (minimapPanel && minimapPanel.style.display !== "none") {
+        populateMinimapPanel(minimapPanel);
+      }
     }
+    updateMapViewportState();
+    updateStandaloneMinimapViewportState();
   }
 
   function virtualizeNow() {
-    console.log('[GPT-Boost] virtualizeNow: enabled=', state.enabled, 'lifecycle=', state.lifecycleStatus);
+    log("virtualizeNow", { enabled: state.enabled, lifecycle: state.lifecycleStatus });
     if (!state.enabled) {
       hideAllUiElements();
       return;
@@ -3586,7 +4218,7 @@ import hljs from 'highlight.js/lib/common';
   function scheduleVirtualization() {
     if (state.requestAnimationScheduled) return;
     state.requestAnimationScheduled = true;
-    console.log('[GPT-Boost] scheduleVirtualization: queuing rAF');
+    log("scheduleVirtualization: queuing rAF");
     requestAnimationFrame(() => {
       state.requestAnimationScheduled = false;
       virtualizeNow();
@@ -3625,6 +4257,8 @@ import hljs from 'highlight.js/lib/common';
       if (currentTime - lastCheckTime < config.SCROLL_THROTTLE_MS) return;
       lastCheckTime = currentTime;
       onScrollChange();
+      updateMapViewportState();
+      updateStandaloneMinimapViewportState();
     };
 
     const handleScroll = () => {
@@ -3680,7 +4314,7 @@ import hljs from 'highlight.js/lib/common';
       scheduleVirtualization();
     });
     if (isSidebarOpen()) {
-      applySidebarLayoutOffset(SIDEBAR_PANEL_WIDTH_PX);
+      applySidebarLayoutOffset(currentSidebarWidthPx);
       applyFloatingUiOffsets();
     }
 
@@ -3699,9 +4333,9 @@ import hljs from 'highlight.js/lib/common';
   }
 
   function bootVirtualizer() {
-    console.log('[GPT-Boost] bootVirtualizer called, lifecycle:', state.lifecycleStatus);
+    log("bootVirtualizer called", { lifecycle: state.lifecycleStatus });
     if (state.lifecycleStatus !== "IDLE") {
-      console.log('[GPT-Boost] bootVirtualizer: already active, aborting');
+      log("bootVirtualizer: already active, aborting");
       return;
     }
 
