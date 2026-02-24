@@ -17,25 +17,28 @@ GPT Boost is a **Chrome and Firefox** extension that uses intelligent message vi
 
 ## Features
 
-### Smart Virtual Scrolling
-- **Viewport-aware rendering**: Only renders messages visible in your viewport
-- **Seamless restoration**: Scroll up to see older messages instantly restored
-- **Zero context loss**: Full conversation history always accessible
+### Virtualization Core
+- **Viewport-aware rendering**: Keeps only nearby messages mounted.
+- **Seamless restoration**: Restores unmounted messages as you scroll.
+- **Low-overhead scheduling**: Throttled scroll handling + debounced mutation handling.
 
-### Performance Optimizations
-- **Memory efficiency**: Reduces DOM nodes by 70-90% in long conversations
-- **Smooth scrolling**: Maintains scroll position perfectly when virtualizing/restoring
-- **Lightweight caching**: Smart message caching for instant restoration
+### Conversation Tools
+- **Search**: Floating search and sidebar search views with navigation/highlighting.
+- **Marks**: Unified pinned + bookmarked thread management.
+- **Outline**: Fast navigation and collapse controls.
+- **Map + Minimap**: Position-aware conversation navigation with viewport indicator.
+- **Snippets**: Extract and copy code snippets from the conversation.
 
-### User Experience
-- **Completely transparent**: Works silently in the background
-- **No interruptions**: Doesn't interfere with ChatGPT's functionality
-- **Real-time stats**: See performance improvements live
-- **All optimization runs locally in your browser**: Full privacy - no data is ever sent to an external server
+### Layout & Styling Controls
+- **Sidebar width and hotkey** configuration.
+- **Conversation padding and composer width** controls.
+- **Role color customization** (User/Agent for dark and light themes, with defaults reset).
+- **Minimap visibility** toggle.
 
-### Advanced Features
-- **MutationObserver integration**: Automatically detects new messages
-- **Debug mode**: Developer-friendly logging for troubleshooting
+### Observability & Privacy
+- **Live stats** in popup/settings surfaces.
+- **Cached conversation diagnostics** (counts and approximate storage size).
+- **Fully local processing**: no remote data collection or external API calls.
 
 
 ## Installation
@@ -102,29 +105,39 @@ It makes massive message lists behave like small ones.
 ### Key Components
 
 ```
-├── manifest.json            # Extension manifest (Manifest V3)
-├── src/boot.js              # Initialization logic (entry point)
-├── src/virtualization.js    # Main UI/virtualization orchestration
-├── src/constants.js         # Shared runtime config + state
-├── src/core/settings.js     # Shared settings defaults/normalizers/hotkey helpers
-├── src/core/storage.js      # Persisted message pin/bookmark flags
-├── src/core/virtualizer/    # Extracted virtualizer modules (store/observer/types)
-├── src/ui/shell/theme.ts    # Theme token utilities
-├── src/ui/features/roleStyles.ts # User/agent styling logic
-├── src/adapters/chromeApi.ts # Browser API wrappers/fallbacks
-├── src/background.js        # Service worker for settings & lifecycle
-├── src/popup.html/css/js    # Toolbar popup + options page UI/settings
-└── icons/                   # Extension icons
+├── manifest*.json                    # Browser manifests (Chromium + Firefox)
+├── src/boot.js                       # Content-script bootstrap + storage listeners
+├── src/virtualization.js             # Main orchestrator (still being modularized)
+├── src/constants.js                  # Global runtime config + state bootstrap
+├── src/core/settings.js              # Settings defaults/normalizers/storage helpers
+├── src/core/storage.js               # Conversation cache + pin/bookmark persistence
+├── src/core/virtualizer/             # Core store/observer/types
+├── src/ui/shell/theme.ts             # Theme mode/tokens
+├── src/ui/features/roleStyles.ts     # Role chip/surface styling rules
+├── src/ui/features/search/           # Search feature + highlighting helpers
+├── src/ui/features/minimap/          # Minimap UI + geometry helpers
+├── src/ui/features/map/              # Sidebar map tab feature
+├── src/ui/features/sidebar/          # Sidebar settings/snippets tab renderers
+├── src/ui/features/snippets/         # Snippet extraction/normalization
+├── src/popup.html/css/js             # Popup + options UI (shared page)
+├── src/background.js                 # Service worker
+└── src/adapters/chromeApi.ts         # Extension API wrappers/fallbacks
 ```
 
 
 ## Development Notes
 
 ### Running the extension during development:
-- Load the extension locally in your browser
-- Open the browser console on ChatGPT and look for debug logs (if enabled)
-- Use the popup toggle to enable/disable virtualization
-- When making changes, hit **Reload** on the extension page (for Chrome)
+- Install dependencies: `npm install`
+- Build once: `npm run build`
+- Build in watch mode: `npm run dev`
+- Build Firefox package: `npm run build:firefox`
+- Load unpacked extension and reload after changes.
+
+### Testing
+- Run test suite: `npm test`
+- In restricted/sandboxed environments where process spawning is blocked, run:
+  - `npx jest --runInBand`
 
 ### Settings Architecture (Developer Notes)
 - Shared settings defaults and normalization live in `src/core/settings.js`.
@@ -136,6 +149,15 @@ It makes massive message lists behave like small ones.
   - Apply runtime behavior in `src/boot.js` and `src/virtualization.js`
   - Expose controls in both sidebar settings and popup/options UI
   - Validate with `npm run build` and `npm run build:firefox`
+
+### Modularization Status and Next Targets
+- Recent extractions moved search, minimap, and map behavior into `src/ui/features/*`.
+- `src/virtualization.js` remains the primary orchestration layer and largest file.
+- Next high-value extraction targets:
+  - Sidebar shell/tab orchestration (`renderSidebarTab`, panel/toggle lifecycle, hotkey wiring)
+  - Per-message action rail and collapse/pin/bookmark injection lifecycle
+  - Markdown export pipeline (`downloadMarkdown`, DOM-to-markdown conversion)
+  - Bookmarks panel/floating control lifecycle
 
 ### Firefox signing (unlisted/private)
 - Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).
@@ -200,9 +222,8 @@ All processing happens **fully locally** in your browser.
 4. The extension works automatically! 🎉
 
 ### Accessing Settings
-- Click the extension icon in your Chrome/Firefox toolbar
-- See stats like nodes rendered, memory saved and more
-- Enable debug mode to see what's happening behind the scenes
+- Toolbar popup/options page: global controls, stats, cached conversation diagnostics.
+- In-chat sidebar `Settings` tab: same core controls without leaving the chat context.
 
 ### Settings Explained
 
@@ -210,10 +231,19 @@ All processing happens **fully locally** in your browser.
 |---------|-------------|---------|
 | **Enable Virtual Scrolling** | Toggle virtualization on/off | ON |
 | **Debug Mode** | Show console logs for debugging | OFF |
+| **Buffer Size (marginPx)** | Virtualization buffer around viewport | 2000 |
+| **Scroll Throttle** | Min ms between scroll virtualization updates | 50 |
+| **Mutation Debounce** | Debounce for mutation-driven refreshes | 50 |
+| **Sidebar Width** | Default tools sidebar width (px) | 320 |
+| **Show Minimap** | Show/hide standalone minimap | ON |
+| **Sidebar Hotkey** | Keyboard shortcut to toggle sidebar | `Alt+Shift+B` |
+| **Conversation Padding** | Horizontal thread content padding (px) | 16 |
+| **Composer Width** | Target composer/content width (px) | 768 |
+| **Role Colors** | User/Agent colors for dark/light themes | Theme defaults |
 
 ### Performance Stats
 
-The popup displays real-time statistics:
+The popup and sidebar settings display real-time statistics:
 - **Total Messages**: Number of messages in conversation
 - **Rendered**: Currently rendered messages
 - **Memory Saved**: Percentage of messages virtualized
@@ -232,7 +262,7 @@ The popup displays real-time statistics:
 ## Compatibility
 - Browser: Chrome, Firefox (Manifest V3 with background scripts)
 - OS: Windows, macOS, Linux
-- ChatGPT: Optimized for current UI (as of 2025), resilient to minor changes
+- ChatGPT: Optimized for current UI (as of 2026), resilient to minor changes
 
 
 ## Contributing

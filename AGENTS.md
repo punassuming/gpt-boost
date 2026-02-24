@@ -10,6 +10,11 @@
   - `src/core/virtualizer/` contains virtualizer-domain modules (`store.ts`, `observer.ts`, `types.ts`).
   - `src/ui/shell/theme.ts` contains theme token logic.
   - `src/ui/features/roleStyles.ts` contains user/agent role presentation rules.
+  - `src/ui/features/search/` contains search behavior (`searchFeature.js`) and match-highlighting utilities (`searchHighlighting.js`).
+  - `src/ui/features/minimap/` contains minimap rendering/interaction (`minimapFeature.js`) and geometry math helpers (`minimapMath.js`).
+  - `src/ui/features/map/mapFeature.js` contains sidebar map-tab rendering/state logic.
+  - `src/ui/features/sidebar/` contains tab-specific sidebar renderers (`settingsTab.js`, `snippetsTab.js`).
+  - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/adapters/chromeApi.ts` contains extension API wrappers/fallback behavior.
   - `src/background.js` is the service worker.
   - `src/popup.html`, `src/popup.css`, `src/popup.js` implement popup/options UI (shared with `options_ui`).
@@ -35,7 +40,8 @@
   - `npm run version:major`
 - Chrome/Edge/Brave local dev: open `chrome://extensions`, enable Developer mode, “Load unpacked”, select repo root (with `manifest.json`).
 - Firefox local dev: open `about:debugging#/runtime/this-firefox`, “Load Temporary Add-on…”, pick `manifest.json`.
-- `npm test` currently exits with an error placeholder; add a test runner before relying on it.
+- Test suite: `npm test` (Jest).
+  - In restricted environments where worker process spawning is blocked, run `npx jest --runInBand`.
 
 ## CI/CD Automation
 - PR CI workflow: `.github/workflows/pr-ci.yml`
@@ -71,11 +77,23 @@
 - If you add or change persisted user settings, update `src/core/settings.js` first (defaults + normalization), then wire the change through `boot.js`, sidebar settings UI, and popup/options UI together.
 
 ## Testing Guidelines
-- There is no automated test suite yet. Validate changes manually:
+- Automated tests exist for DOM utilities (`tests/dom.test.js`), but coverage is still limited.
+- Run:
+  - `npm test` (preferred)
+  - `npx jest --runInBand` (fallback in restricted shells)
+- Validate changes manually:
   - Load the unpacked extension, open ChatGPT, and scroll through a long thread.
   - Use the popup stats (rendered vs total messages) to confirm virtualization.
   - Toggle debug mode to inspect logs when troubleshooting.
 - If you touch UI, verify in both Chrome and Firefox.
+
+## Current Refactor Priorities
+- Continue reducing `src/virtualization.js` orchestration size by extracting:
+  - Sidebar shell/tab lifecycle management.
+  - Per-article action rail/collapse injection lifecycle.
+  - Markdown export conversion pipeline.
+  - Bookmarks floating panel lifecycle.
+- Keep behavior stable by using wrapper delegates in `virtualization.js` and implementing feature modules under `src/ui/features/`.
 
 ## Commit & Pull Request Guidelines
 - Commit history favors short, imperative summaries; occasional conventional prefixes like `fix:` appear. Keep messages concise and scoped.

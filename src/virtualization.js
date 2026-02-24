@@ -1,10 +1,15 @@
 import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
 import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey, loadFlagsStore, loadKnownConversationsStore, summarizeConversationCaches } from './core/storage.js';
-import hljs from 'highlight.js/lib/common';
 import { createVirtualizerStore } from './core/virtualizer/store.ts';
 import { setupScrollTracking, createDebouncedObserver } from './core/virtualizer/observer.ts';
 import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
 import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
+import { renderSidebarSettingsTab } from './ui/features/sidebar/settingsTab.js';
+import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
+import { toUnixNewlines, inferCodeLanguage } from './ui/features/snippets/codeSnippets.js';
+import { createSearchFeature } from './ui/features/search/searchFeature.js';
+import { createMinimapFeature } from './ui/features/minimap/minimapFeature.js';
+import { createMapFeature } from './ui/features/map/mapFeature.js';
 import {
   DEFAULT_EXTENSION_SETTINGS,
   normalizeExtensionSettings,
@@ -63,11 +68,6 @@ import {
   let sidebarBodyTransitionOriginal = "";
   let sidebarBodyFallbackUsed = false;
   let activeSidebarTab = "search";
-  let settingsEnabledInput = null;
-  let settingsDebugInput = null;
-  let settingsMarginInput = null;
-  let settingsConversationPaddingInput = null;
-  let settingsComposerWidthInput = null;
   let conversationLayoutStyleElement = null;
   const searchState = {
     query: "",
@@ -178,6 +178,130 @@ import {
 
 
   const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "0 0 0 1px rgba(59,130,246,0.32)";
+
+  const searchRefs = {};
+  Object.defineProperties(searchRefs, {
+    searchButton: { get: () => searchButton, set: (value) => { searchButton = value; } },
+    searchPanel: { get: () => searchPanel, set: (value) => { searchPanel = value; } },
+    searchInput: { get: () => searchInput, set: (value) => { searchInput = value; } },
+    searchPrevButton: { get: () => searchPrevButton, set: (value) => { searchPrevButton = value; } },
+    searchNextButton: { get: () => searchNextButton, set: (value) => { searchNextButton = value; } },
+    searchCountLabel: { get: () => searchCountLabel, set: (value) => { searchCountLabel = value; } },
+    searchCountPrimaryLabel: { get: () => searchCountPrimaryLabel, set: (value) => { searchCountPrimaryLabel = value; } },
+    searchCountSecondaryLabel: { get: () => searchCountSecondaryLabel, set: (value) => { searchCountSecondaryLabel = value; } },
+    searchCloseButton: { get: () => searchCloseButton, set: (value) => { searchCloseButton = value; } },
+    searchDebounceTimer: { get: () => searchDebounceTimer, set: (value) => { searchDebounceTimer = value; } },
+    highlightedSearchElement: { get: () => highlightedSearchElement, set: (value) => { highlightedSearchElement = value; } }
+  });
+
+  const minimapRefs = {};
+  Object.defineProperties(minimapRefs, {
+    minimapButton: { get: () => minimapButton, set: (value) => { minimapButton = value; } },
+    minimapPanel: { get: () => minimapPanel, set: (value) => { minimapPanel = value; } },
+    activeStandaloneMinimapVirtualId: {
+      get: () => activeStandaloneMinimapVirtualId,
+      set: (value) => { activeStandaloneMinimapVirtualId = value; }
+    }
+  });
+  const mapRefs = {};
+  Object.defineProperties(mapRefs, {
+    activeMapVirtualId: {
+      get: () => activeMapVirtualId,
+      set: (value) => { activeMapVirtualId = value; }
+    }
+  });
+
+  const searchFeature = createSearchFeature({
+    refs: searchRefs,
+    searchState,
+    state,
+    constants: {
+      articleSnippetLength: ARTICLE_SNIPPET_LENGTH,
+      searchDebounceMs: SEARCH_DEBOUNCE_MS,
+      searchButtonSizePx: SEARCH_BUTTON_SIZE_PX,
+      searchButtonRightOffsetPx: SEARCH_BUTTON_RIGHT_OFFSET_PX,
+      searchButtonTopOffsetPx: SEARCH_BUTTON_TOP_OFFSET_PX,
+      searchPanelTopOffsetPx: SEARCH_PANEL_TOP_OFFSET_PX,
+      searchPanelRightOffsetPx: SEARCH_PANEL_RIGHT_OFFSET_PX,
+      searchPanelWidthPx: SEARCH_PANEL_WIDTH_PX
+    },
+    deps: {
+      ensureVirtualIds,
+      getActiveConversationNodes,
+      getMessageRole,
+      getRoleSurfaceStyle,
+      createRoleChip,
+      styleSearchButton,
+      scrollToVirtualId,
+      openSidebar,
+      isSidebarOpen,
+      getActiveSidebarTab: () => activeSidebarTab,
+      getSidebarContentContainer: () => sidebarContentContainer,
+      renderSidebarTab,
+      refreshSidebarTab,
+      updateSidebarVisibility,
+      applyFloatingUiOffsets,
+      applyThemeToUi,
+      getThemeTokens,
+      escapeSelectorValue
+    }
+  });
+
+  const mapFeature = createMapFeature({
+    refs: mapRefs,
+    state,
+    constants: {
+      articleSnippetLength: ARTICLE_SNIPPET_LENGTH,
+      sidebarMapSnippetLength: SIDEBAR_MAP_SNIPPET_LENGTH,
+      sidebarMapNearbyRadius: SIDEBAR_MAP_NEARBY_RADIUS,
+      sidebarMapTrackHeightPx: SIDEBAR_MAP_TRACK_HEIGHT_PX
+    },
+    deps: {
+      getViewportMetrics,
+      getThemeTokens,
+      getMessageRole,
+      getRoleSurfaceStyle,
+      createRoleChip,
+      getRoleDisplayLabel,
+      ensureVirtualIds,
+      scrollToVirtualId,
+      isSidebarOpen,
+      getActiveSidebarTab: () => activeSidebarTab,
+      getSidebarContentContainer: () => sidebarContentContainer,
+      escapeSelectorValue
+    }
+  });
+
+  const minimapFeature = createMinimapFeature({
+    refs: minimapRefs,
+    state,
+    constants: {
+      scrollButtonSizePx: SCROLL_BUTTON_SIZE_PX,
+      minimapButtonGapPx: MINIMAP_BUTTON_GAP_PX,
+      minimapButtonSizePx: MINIMAP_BUTTON_SIZE_PX,
+      minimapButtonRightOffsetPx: MINIMAP_BUTTON_RIGHT_OFFSET_PX,
+      minimapButtonTopOffsetPx: MINIMAP_BUTTON_TOP_OFFSET_PX,
+      minimapPanelRightOffsetPx: MINIMAP_PANEL_RIGHT_OFFSET_PX,
+      minimapPanelTopOffsetPx: MINIMAP_PANEL_TOP_OFFSET_PX,
+      minimapPanelWidthPx: MINIMAP_PANEL_WIDTH_PX,
+      minimapTrackHeightPx: MINIMAP_TRACK_HEIGHT_PX
+    },
+    getUiSettings: () => uiSettings,
+    deps: {
+      ensureVirtualIds,
+      getMessageRole,
+      styleSearchButton,
+      getThemeMode,
+      getThemeTokens,
+      escapeSelectorValue,
+      getViewportAnchorVirtualId,
+      getScrollTarget,
+      getMaxScrollTop,
+      scrollToVirtualId,
+      applyFloatingUiOffsets,
+      applyThemeToUi
+    }
+  });
 
   function syncFlagsFromPersistedKeys() {
     const nextPinned = new Set();
@@ -317,14 +441,7 @@ import {
         ? parseFloat(scrollToTopButton.style.top) || SCROLL_BUTTON_TOP_OFFSET_PX
         : SCROLL_BUTTON_TOP_OFFSET_PX;
       const bottomButtonTop = window.innerHeight - SCROLL_BUTTON_OFFSET_PX - SCROLL_BUTTON_SIZE_PX;
-      const minimapTop = topButtonTop + SCROLL_BUTTON_SIZE_PX + MINIMAP_BUTTON_GAP_PX;
-      const minimapBottom = Math.max(minimapTop + 80, bottomButtonTop - MINIMAP_BUTTON_GAP_PX);
-      const minimapHeight = Math.max(80, minimapBottom - minimapTop);
-
-      minimapPanel.style.top = `${Math.round(minimapTop)}px`;
-      minimapPanel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX + offset}px`;
-      minimapPanel.style.width = `${MINIMAP_PANEL_WIDTH_PX}px`;
-      minimapPanel.style.height = `${Math.round(minimapHeight)}px`;
+      minimapFeature.applyFloatingLayout(offset, topButtonTop, bottomButtonTop);
     }
   }
 
@@ -636,8 +753,7 @@ import {
   }
 
   function hideSearchUi() {
-    if (searchButton) searchButton.style.display = "none";
-    hideSearchPanel();
+    searchFeature.hideSearchUi();
   }
 
   function updateScrollButtons(totalMessages) {
@@ -737,23 +853,7 @@ import {
     }
 
     if (minimapPanel) {
-      minimapPanel.style.background =
-        getThemeMode() === "dark"
-          ? "rgba(15, 23, 42, 0.5)"
-          : "rgba(255, 255, 255, 0.5)";
-      minimapPanel.style.boxShadow = "none";
-      minimapPanel.style.border = `1px solid ${theme.panelBorder}`;
-      minimapPanel.style.color = theme.text;
-
-      const track = minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
-      if (track instanceof HTMLElement) {
-        track.style.background =
-          getThemeMode() === "dark"
-            ? "linear-gradient(to bottom, rgba(148,163,184,0.2), rgba(148,163,184,0.08))"
-            : "linear-gradient(to bottom, rgba(32,33,35,0.2), rgba(32,33,35,0.08))";
-        const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
-        applyStandaloneMinimapViewportThumbTheme(viewportThumb);
-      }
+      minimapFeature.applyTheme(theme);
     }
 
     if (codePanelPanel) {
@@ -792,529 +892,95 @@ import {
   }
 
   function clearSearchTextHighlights(element) {
-    if (!element) return;
-    const marks = element.querySelectorAll(
-      'mark[data-chatgpt-virtual-search="hit"]'
-    );
-    marks.forEach((mark) => {
-      const textNode = document.createTextNode(mark.textContent || "");
-      mark.replaceWith(textNode);
-    });
-    element.normalize();
+    searchFeature.clearSearchTextHighlights(element);
   }
 
   function clearSearchHighlight() {
-    if (highlightedSearchElement) {
-      clearSearchTextHighlights(highlightedSearchElement);
-      highlightedSearchElement.style.outline = "";
-      highlightedSearchElement.style.outlineOffset = "";
-      highlightedSearchElement.style.borderRadius = "";
-      highlightedSearchElement = null;
-    }
+    searchFeature.clearSearchHighlight();
   }
 
   function highlightMatchesInElement(element, query) {
-    if (!(element instanceof HTMLElement)) return;
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return;
-
-    clearSearchTextHighlights(element);
-
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode(node) {
-          if (!node.nodeValue || !node.nodeValue.trim()) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          const parent = node.parentElement;
-          if (
-            parent &&
-            parent.closest('mark[data-chatgpt-virtual-search="hit"]')
-          ) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
-
-    const textNodes = [];
-    while (walker.nextNode()) {
-      textNodes.push(walker.currentNode);
-    }
-
-    textNodes.forEach((node) => {
-      const text = node.nodeValue || "";
-      const lower = text.toLowerCase();
-      let index = lower.indexOf(normalized);
-      if (index === -1) return;
-
-      const fragment = document.createDocumentFragment();
-      let lastIndex = 0;
-
-      while (index !== -1) {
-        if (index > lastIndex) {
-          fragment.appendChild(
-            document.createTextNode(text.slice(lastIndex, index))
-          );
-        }
-
-        const matchText = text.slice(index, index + normalized.length);
-        const mark = document.createElement("mark");
-        mark.dataset.chatgptVirtualSearch = "hit";
-        mark.textContent = matchText;
-        mark.style.background = "rgba(251, 191, 36, 0.35)";
-        mark.style.color = "inherit";
-        mark.style.padding = "0 2px";
-        mark.style.borderRadius = "4px";
-        fragment.appendChild(mark);
-
-        lastIndex = index + normalized.length;
-        index = lower.indexOf(normalized, lastIndex);
-      }
-
-      if (lastIndex < text.length) {
-        fragment.appendChild(
-          document.createTextNode(text.slice(lastIndex))
-        );
-      }
-
-      node.replaceWith(fragment);
-    });
+    searchFeature.highlightMatchesInElement(element, query);
   }
 
   function setSearchHighlight(element) {
-    if (!(element instanceof HTMLElement)) return;
-    clearSearchHighlight();
-    element.style.outline = "2px solid #fbbf24";
-    element.style.outlineOffset = "2px";
-    element.style.borderRadius = "8px";
-    highlightMatchesInElement(element, searchState.query);
-    highlightedSearchElement = element;
+    searchFeature.setSearchHighlight(element);
   }
 
   function updateSearchCountLabel() {
-    if (!searchCountLabel) return;
-    const totalSections = searchState.results.length;
-    const active =
-      totalSections && searchState.activeIndex >= 0
-        ? searchState.activeIndex + 1
-        : 0;
-    const primaryText = `${active}/${totalSections}`;
-    const secondaryText = `${searchState.matchCount} match${searchState.matchCount === 1 ? "" : "es"
-      }`;
-
-    if (searchCountPrimaryLabel && searchCountSecondaryLabel) {
-      searchCountPrimaryLabel.textContent = primaryText;
-      searchCountSecondaryLabel.textContent = secondaryText;
-      return;
-    }
-
-    searchCountLabel.textContent = `${primaryText} • ${searchState.matchCount}`;
+    searchFeature.updateSearchCountLabel();
   }
 
   function collectSearchTargets() {
-    ensureVirtualIds();
-    const entries = new Map();
-
-    getActiveConversationNodes().forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      const id = node.dataset.virtualId;
-      if (!id) return;
-      entries.set(id, node);
-    });
-
-    state.articleMap.forEach((node, id) => {
-      if (!(node instanceof HTMLElement)) return;
-      entries.set(id, node);
-    });
-
-    return entries;
+    return searchFeature.collectSearchTargets();
   }
 
   function getMessageTextSnippet(virtualId, maxLength = ARTICLE_SNIPPET_LENGTH) {
-    const article = state.articleMap.get(virtualId);
-    if (!(article instanceof HTMLElement)) return `Message ${virtualId}`;
-    const textSource = article.querySelector("[data-message-author-role]") || article;
-    const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-    if (!raw) return `Message ${virtualId}`;
-    return raw.length > maxLength ? raw.slice(0, maxLength) + "…" : raw;
+    return mapFeature.getMessageTextSnippet(virtualId, maxLength);
   }
 
   function getMessageRoleById(virtualId) {
-    const article = state.articleMap.get(virtualId);
-    if (!(article instanceof HTMLElement)) return "unknown";
-    return getMessageRole(article);
+    return mapFeature.getMessageRoleById(virtualId);
   }
 
   function getViewportAnchorVirtualId() {
-    const viewport = getViewportMetrics();
-    if (viewport.height <= 0) return null;
-
-    const viewportTop = viewport.top;
-    const viewportBottom = viewportTop + viewport.height;
-    const viewportCenter = viewportTop + viewport.height / 2;
-
-    let bestVisibleId = null;
-    let bestVisibleDistance = Number.POSITIVE_INFINITY;
-    let nearestId = null;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-
-    document.querySelectorAll("[data-virtual-id]").forEach((el) => {
-      if (!(el instanceof HTMLElement)) return;
-      const id = el.dataset.virtualId;
-      if (!id) return;
-
-      const rect = el.getBoundingClientRect();
-      const center = (rect.top + rect.bottom) / 2;
-      const isVisible = rect.bottom >= viewportTop && rect.top <= viewportBottom;
-
-      if (isVisible) {
-        const distance = Math.abs(center - viewportCenter);
-        if (distance < bestVisibleDistance) {
-          bestVisibleDistance = distance;
-          bestVisibleId = id;
-        }
-        return;
-      }
-
-      const distanceToViewport =
-        rect.bottom < viewportTop ? viewportTop - rect.bottom : rect.top - viewportBottom;
-      if (distanceToViewport < nearestDistance) {
-        nearestDistance = distanceToViewport;
-        nearestId = id;
-      }
-    });
-
-    return bestVisibleId || nearestId;
+    return mapFeature.getViewportAnchorVirtualId();
   }
 
   function applyMapMarkerStyle(marker, isActive) {
-    if (!(marker instanceof HTMLElement)) return;
-    const theme = getThemeTokens();
-    const role = marker.dataset.role || "unknown";
-    const roleStyle = getRoleSurfaceStyle(role, theme);
-    marker.style.background = roleStyle.accentColor;
-    marker.style.opacity = isActive ? "1" : "0.6";
-    marker.style.height = isActive ? "4px" : "2px";
-    marker.style.boxShadow = isActive ? `0 0 0 1px ${roleStyle.borderColor}` : "none";
+    mapFeature.applyMapMarkerStyle(marker, isActive);
   }
 
   function applyMapNearbyItemStyle(item, isActive) {
-    if (!(item instanceof HTMLElement)) return;
-    const theme = getThemeTokens();
-    const role = item.dataset.role || "unknown";
-    const roleStyle = getRoleSurfaceStyle(role, theme);
-    item.style.background = isActive ? roleStyle.activeSurfaceBg : roleStyle.surfaceBg;
-    item.style.border = `1px solid ${roleStyle.borderColor}`;
-    item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
-    item.style.color = theme.text;
+    mapFeature.applyMapNearbyItemStyle(item, isActive);
   }
 
   function populateMapNearbyList(listContainer, track, activeId) {
-    if (!(listContainer instanceof HTMLElement) || !(track instanceof HTMLElement)) return;
-
-    const markers = Array.from(
-      track.querySelectorAll('[data-gpt-boost-map-marker="1"]')
-    ).filter((el) => el instanceof HTMLElement);
-
-    listContainer.innerHTML = "";
-    if (!markers.length) return;
-
-    const activeIndex = markers.findIndex((marker) => marker.dataset.virtualId === activeId);
-    const centerIndex = activeIndex >= 0 ? activeIndex : 0;
-    const start = Math.max(0, centerIndex - SIDEBAR_MAP_NEARBY_RADIUS);
-    const end = Math.min(markers.length - 1, centerIndex + SIDEBAR_MAP_NEARBY_RADIUS);
-
-    for (let idx = start; idx <= end; idx += 1) {
-      const marker = markers[idx];
-      const id = marker.dataset.virtualId;
-      if (!id) continue;
-      const role = marker.dataset.role || "unknown";
-      const position = marker.dataset.position || String(idx + 1);
-
-      const item = document.createElement("button");
-      item.type = "button";
-      item.setAttribute("data-gpt-boost-map-nearby-item", "1");
-      item.dataset.virtualId = id;
-      item.dataset.role = role;
-      item.style.display = "flex";
-      item.style.flexDirection = "column";
-      item.style.gap = "2px";
-      item.style.width = "100%";
-      item.style.textAlign = "left";
-      item.style.padding = "6px 8px";
-      item.style.borderRadius = "10px";
-      item.style.cursor = "pointer";
-      item.style.fontFamily = "inherit";
-      item.style.wordBreak = "break-word";
-
-      const title = document.createElement("div");
-      title.style.fontSize = "11px";
-      title.style.opacity = "0.78";
-      title.textContent = `${position}. ${getRoleDisplayLabel(role)} • #${id}`;
-
-      const snippet = document.createElement("div");
-      snippet.style.fontSize = "12px";
-      snippet.style.lineHeight = "1.3";
-      snippet.textContent = getMessageTextSnippet(id, 90);
-
-      item.appendChild(title);
-      item.appendChild(snippet);
-      applyMapNearbyItemStyle(item, id === activeId);
-      item.addEventListener("click", () => scrollToVirtualId(id));
-      listContainer.appendChild(item);
-    }
+    mapFeature.populateMapNearbyList(listContainer, track, activeId);
   }
 
   function updateMapViewportState(force = false) {
-    if (!isSidebarOpen() || activeSidebarTab !== "map" || !sidebarContentContainer) return;
-
-    const nextId = getViewportAnchorVirtualId();
-    if (!nextId) return;
-    if (!force && nextId === activeMapVirtualId) return;
-
-    const previousId = activeMapVirtualId;
-    activeMapVirtualId = nextId;
-
-    const previousMarker = previousId
-      ? sidebarContentContainer.querySelector(`[data-gpt-boost-map-marker][data-virtual-id="${escapeSelectorValue(previousId)}"]`)
-      : null;
-    if (previousMarker instanceof HTMLElement) {
-      applyMapMarkerStyle(previousMarker, false);
-    }
-
-    const nextMarker = sidebarContentContainer.querySelector(
-      `[data-gpt-boost-map-marker][data-virtual-id="${escapeSelectorValue(nextId)}"]`
-    );
-    if (!(nextMarker instanceof HTMLElement)) return;
-    applyMapMarkerStyle(nextMarker, true);
-
-    const statusEl = sidebarContentContainer.querySelector("[data-gpt-boost-map-status]");
-    if (statusEl instanceof HTMLElement) {
-      const total = Number(nextMarker.dataset.total || "0");
-      const position = Number(nextMarker.dataset.position || "0");
-      statusEl.textContent = total > 0 ? `Viewing ${position}/${total}` : "No messages";
-    }
-
-    const roleHost = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-role]");
-    const snippetEl = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-snippet]");
-    const metaEl = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-meta]");
-    const detailCard = sidebarContentContainer.querySelector("[data-gpt-boost-map-active-card]");
-
-    const theme = getThemeTokens();
-    const role = nextMarker.dataset.role || getMessageRoleById(nextId);
-    const roleStyle = getRoleSurfaceStyle(role, theme);
-
-    if (roleHost instanceof HTMLElement) {
-      roleHost.innerHTML = "";
-      roleHost.appendChild(createRoleChip(roleStyle));
-    }
-    if (snippetEl instanceof HTMLElement) {
-      snippetEl.textContent = getMessageTextSnippet(nextId, SIDEBAR_MAP_SNIPPET_LENGTH);
-    }
-    if (metaEl instanceof HTMLElement) {
-      const position = nextMarker.dataset.position || "?";
-      const total = nextMarker.dataset.total || "?";
-      metaEl.textContent = `#${nextId} • ${position}/${total}`;
-    }
-    if (detailCard instanceof HTMLElement) {
-      detailCard.style.background = roleStyle.surfaceBg;
-      detailCard.style.border = `1px solid ${roleStyle.borderColor}`;
-      detailCard.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
-    }
-
-    const nearbyList = sidebarContentContainer.querySelector("[data-gpt-boost-map-nearby]");
-    const track = sidebarContentContainer.querySelector("[data-gpt-boost-map-track]");
-    if (nearbyList instanceof HTMLElement && track instanceof HTMLElement) {
-      populateMapNearbyList(nearbyList, track, nextId);
-    }
+    mapFeature.updateMapViewportState(force);
   }
 
   function getSearchResultSummary(id, index, total) {
-    const node = state.articleMap.get(id);
-    if (!(node instanceof HTMLElement)) {
-      return {
-        title: `Result ${index + 1}`,
-        subtitle: `#${id} • ${index + 1}/${total}`,
-        role: "message"
-      };
-    }
-    const role = getMessageRole(node);
-    const textSource = node.querySelector("[data-message-author-role]") || node;
-    const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-    const snippet = raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
-    return {
-      title: snippet || `Message ${id}`,
-      subtitle: `#${id} • ${index + 1}/${total}`,
-      role
-    };
+    return searchFeature.getSearchResultSummary(id, index, total);
   }
 
   function focusSearchResult(id) {
-    scrollToVirtualId(id);
-
-    const selectorId = escapeSelectorValue(id);
-    setTimeout(() => {
-      const refreshed =
-        document.querySelector(`article[data-virtual-id="${selectorId}"]`) ||
-        document.querySelector(`[data-virtual-id="${selectorId}"]`);
-      if (refreshed instanceof HTMLElement) {
-        setSearchHighlight(refreshed);
-      }
-    }, 200);
+    searchFeature.focusSearchResult(id);
   }
 
   function rerenderSearchSidebarPreservingInputFocus() {
-    if (!isSidebarOpen() || activeSidebarTab !== "search" || !sidebarContentContainer) return;
-
-    const activeEl = document.activeElement;
-    const isSidebarSearchInput =
-      activeEl instanceof HTMLInputElement &&
-      activeEl.getAttribute("aria-label") === "Search chat" &&
-      sidebarContentContainer.contains(activeEl);
-
-    const selectionStart = isSidebarSearchInput ? activeEl.selectionStart : null;
-    const selectionEnd = isSidebarSearchInput ? activeEl.selectionEnd : null;
-
-    renderSidebarTab("search");
-
-    if (!isSidebarSearchInput) return;
-
-    const restoreFocus = () => {
-      if (!sidebarContentContainer) return;
-      const nextInput = sidebarContentContainer.querySelector('input[aria-label="Search chat"]');
-      if (!(nextInput instanceof HTMLInputElement)) return;
-      nextInput.focus();
-      const max = nextInput.value.length;
-      const nextStart =
-        typeof selectionStart === "number"
-          ? Math.max(0, Math.min(max, selectionStart))
-          : max;
-      const nextEnd =
-        typeof selectionEnd === "number"
-          ? Math.max(nextStart, Math.min(max, selectionEnd))
-          : nextStart;
-      try {
-        nextInput.setSelectionRange(nextStart, nextEnd);
-      } catch (_err) {
-        // Ignore selection failures on unsupported input types/contexts.
-      }
-    };
-
-    setTimeout(restoreFocus, 0);
-    requestAnimationFrame(restoreFocus);
+    searchFeature.rerenderSearchSidebarPreservingInputFocus();
   }
 
   function runSearch(query) {
-    const normalized = query.trim().toLowerCase();
-    searchState.query = query;
-
-    if (!normalized) {
-      searchState.results = [];
-      searchState.activeIndex = -1;
-      searchState.indexedTotal = state.stats.totalMessages;
-      searchState.matchCount = 0;
-      updateSearchCountLabel();
-      clearSearchHighlight();
-      rerenderSearchSidebarPreservingInputFocus();
-      return;
-    }
-
-    const entries = collectSearchTargets();
-    const results = [];
-    let matchCount = 0;
-
-    entries.forEach((node, id) => {
-      const text = (node.textContent || "").toLowerCase();
-      if (!text) return;
-      let index = text.indexOf(normalized);
-      if (index === -1) return;
-      results.push(id);
-      while (index !== -1) {
-        matchCount += 1;
-        index = text.indexOf(normalized, index + normalized.length);
-      }
-    });
-
-    searchState.results = results;
-    searchState.activeIndex = results.length ? 0 : -1;
-    searchState.indexedTotal = state.stats.totalMessages;
-    searchState.matchCount = matchCount;
-
-    updateSearchCountLabel();
-    if (!results.length) {
-      clearSearchHighlight();
-    }
-    rerenderSearchSidebarPreservingInputFocus();
-    if (isSidebarOpen() && activeSidebarTab !== "search") {
-      refreshSidebarTab();
-    }
+    searchFeature.runSearch(query);
   }
 
   function scheduleSearch(query) {
-    if (searchDebounceTimer !== null) {
-      clearTimeout(searchDebounceTimer);
-    }
-    searchDebounceTimer = setTimeout(() => {
-      searchDebounceTimer = null;
-      runSearch(query);
-    }, SEARCH_DEBOUNCE_MS);
+    searchFeature.scheduleSearch(query);
   }
 
   function ensureSearchResultsFresh() {
-    if (!searchState.query) return;
-    if (searchState.indexedTotal !== state.stats.totalMessages) {
-      runSearch(searchState.query);
-    }
+    searchFeature.ensureSearchResultsFresh();
   }
 
   function navigateSearch(direction) {
-    ensureSearchResultsFresh();
-    const results = searchState.results;
-    if (!results.length) {
-      updateSearchCountLabel();
-      return;
-    }
-
-    let nextIndex =
-      typeof searchState.activeIndex === "number"
-        ? searchState.activeIndex
-        : -1;
-    nextIndex = (nextIndex + direction + results.length) % results.length;
-    searchState.activeIndex = nextIndex;
-    updateSearchCountLabel();
-    focusSearchResult(results[nextIndex]);
+    searchFeature.navigateSearch(direction);
   }
 
   function showSearchPanel() {
-    const panel = ensureSearchPanel();
-    if (!panel) return;
-    panel.style.display = "flex";
-    updateSearchCountLabel();
-    if (searchInput) searchInput.focus();
+    searchFeature.showSearchPanel();
   }
 
   function hideSearchPanel() {
-    if (searchPanel) searchPanel.style.display = "none";
-    clearSearchHighlight();
+    searchFeature.hideSearchPanel();
   }
 
   function toggleSearchPanel() {
-    if (isSidebarOpen()) {
-      openSidebar("search");
-      return;
-    }
-    const panel = ensureSearchPanel();
-    if (!panel) return;
-    const isVisible = panel.style.display !== "none";
-    if (isVisible) {
-      hideSearchPanel();
-    } else {
-      showSearchPanel();
-    }
+    searchFeature.toggleSearchPanel();
   }
 
   function styleSearchButton(button, sizePx) {
@@ -1448,143 +1114,7 @@ import {
   }
 
   function renderSearchTabContent(container) {
-    const theme = getThemeTokens();
-    const row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.gap = "6px";
-    row.style.alignItems = "center";
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Search chat...";
-    input.setAttribute("aria-label", "Search chat");
-    input.style.flex = "1";
-    input.style.minWidth = "0";
-    input.style.height = "32px";
-    input.style.borderRadius = "8px";
-    input.style.padding = "0 10px";
-    input.style.fontSize = "12px";
-    input.style.fontFamily = "inherit";
-    input.style.background = theme.inputBg;
-    input.style.border = `1px solid ${theme.inputBorder}`;
-    input.style.color = theme.text;
-    input.value = searchState.query || "";
-    input.addEventListener("input", (event) => scheduleSearch(event.target.value));
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        navigateSearch(event.shiftKey ? -1 : 1);
-      }
-    });
-
-    const prevBtn = document.createElement("button");
-    prevBtn.type = "button";
-    prevBtn.textContent = "↑";
-    styleSearchButton(prevBtn, 24);
-    prevBtn.style.display = "flex";
-    prevBtn.style.background = theme.buttonMutedBg;
-    prevBtn.style.color = theme.buttonMutedText;
-    prevBtn.addEventListener("click", () => navigateSearch(-1));
-
-    const nextBtn = document.createElement("button");
-    nextBtn.type = "button";
-    nextBtn.textContent = "↓";
-    styleSearchButton(nextBtn, 24);
-    nextBtn.style.display = "flex";
-    nextBtn.style.background = theme.buttonMutedBg;
-    nextBtn.style.color = theme.buttonMutedText;
-    nextBtn.addEventListener("click", () => navigateSearch(1));
-
-    row.appendChild(input);
-    row.appendChild(prevBtn);
-    row.appendChild(nextBtn);
-
-    const count = document.createElement("div");
-    count.style.fontSize = "11px";
-    count.style.opacity = "0.8";
-    count.style.padding = "2px 2px 6px";
-
-    const totalSections = searchState.results.length;
-    const active = totalSections && searchState.activeIndex >= 0 ? searchState.activeIndex + 1 : 0;
-    count.textContent = `${active}/${totalSections} sections • ${searchState.matchCount} matches`;
-
-    container.appendChild(row);
-    container.appendChild(count);
-
-    const resultsList = document.createElement("div");
-    resultsList.setAttribute("data-gpt-boost-search-results", "1");
-    resultsList.style.display = "flex";
-    resultsList.style.flexDirection = "column";
-    resultsList.style.gap = "6px";
-    resultsList.style.overflowY = "auto";
-    resultsList.style.minHeight = "0";
-    resultsList.style.flex = "1";
-
-    if (!searchState.results.length) {
-      const empty = document.createElement("div");
-      empty.style.fontSize = "12px";
-      empty.style.opacity = "0.7";
-      empty.style.padding = "4px 2px";
-      empty.textContent = searchState.query ? "No matches found." : "Type to search the conversation.";
-      resultsList.appendChild(empty);
-    } else {
-      const total = searchState.results.length;
-      searchState.results.forEach((id, idx) => {
-        const summary = getSearchResultSummary(id, idx, total);
-        const roleStyle = getRoleSurfaceStyle(summary.role, theme);
-        const item = document.createElement("button");
-        item.type = "button";
-        item.style.textAlign = "left";
-        item.style.border = `1px solid ${roleStyle.borderColor}`;
-        item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
-        item.style.borderRadius = "10px";
-        item.style.padding = "8px";
-        item.style.background = idx === searchState.activeIndex ? roleStyle.activeSurfaceBg : roleStyle.surfaceBg;
-        item.style.color = theme.text;
-        item.style.cursor = "pointer";
-        item.style.fontFamily = "inherit";
-        item.style.display = "flex";
-        item.style.flexShrink = "0";
-        item.style.flexDirection = "column";
-        item.style.gap = "4px";
-        item.addEventListener("click", () => {
-          const previousScrollTop = resultsList.scrollTop;
-          searchState.activeIndex = idx;
-          updateSearchCountLabel();
-          focusSearchResult(id);
-          renderSidebarTab("search");
-          setTimeout(() => {
-            if (!sidebarContentContainer) return;
-            const nextList = sidebarContentContainer.querySelector('[data-gpt-boost-search-results="1"]');
-            if (nextList instanceof HTMLElement) {
-              nextList.scrollTop = previousScrollTop;
-            }
-          }, 0);
-        });
-
-        const roleChip = createRoleChip(roleStyle);
-
-        const title = document.createElement("div");
-        title.textContent = summary.title;
-        title.style.fontSize = "12px";
-        title.style.lineHeight = "1.35";
-        title.style.wordBreak = "break-word";
-
-        const subtitle = document.createElement("div");
-        subtitle.textContent = summary.subtitle;
-        subtitle.style.fontSize = "10px";
-        subtitle.style.opacity = "0.72";
-
-        item.appendChild(roleChip);
-        item.appendChild(title);
-        item.appendChild(subtitle);
-        resultsList.appendChild(item);
-      });
-    }
-
-    container.appendChild(resultsList);
-
-    setTimeout(() => input.focus(), 0);
+    searchFeature.renderSearchTabContent(container);
   }
 
   function renderBookmarksTabContent(container) {
@@ -1601,119 +1131,7 @@ import {
   }
 
   function renderMapTabContent(container) {
-    const theme = getThemeTokens();
-    ensureVirtualIds();
-
-    const entries = Array.from(state.articleMap.entries())
-      .sort((a, b) => Number(a[0]) - Number(b[0]));
-
-    const status = document.createElement("div");
-    status.setAttribute("data-gpt-boost-map-status", "1");
-    status.style.fontSize = "11px";
-    status.style.opacity = "0.8";
-    status.style.padding = "2px 2px 4px";
-    status.textContent = entries.length ? `Viewing 1/${entries.length}` : "No messages";
-    container.appendChild(status);
-
-    if (!entries.length) {
-      const empty = document.createElement("div");
-      empty.style.fontSize = "12px";
-      empty.style.opacity = "0.7";
-      empty.style.padding = "4px 2px";
-      empty.textContent = "No messages to map yet.";
-      container.appendChild(empty);
-      activeMapVirtualId = null;
-      return;
-    }
-
-    const trackShell = document.createElement("div");
-    trackShell.style.border = `1px solid ${theme.panelBorder}`;
-    trackShell.style.borderRadius = "10px";
-    trackShell.style.padding = "8px";
-    trackShell.style.background = theme.inputBg;
-
-    const track = document.createElement("div");
-    track.setAttribute("data-gpt-boost-map-track", "1");
-    track.style.position = "relative";
-    track.style.height = `${SIDEBAR_MAP_TRACK_HEIGHT_PX}px`;
-    track.style.borderRadius = "6px";
-    track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.18), rgba(148,163,184,0.05))";
-
-    entries.forEach(([id, article], index) => {
-      const role = article instanceof HTMLElement ? getMessageRole(article) : "unknown";
-      const marker = document.createElement("button");
-      marker.type = "button";
-      marker.setAttribute("data-gpt-boost-map-marker", "1");
-      marker.dataset.virtualId = id;
-      marker.dataset.role = role;
-      marker.dataset.position = String(index + 1);
-      marker.dataset.total = String(entries.length);
-      marker.style.position = "absolute";
-      marker.style.left = "0";
-      marker.style.right = "0";
-      marker.style.top = entries.length <= 1
-        ? "0%"
-        : `${(index / (entries.length - 1)) * 100}%`;
-      marker.style.transform = "translateY(-50%)";
-      marker.style.border = "none";
-      marker.style.padding = "0";
-      marker.style.cursor = "pointer";
-      marker.style.transition = "height 120ms ease, opacity 120ms ease, box-shadow 120ms ease";
-      applyMapMarkerStyle(marker, false);
-      marker.addEventListener("click", () => scrollToVirtualId(id));
-      track.appendChild(marker);
-    });
-
-    trackShell.appendChild(track);
-    container.appendChild(trackShell);
-
-    const detailCard = document.createElement("div");
-    detailCard.setAttribute("data-gpt-boost-map-active-card", "1");
-    detailCard.style.display = "flex";
-    detailCard.style.flexDirection = "column";
-    detailCard.style.gap = "4px";
-    detailCard.style.marginTop = "8px";
-    detailCard.style.padding = "8px";
-    detailCard.style.borderRadius = "10px";
-
-    const roleHost = document.createElement("div");
-    roleHost.setAttribute("data-gpt-boost-map-active-role", "1");
-
-    const snippetEl = document.createElement("div");
-    snippetEl.setAttribute("data-gpt-boost-map-active-snippet", "1");
-    snippetEl.style.fontSize = "12px";
-    snippetEl.style.lineHeight = "1.35";
-    snippetEl.style.wordBreak = "break-word";
-
-    const metaEl = document.createElement("div");
-    metaEl.setAttribute("data-gpt-boost-map-active-meta", "1");
-    metaEl.style.fontSize = "10px";
-    metaEl.style.opacity = "0.72";
-
-    detailCard.appendChild(roleHost);
-    detailCard.appendChild(snippetEl);
-    detailCard.appendChild(metaEl);
-    container.appendChild(detailCard);
-
-    const nearbyTitle = document.createElement("div");
-    nearbyTitle.style.fontSize = "11px";
-    nearbyTitle.style.opacity = "0.8";
-    nearbyTitle.style.padding = "4px 2px 2px";
-    nearbyTitle.textContent = "Nearby";
-    container.appendChild(nearbyTitle);
-
-    const nearbyList = document.createElement("div");
-    nearbyList.setAttribute("data-gpt-boost-map-nearby", "1");
-    nearbyList.style.display = "flex";
-    nearbyList.style.flexDirection = "column";
-    nearbyList.style.gap = "6px";
-    nearbyList.style.overflowY = "auto";
-    nearbyList.style.minHeight = "0";
-    nearbyList.style.flex = "1";
-    container.appendChild(nearbyList);
-
-    activeMapVirtualId = null;
-    updateMapViewportState(true);
+    mapFeature.renderMapTabContent(container);
   }
 
   function collapseAllMessages() {
@@ -1854,406 +1272,54 @@ import {
   }
 
   function renderSettingsTabContent(container) {
-    const storage = getSettingsStorageArea();
-    const theme = getThemeTokens();
-    const controlList = document.createElement("div");
-    controlList.style.display = "flex";
-    controlList.style.flexDirection = "column";
-    controlList.style.gap = "10px";
-    controlList.style.overflowY = "auto";
-    controlList.style.flex = "1";
-    controlList.style.minHeight = "0";
-    container.appendChild(controlList);
-
-    const sectionTitle = (text) => {
-      const el = document.createElement("div");
-      el.textContent = text;
-      el.style.fontSize = "10px";
-      el.style.letterSpacing = "0.12em";
-      el.style.textTransform = "uppercase";
-      el.style.opacity = "0.72";
-      el.style.marginTop = "4px";
-      return el;
-    };
-
-    const createInputShell = () => {
-      const shell = document.createElement("div");
-      shell.style.display = "inline-flex";
-      shell.style.alignItems = "center";
-      shell.style.gap = "6px";
-      shell.style.flexShrink = "0";
-      return shell;
-    };
-
-    const settingRow = (titleText, descriptionText, control) => {
-      const row = document.createElement("div");
-      row.style.display = "flex";
-      row.style.alignItems = "center";
-      row.style.justifyContent = "space-between";
-      row.style.gap = "10px";
-      row.style.padding = "8px 0";
-      row.style.borderBottom = `1px solid ${theme.panelBorder}`;
-
-      const textWrap = document.createElement("div");
-      textWrap.style.display = "flex";
-      textWrap.style.flexDirection = "column";
-      textWrap.style.gap = "2px";
-      textWrap.style.minWidth = "0";
-
-      const title = document.createElement("div");
-      title.textContent = titleText;
-      title.style.fontSize = "12px";
-      title.style.fontWeight = "600";
-      title.style.color = theme.text;
-
-      const desc = document.createElement("div");
-      desc.textContent = descriptionText;
-      desc.style.fontSize = "10px";
-      desc.style.color = theme.mutedText;
-      desc.style.lineHeight = "1.3";
-
-      textWrap.appendChild(title);
-      textWrap.appendChild(desc);
-      row.appendChild(textWrap);
-      row.appendChild(control);
-      return row;
-    };
-
-    const persist = (patch) => {
-      if (storage) storage.set(patch);
-    };
-
-    const createCheckbox = (checked, onChange) => {
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = !!checked;
-      input.addEventListener("change", () => onChange(input.checked));
-      return input;
-    };
-
-    const createNumberInput = (value, min, max, onChange) => {
-      const input = document.createElement("input");
-      input.type = "number";
-      input.value = String(value);
-      input.min = String(min);
-      input.max = String(max);
-      input.style.width = "96px";
-      input.style.height = "30px";
-      input.style.borderRadius = "8px";
-      input.style.border = `1px solid ${theme.inputBorder}`;
-      input.style.padding = "0 8px";
-      input.style.fontSize = "12px";
-      input.style.fontFamily = "inherit";
-      input.style.background = theme.inputBg;
-      input.style.color = theme.text;
-      input.addEventListener("change", () => onChange(input));
-      return input;
-    };
-
-    const createColorInput = (value, onChange) => {
-      const input = document.createElement("input");
-      input.type = "color";
-      input.value = value;
-      input.style.width = "44px";
-      input.style.height = "30px";
-      input.style.border = "none";
-      input.style.background = "transparent";
-      input.style.padding = "0";
-      input.style.cursor = "pointer";
-      input.addEventListener("input", () => onChange(input.value));
-      input.addEventListener("change", () => onChange(input.value));
-      return input;
-    };
-
-    const enabledInput = document.createElement("input");
-    enabledInput.type = "checkbox";
-    enabledInput.checked = !!state.enabled;
-    enabledInput.addEventListener("change", () => {
-      state.enabled = enabledInput.checked;
-      persist({ enabled: state.enabled });
-      applyUiSettings({});
-      scheduleVirtualization();
-      updateSearchVisibility(state.stats.totalMessages);
-      updateSidebarVisibility(state.stats.totalMessages);
-    });
-
-    const debugInput = document.createElement("input");
-    debugInput.type = "checkbox";
-    debugInput.checked = !!state.debug;
-    debugInput.addEventListener("change", () => {
-      state.debug = debugInput.checked;
-      persist({ debug: state.debug });
-    });
-
-    const marginInput = createNumberInput(config.MARGIN_PX, config.MIN_MARGIN_PX, config.MAX_MARGIN_PX, (input) => {
-      const next = normalizeMargin(input.value);
-      input.value = String(next);
-      config.MARGIN_PX = next;
-      persist({ marginPx: next });
-      scheduleVirtualization();
-    });
-
-    const sidebarWidthInput = createNumberInput(
-      uiSettings.sidebarWidthPx,
-      SIDEBAR_WIDTH_MIN_PX,
-      SIDEBAR_WIDTH_MAX_PX,
-      (input) => {
-        const next = normalizeSidebarWidthPx(input.value, SIDEBAR_PANEL_WIDTH_PX);
-        input.value = String(next);
-        applyUiSettings({ sidebarWidthPx: next });
-        persist({ sidebarWidthPx: next });
+    renderSidebarSettingsTab({
+      container,
+      storage: getSettingsStorageArea(),
+      theme: getThemeTokens(),
+      state,
+      config,
+      uiSettings,
+      defaults: {
+        sidebarHotkey: DEFAULT_SIDEBAR_HOTKEY,
+        conversationPaddingPx: DEFAULT_CONVERSATION_PADDING_PX,
+        composerWidthPx: DEFAULT_COMPOSER_WIDTH_PX,
+        sidebarPanelWidthPx: SIDEBAR_PANEL_WIDTH_PX,
+        roleColors: DEFAULT_ROLE_COLORS
+      },
+      constants: {
+        sidebarWidthMinPx: SIDEBAR_WIDTH_MIN_PX,
+        sidebarWidthMaxPx: SIDEBAR_WIDTH_MAX_PX,
+        conversationPaddingMinPx: CONVERSATION_PADDING_MIN_PX,
+        conversationPaddingMaxPx: CONVERSATION_PADDING_MAX_PX,
+        composerWidthMinPx: COMPOSER_WIDTH_MIN_PX,
+        composerWidthMaxPx: COMPOSER_WIDTH_MAX_PX,
+        scrollThrottleMinMs: SCROLL_THROTTLE_MIN_MS,
+        scrollThrottleMaxMs: SCROLL_THROTTLE_MAX_MS,
+        mutationDebounceMinMs: MUTATION_DEBOUNCE_MIN_MS,
+        mutationDebounceMaxMs: MUTATION_DEBOUNCE_MAX_MS
+      },
+      helpers: {
+        normalizeMargin,
+        normalizeSidebarWidthPx,
+        normalizeConversationPaddingPx,
+        normalizeComposerWidthPx,
+        normalizeScrollThrottleMs,
+        normalizeMutationDebounceMs,
+        normalizeSidebarHotkey,
+        normalizeColorHex
+      },
+      callbacks: {
+        applyUiSettings,
+        scheduleVirtualization,
+        updateSearchVisibility,
+        updateSidebarVisibility,
+        getStatsSnapshot,
+        loadFlagsStore,
+        loadKnownConversationsStore,
+        summarizeConversationCaches,
+        currentConversationKey,
+        rerenderSettings: () => renderSidebarTab("settings")
       }
-    );
-
-    const minimapVisibleInput = createCheckbox(uiSettings.minimapVisible, (checked) => {
-      applyUiSettings({ minimapVisible: checked });
-      persist({ minimapVisible: checked });
-    });
-
-    const hotkeyInput = document.createElement("input");
-    hotkeyInput.type = "text";
-    hotkeyInput.value = uiSettings.sidebarHotkey;
-    hotkeyInput.placeholder = "Alt+Shift+B";
-    hotkeyInput.style.width = "120px";
-    hotkeyInput.style.height = "30px";
-    hotkeyInput.style.borderRadius = "8px";
-    hotkeyInput.style.border = `1px solid ${theme.inputBorder}`;
-    hotkeyInput.style.padding = "0 8px";
-    hotkeyInput.style.fontSize = "12px";
-    hotkeyInput.style.fontFamily = "inherit";
-    hotkeyInput.style.background = theme.inputBg;
-    hotkeyInput.style.color = theme.text;
-    hotkeyInput.addEventListener("change", () => {
-      const next = normalizeSidebarHotkey(hotkeyInput.value, DEFAULT_SIDEBAR_HOTKEY);
-      hotkeyInput.value = next;
-      applyUiSettings({ sidebarHotkey: next });
-      persist({ sidebarHotkey: next });
-    });
-
-    const conversationPaddingInput = createNumberInput(
-      uiSettings.conversationPaddingPx,
-      CONVERSATION_PADDING_MIN_PX,
-      CONVERSATION_PADDING_MAX_PX,
-      (input) => {
-        const next = normalizeConversationPaddingPx(input.value, DEFAULT_CONVERSATION_PADDING_PX);
-        input.value = String(next);
-        applyUiSettings({ conversationPaddingPx: next });
-        persist({ conversationPaddingPx: next });
-      }
-    );
-
-    const composerWidthInput = createNumberInput(
-      uiSettings.composerWidthPx,
-      COMPOSER_WIDTH_MIN_PX,
-      COMPOSER_WIDTH_MAX_PX,
-      (input) => {
-        const next = normalizeComposerWidthPx(input.value, DEFAULT_COMPOSER_WIDTH_PX);
-        input.value = String(next);
-        applyUiSettings({ composerWidthPx: next });
-        persist({ composerWidthPx: next });
-      }
-    );
-
-    const scrollThrottleInput = createNumberInput(
-      config.SCROLL_THROTTLE_MS,
-      SCROLL_THROTTLE_MIN_MS,
-      SCROLL_THROTTLE_MAX_MS,
-      (input) => {
-        const next = normalizeScrollThrottleMs(input.value, config.SCROLL_THROTTLE_MS);
-        input.value = String(next);
-        config.SCROLL_THROTTLE_MS = next;
-        persist({ scrollThrottleMs: next });
-      }
-    );
-
-    const mutationDebounceInput = createNumberInput(
-      config.MUTATION_DEBOUNCE_MS,
-      MUTATION_DEBOUNCE_MIN_MS,
-      MUTATION_DEBOUNCE_MAX_MS,
-      (input) => {
-        const next = normalizeMutationDebounceMs(input.value, config.MUTATION_DEBOUNCE_MS);
-        input.value = String(next);
-        config.MUTATION_DEBOUNCE_MS = next;
-        persist({ mutationDebounceMs: next });
-      }
-    );
-
-    const colorUserDark = createColorInput(uiSettings.userColorDark, (value) => {
-      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.userDark);
-      applyUiSettings({ userColorDark: next });
-      persist({ userColorDark: next });
-    });
-    const colorAssistantDark = createColorInput(uiSettings.assistantColorDark, (value) => {
-      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.assistantDark);
-      applyUiSettings({ assistantColorDark: next });
-      persist({ assistantColorDark: next });
-    });
-    const colorUserLight = createColorInput(uiSettings.userColorLight, (value) => {
-      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.userLight);
-      applyUiSettings({ userColorLight: next });
-      persist({ userColorLight: next });
-    });
-    const colorAssistantLight = createColorInput(uiSettings.assistantColorLight, (value) => {
-      const next = normalizeColorHex(value, DEFAULT_ROLE_COLORS.assistantLight);
-      applyUiSettings({ assistantColorLight: next });
-      persist({ assistantColorLight: next });
-    });
-
-    const resetColorsButton = document.createElement("button");
-    resetColorsButton.type = "button";
-    resetColorsButton.textContent = "Reset Colors";
-    resetColorsButton.style.height = "30px";
-    resetColorsButton.style.padding = "0 10px";
-    resetColorsButton.style.borderRadius = "8px";
-    resetColorsButton.style.border = `1px solid ${theme.panelBorder}`;
-    resetColorsButton.style.background = theme.buttonMutedBg;
-    resetColorsButton.style.color = theme.text;
-    resetColorsButton.style.cursor = "pointer";
-    resetColorsButton.style.fontSize = "11px";
-    resetColorsButton.style.fontFamily = "inherit";
-    resetColorsButton.addEventListener("click", () => {
-      const colorPatch = {
-        userColorDark: DEFAULT_ROLE_COLORS.userDark,
-        assistantColorDark: DEFAULT_ROLE_COLORS.assistantDark,
-        userColorLight: DEFAULT_ROLE_COLORS.userLight,
-        assistantColorLight: DEFAULT_ROLE_COLORS.assistantLight
-      };
-      applyUiSettings(colorPatch);
-      persist(colorPatch);
-      renderSidebarTab("settings");
-    });
-
-    settingsEnabledInput = enabledInput;
-    settingsDebugInput = debugInput;
-    settingsMarginInput = marginInput;
-    settingsConversationPaddingInput = conversationPaddingInput;
-    settingsComposerWidthInput = composerWidthInput;
-
-    controlList.appendChild(sectionTitle("Behavior"));
-    controlList.appendChild(settingRow("Enable Virtual Scrolling", "Toggle virtualization and GPT Boost UI.", enabledInput));
-    controlList.appendChild(settingRow("Debug Mode", "Show GPT Boost debug logs in DevTools.", debugInput));
-
-    controlList.appendChild(sectionTitle("Virtualization"));
-    controlList.appendChild(settingRow("Virtualization Margin", "Buffer around viewport (px).", marginInput));
-    controlList.appendChild(settingRow("Scroll Throttle", "Scroll update throttle in ms.", scrollThrottleInput));
-    controlList.appendChild(settingRow("Mutation Debounce", "DOM observer debounce in ms.", mutationDebounceInput));
-
-    controlList.appendChild(sectionTitle("Layout"));
-    controlList.appendChild(settingRow("Sidebar Width", "Default sidebar width (px).", sidebarWidthInput));
-    controlList.appendChild(settingRow("Show Minimap", "Toggle minimap visibility.", minimapVisibleInput));
-    controlList.appendChild(settingRow("Sidebar Hotkey", "Toggle tools sidebar from keyboard.", hotkeyInput));
-    controlList.appendChild(
-      settingRow(
-        "Conversation Padding",
-        "Controls page-side padding for thread content (px).",
-        conversationPaddingInput
-      )
-    );
-    controlList.appendChild(
-      settingRow(
-        "Composer Width",
-        "Controls the ChatGPT composer/content width (px).",
-        composerWidthInput
-      )
-    );
-
-    controlList.appendChild(sectionTitle("Colors"));
-    const userDarkShell = createInputShell();
-    userDarkShell.appendChild(colorUserDark);
-    controlList.appendChild(settingRow("User (Dark)", "User bubble color in dark mode.", userDarkShell));
-    const agentDarkShell = createInputShell();
-    agentDarkShell.appendChild(colorAssistantDark);
-    controlList.appendChild(settingRow("Agent (Dark)", "Agent bubble color in dark mode.", agentDarkShell));
-    const userLightShell = createInputShell();
-    userLightShell.appendChild(colorUserLight);
-    controlList.appendChild(settingRow("User (Light)", "User bubble color in light mode.", userLightShell));
-    const agentLightShell = createInputShell();
-    agentLightShell.appendChild(colorAssistantLight);
-    controlList.appendChild(settingRow("Agent (Light)", "Agent bubble color in light mode.", agentLightShell));
-    const resetShell = createInputShell();
-    resetShell.appendChild(resetColorsButton);
-    controlList.appendChild(settingRow("Defaults", "Reset all role colors to extension defaults.", resetShell));
-
-    controlList.appendChild(sectionTitle("Status"));
-    const statsSnapshot = getStatsSnapshot();
-    const statsGrid = document.createElement("div");
-    statsGrid.style.display = "grid";
-    statsGrid.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
-    statsGrid.style.gap = "8px";
-    statsGrid.style.marginBottom = "6px";
-
-    const mkStat = (label, value) => {
-      const card = document.createElement("div");
-      card.style.border = `1px solid ${theme.panelBorder}`;
-      card.style.borderRadius = "8px";
-      card.style.padding = "8px";
-      card.style.background = theme.inputBg;
-      const l = document.createElement("div");
-      l.textContent = label;
-      l.style.fontSize = "10px";
-      l.style.letterSpacing = "0.08em";
-      l.style.textTransform = "uppercase";
-      l.style.color = theme.mutedText;
-      const v = document.createElement("div");
-      v.textContent = value;
-      v.style.marginTop = "4px";
-      v.style.fontSize = "14px";
-      v.style.fontWeight = "600";
-      v.style.color = theme.text;
-      card.appendChild(l);
-      card.appendChild(v);
-      return card;
-    };
-
-    statsGrid.appendChild(mkStat("Total Messages", String(statsSnapshot.totalMessages)));
-    statsGrid.appendChild(mkStat("Rendered", String(statsSnapshot.renderedMessages)));
-    statsGrid.appendChild(mkStat("Memory Saved", `${statsSnapshot.memorySavedPercent}%`));
-    statsGrid.appendChild(mkStat("Status", state.enabled ? "Active" : "Disabled"));
-    controlList.appendChild(statsGrid);
-
-    controlList.appendChild(sectionTitle("Cached Conversations"));
-    const cacheDetails = document.createElement("pre");
-    cacheDetails.style.margin = "0";
-    cacheDetails.style.padding = "8px";
-    cacheDetails.style.fontSize = "10px";
-    cacheDetails.style.lineHeight = "1.35";
-    cacheDetails.style.whiteSpace = "pre-wrap";
-    cacheDetails.style.wordBreak = "break-word";
-    cacheDetails.style.maxHeight = "180px";
-    cacheDetails.style.overflow = "auto";
-    cacheDetails.style.borderRadius = "8px";
-    cacheDetails.style.border = `1px solid ${theme.panelBorder}`;
-    cacheDetails.style.background = theme.inputBg;
-    cacheDetails.style.color = theme.text;
-    cacheDetails.textContent = "Loading cached conversation data...";
-    controlList.appendChild(cacheDetails);
-
-    Promise.all([loadFlagsStore(), loadKnownConversationsStore()]).then(([flagsStore, knownStore]) => {
-      const summary = summarizeConversationCaches(flagsStore, knownStore);
-      const flagKeys = Object.keys(flagsStore || {});
-      const knownKeys = Object.keys(knownStore || {});
-      const payload = {
-        totalCachedConversations: summary.totalKnownConversations,
-        totalFlaggedConversations: summary.totalFlaggedConversations,
-        currentConversationKey: currentConversationKey || "(none)",
-        cachedPinnedMessages: summary.cachedPinnedMessages,
-        cachedBookmarkedMessages: summary.cachedBookmarkedMessages,
-        approxFlagsBytes: summary.approxFlagsBytes,
-        approxKnownBytes: summary.approxKnownBytes,
-        flaggedConversations: flagKeys.slice(0, 10).map((key) => ({
-          key,
-          pinned: Array.isArray(flagsStore[key]?.pinned) ? flagsStore[key].pinned.length : 0,
-          bookmarked: Array.isArray(flagsStore[key]?.bookmarked) ? flagsStore[key].bookmarked.length : 0
-        })),
-        knownConversations: knownKeys.slice(0, 10).map((key) => ({
-          key,
-          visits: Number(knownStore[key]?.visits || 0),
-          lastSeenAt: knownStore[key]?.lastSeenAt || ""
-        }))
-      };
-      cacheDetails.textContent = JSON.stringify(payload, null, 2);
-    }).catch(() => {
-      cacheDetails.textContent = "Cached conversation stats unavailable.";
     });
   }
 
@@ -2545,214 +1611,15 @@ import {
   }
 
   function ensureSearchButton() {
-    if (searchButton && searchButton.isConnected) {
-      return searchButton;
-    }
-
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("data-chatgpt-virtual-search", "toggle");
-    button.style.position = "fixed";
-    button.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${SEARCH_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "10002";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.setAttribute("aria-hidden", "true");
-    icon.style.width = "14px";
-    icon.style.height = "14px";
-    icon.style.fill = "currentColor";
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute(
-      "d",
-      "M15.5 14h-.79l-.28-.27a6 6 0 1 0-.71.71l.27.28v.79l4.25 4.25 1.5-1.5L15.5 14Zm-5.5 0a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z"
-    );
-    icon.appendChild(path);
-    button.appendChild(icon);
-    button.setAttribute("aria-label", "Search chat messages");
-    styleSearchButton(button, SEARCH_BUTTON_SIZE_PX);
-    button.style.display = "none";
-    button.addEventListener("click", toggleSearchPanel);
-
-    document.body.appendChild(button);
-    searchButton = button;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return button;
+    return searchFeature.ensureSearchButton();
   }
 
   function ensureSearchPanel() {
-    if (searchPanel && searchPanel.isConnected) {
-      return searchPanel;
-    }
-
-    if (!document.body) return null;
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-chatgpt-virtual-search", "panel");
-    panel.style.position = "fixed";
-    panel.style.top = `${SEARCH_PANEL_TOP_OFFSET_PX}px`;
-    panel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "10001";
-    panel.style.width = `${SEARCH_PANEL_WIDTH_PX}px`;
-    panel.style.display = "none";
-    panel.style.flexDirection = "column";
-    panel.style.alignItems = "stretch";
-    panel.style.gap = "8px";
-    panel.style.padding = "10px";
-    panel.style.borderRadius = "14px";
-    panel.style.background = "rgba(15, 23, 42, 0.92)";
-    panel.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.28)";
-    panel.style.color = "#f9fafb";
-    panel.style.backdropFilter = "blur(6px)";
-
-    const inputRow = document.createElement("div");
-    inputRow.style.display = "flex";
-    inputRow.style.alignItems = "center";
-    inputRow.style.gap = "6px";
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Search chat...";
-    input.setAttribute("aria-label", "Search chat");
-    input.style.flex = "1";
-    input.style.minWidth = "0";
-    input.style.height = "28px";
-    input.style.border = "1px solid rgba(148, 163, 184, 0.35)";
-    input.style.outline = "none";
-    input.style.background = "rgba(15, 23, 42, 0.6)";
-    input.style.color = "#f9fafb";
-    input.style.fontSize = "12px";
-    input.style.fontFamily = "inherit";
-    input.style.borderRadius = "8px";
-    input.style.padding = "0 8px";
-    input.style.boxSizing = "border-box";
-    input.addEventListener("input", (event) => {
-      scheduleSearch(event.target.value);
-    });
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        navigateSearch(event.shiftKey ? -1 : 1);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        hideSearchPanel();
-      }
-    });
-
-    const count = document.createElement("div");
-    count.style.display = "flex";
-    count.style.flexDirection = "column";
-    count.style.alignItems = "flex-start";
-    count.style.justifyContent = "center";
-    count.style.gap = "2px";
-    count.style.opacity = "0.85";
-    count.style.minWidth = "80px";
-    count.style.textAlign = "left";
-
-    const countPrimary = document.createElement("span");
-    countPrimary.textContent = "0/0";
-    countPrimary.style.fontSize = "11px";
-    countPrimary.style.fontWeight = "600";
-    countPrimary.style.lineHeight = "1.1";
-    countPrimary.style.display = "block";
-
-    const countSecondary = document.createElement("span");
-    countSecondary.textContent = "0 matches";
-    countSecondary.style.fontSize = "10px";
-    countSecondary.style.lineHeight = "1.1";
-    countSecondary.style.display = "block";
-    countSecondary.style.opacity = "0.9";
-
-    count.appendChild(countPrimary);
-    count.appendChild(countSecondary);
-
-    const prevButton = document.createElement("button");
-    prevButton.type = "button";
-    prevButton.textContent = "↑";
-    prevButton.setAttribute("aria-label", "Previous match");
-    styleSearchButton(prevButton, 22);
-    prevButton.style.display = "flex";
-    prevButton.style.background = "rgba(148, 163, 184, 0.2)";
-    prevButton.addEventListener("click", () => navigateSearch(-1));
-
-    const nextButton = document.createElement("button");
-    nextButton.type = "button";
-    nextButton.textContent = "↓";
-    nextButton.setAttribute("aria-label", "Next match");
-    styleSearchButton(nextButton, 22);
-    nextButton.style.display = "flex";
-    nextButton.style.background = "rgba(148, 163, 184, 0.2)";
-    nextButton.addEventListener("click", () => navigateSearch(1));
-
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.textContent = "×";
-    closeButton.setAttribute("aria-label", "Close search");
-    styleSearchButton(closeButton, 22);
-    closeButton.style.display = "flex";
-    closeButton.style.background = "rgba(148, 163, 184, 0.2)";
-    closeButton.addEventListener("click", hideSearchPanel);
-
-    const sidebarButton = document.createElement("button");
-    sidebarButton.type = "button";
-    sidebarButton.textContent = "⇱";
-    sidebarButton.setAttribute("aria-label", "Open search in sidebar");
-    styleSearchButton(sidebarButton, 22);
-    sidebarButton.style.display = "flex";
-    sidebarButton.style.background = "rgba(148, 163, 184, 0.2)";
-    sidebarButton.addEventListener("click", () => {
-      hideSearchPanel();
-      openSidebar("search");
-    });
-
-    const controlsRow = document.createElement("div");
-    controlsRow.style.display = "flex";
-    controlsRow.style.alignItems = "center";
-    controlsRow.style.justifyContent = "space-between";
-    controlsRow.style.gap = "8px";
-
-    const navGroup = document.createElement("div");
-    navGroup.style.display = "flex";
-    navGroup.style.alignItems = "center";
-    navGroup.style.gap = "6px";
-    navGroup.appendChild(prevButton);
-    navGroup.appendChild(nextButton);
-
-    inputRow.appendChild(input);
-    inputRow.appendChild(sidebarButton);
-    inputRow.appendChild(closeButton);
-
-    controlsRow.appendChild(count);
-    controlsRow.appendChild(navGroup);
-
-    panel.appendChild(inputRow);
-    panel.appendChild(controlsRow);
-
-    document.body.appendChild(panel);
-
-    searchPanel = panel;
-    searchInput = input;
-    searchPrevButton = prevButton;
-    searchNextButton = nextButton;
-    searchCountLabel = count;
-    searchCountPrimaryLabel = countPrimary;
-    searchCountSecondaryLabel = countSecondary;
-    searchCloseButton = closeButton;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return panel;
+    return searchFeature.ensureSearchPanel();
   }
 
   function updateSearchVisibility(totalMessages) {
-    const shouldShow = state.enabled;
-    const button = ensureSearchButton();
-    if (button) button.style.display = shouldShow ? "flex" : "none";
-    if (!shouldShow) hideSearchPanel();
-    updateSidebarVisibility(totalMessages);
+    searchFeature.updateSearchVisibility(totalMessages);
   }
 
   // ---------------------------------------------------------------------------
@@ -2760,405 +1627,63 @@ import {
   // ---------------------------------------------------------------------------
 
   function hideMinimapPanel() {
-    if (minimapPanel) minimapPanel.style.display = "none";
-    activeStandaloneMinimapVirtualId = null;
+    minimapFeature.hideMinimapPanel();
   }
 
   function hideMinimapUi() {
-    if (minimapButton) minimapButton.style.display = "none";
-    hideMinimapPanel();
+    minimapFeature.hideMinimapUi();
   }
 
   function buildMinimapItems() {
-    ensureVirtualIds();
-    const sortedEntries = Array.from(state.articleMap.entries())
-      .sort((a, b) => Number(a[0]) - Number(b[0]));
-    const total = sortedEntries.length;
-    if (!total) return [];
-
-    const metrics = [];
-    let totalHeightPx = 0;
-
-    sortedEntries.forEach(([id, node], index) => {
-      const selectorId = escapeSelectorValue(id);
-      const liveNode = document.querySelector(`[data-virtual-id="${selectorId}"]`);
-
-      let heightPx = 24;
-      if (liveNode instanceof HTMLElement) {
-        const rectHeight = liveNode.getBoundingClientRect().height;
-        if (rectHeight > 0) {
-          heightPx = rectHeight;
-        } else if (liveNode.dataset.chatgptVirtualSpacer === "1") {
-          const parsed = Number.parseFloat(liveNode.style.height || "0");
-          if (Number.isFinite(parsed) && parsed > 0) heightPx = parsed;
-        }
-      } else if (node instanceof HTMLElement) {
-        const rectHeight = node.getBoundingClientRect().height;
-        if (rectHeight > 0) heightPx = rectHeight;
-      }
-
-      const clampedHeightPx = Math.min(640, Math.max(12, heightPx));
-      metrics.push({
-        id,
-        role: node instanceof HTMLElement ? getMessageRole(node) : "unknown",
-        position: index + 1,
-        total,
-        heightPx: clampedHeightPx
-      });
-      totalHeightPx += clampedHeightPx;
-    });
-
-    let runningTopPx = 0;
-    return metrics.map((item) => {
-      const topRatio = totalHeightPx > 0 ? runningTopPx / totalHeightPx : 0;
-      const heightRatio = totalHeightPx > 0 ? item.heightPx / totalHeightPx : 0;
-      runningTopPx += item.heightPx;
-      return {
-        ...item,
-        topRatio,
-        heightRatio
-      };
-    });
+    return minimapFeature.buildMinimapItems();
   }
 
   function scrollToMinimapItem(virtualId) {
-    scrollToVirtualId(virtualId);
+    minimapFeature.scrollToMinimapItem(virtualId);
   }
 
   function scrollToMinimapRatio(ratio, behavior = "auto") {
-    const scrollTarget = getScrollTarget();
-    if (!scrollTarget) return;
-    const maxScrollTop = getMaxScrollTop(scrollTarget);
-    const clamped = Math.min(1, Math.max(0, ratio));
-    scrollTarget.scrollTo({ top: maxScrollTop * clamped, behavior });
-    scheduleVirtualization();
+    minimapFeature.scrollToMinimapRatio(ratio, behavior);
   }
 
   function applyStandaloneMinimapMarkerStyle(marker, isActive) {
-    if (!(marker instanceof HTMLElement)) return;
-    const role = marker.dataset.role || "unknown";
-    const isHovered = marker.dataset.gptBoostHovered === "1";
-    const isDarkMode = getThemeMode() === "dark";
-    const roleStyle = getRoleSurfaceStyle(role, getThemeTokens());
-    const baseHeight = Number.parseFloat(marker.dataset.baseHeightPx || "2");
-    const normalizedBase = Number.isFinite(baseHeight) ? Math.max(1, baseHeight) : 2;
-    marker.style.height = `${isActive ? Math.min(12, normalizedBase + 1) : normalizedBase}px`;
-
-    if (isDarkMode) {
-      marker.style.background = roleStyle.accentColor;
-      marker.style.opacity = isActive ? "1" : (isHovered ? "0.8" : "0.5");
-      marker.style.boxShadow = isActive ? `0 0 0 1px ${roleStyle.borderColor}` : "none";
-      return;
-    }
-
-    marker.style.background = isActive || isHovered
-      ? "rgba(32, 33, 35, 0.86)"
-      : "rgba(32, 33, 35, 0.56)";
-    marker.style.opacity = isActive ? "1" : (isHovered ? "0.9" : "0.62");
-    marker.style.boxShadow = isActive || isHovered
-      ? "0 0 0 1px rgba(32, 33, 35, 0.9)"
-      : "none";
+    minimapFeature.applyStandaloneMinimapMarkerStyle(marker, isActive);
   }
 
   function applyStandaloneMinimapViewportThumbTheme(viewportThumb) {
-    if (!(viewportThumb instanceof HTMLElement)) return;
-    if (getThemeMode() === "dark") {
-      viewportThumb.style.background = "rgba(2,6,23,0.72)";
-      viewportThumb.style.border = "1px solid rgba(2,6,23,0.92)";
-      viewportThumb.style.boxShadow = "0 1px 3px rgba(0,0,0,0.38)";
-      return;
-    }
-    viewportThumb.style.background = "rgba(32,33,35,0.36)";
-    viewportThumb.style.border = "1px solid rgba(32,33,35,0.7)";
-    viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.16)";
+    minimapFeature.applyStandaloneMinimapViewportThumbTheme(viewportThumb);
   }
 
   function updateStandaloneMinimapViewportRect(track) {
-    if (!(track instanceof HTMLElement)) return;
-    const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
-    if (!(viewportThumb instanceof HTMLElement)) return;
-
-    const scrollTarget = getScrollTarget();
-    if (!scrollTarget) return;
-
-    const trackHeight = track.clientHeight;
-    if (trackHeight <= 0) return;
-
-    const maxScrollTop = getMaxScrollTop(scrollTarget);
-    const visibleHeight = Math.max(1, scrollTarget.clientHeight || 1);
-    const contentHeight = Math.max(visibleHeight, scrollTarget.scrollHeight || visibleHeight);
-
-    const minViewportHeight = 24;
-    const viewportRatio = Math.min(1, visibleHeight / contentHeight);
-    const viewportHeight = Math.max(minViewportHeight, Math.round(trackHeight * viewportRatio));
-    const maxViewportTop = Math.max(0, trackHeight - viewportHeight);
-    const scrollRatio = maxScrollTop > 0 ? scrollTarget.scrollTop / maxScrollTop : 0;
-    const viewportTop = Math.round(maxViewportTop * scrollRatio);
-
-    viewportThumb.style.height = `${viewportHeight}px`;
-    viewportThumb.style.top = `${viewportTop}px`;
+    minimapFeature.updateStandaloneMinimapViewportRect(track);
   }
 
   function updateStandaloneMinimapViewportState(force = false) {
-    if (!minimapPanel || minimapPanel.style.display === "none") return;
-
-    const track = minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
-    if (!(track instanceof HTMLElement)) return;
-    updateStandaloneMinimapViewportRect(track);
-
-    const nextId = getViewportAnchorVirtualId();
-    if (!nextId) return;
-    if (!force && nextId === activeStandaloneMinimapVirtualId) return;
-
-    const prevId = activeStandaloneMinimapVirtualId;
-    activeStandaloneMinimapVirtualId = nextId;
-
-    const prevMarker = prevId
-      ? track.querySelector(`[data-gpt-boost-minimap-marker][data-virtual-id="${escapeSelectorValue(prevId)}"]`)
-      : null;
-    if (prevMarker instanceof HTMLElement) {
-      applyStandaloneMinimapMarkerStyle(prevMarker, false);
-    }
-
-    const nextMarker = track.querySelector(
-      `[data-gpt-boost-minimap-marker][data-virtual-id="${escapeSelectorValue(nextId)}"]`
-    );
-    if (!(nextMarker instanceof HTMLElement)) return;
-    applyStandaloneMinimapMarkerStyle(nextMarker, true);
+    minimapFeature.updateStandaloneMinimapViewportState(force);
   }
 
   function populateMinimapPanel(panel) {
-    const track = panel.querySelector('[data-chatgpt-minimap="track"]');
-    if (!(track instanceof HTMLElement)) return;
-
-    track.querySelectorAll('[data-gpt-boost-minimap-marker="1"]').forEach((marker) => marker.remove());
-    const items = buildMinimapItems();
-
-    if (!items.length) {
-      activeStandaloneMinimapVirtualId = null;
-      return;
-    }
-
-    const trackHeight = Math.max(1, track.clientHeight);
-
-    items.forEach(({ id, role, position, total, topRatio, heightRatio }) => {
-      const marker = document.createElement("button");
-      marker.type = "button";
-      marker.setAttribute("data-gpt-boost-minimap-marker", "1");
-      marker.dataset.virtualId = id;
-      marker.dataset.role = role;
-      marker.dataset.position = String(position);
-      marker.dataset.total = String(total);
-      const baseHeightPx = Math.max(1, Math.min(12, Math.round(trackHeight * heightRatio)));
-      marker.dataset.baseHeightPx = String(baseHeightPx);
-      marker.style.position = "absolute";
-      const isUser = role === "user";
-      marker.style.left = isUser ? "26%" : "6%";
-      marker.style.right = isUser ? "6%" : "6%";
-      marker.style.top = `${Math.round(Math.max(0, Math.min(trackHeight - 1, topRatio * trackHeight)))}px`;
-      marker.style.transform = "none";
-      marker.style.border = "none";
-      marker.style.borderRadius = "1px";
-      marker.style.padding = "0";
-      marker.style.cursor = "pointer";
-      marker.style.zIndex = "2";
-      marker.style.transition = "height 120ms ease, opacity 120ms ease, box-shadow 120ms ease";
-      applyStandaloneMinimapMarkerStyle(marker, false);
-      marker.addEventListener("mouseenter", () => {
-        marker.dataset.gptBoostHovered = "1";
-        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === activeStandaloneMinimapVirtualId);
-      });
-      marker.addEventListener("mouseleave", () => {
-        delete marker.dataset.gptBoostHovered;
-        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === activeStandaloneMinimapVirtualId);
-      });
-      marker.addEventListener("click", () => scrollToMinimapItem(id));
-      track.appendChild(marker);
-    });
-
-    activeStandaloneMinimapVirtualId = null;
-    updateStandaloneMinimapViewportState(true);
+    minimapFeature.populateMinimapPanel(panel);
   }
 
   function showMinimapPanel() {
-    const panel = ensureMinimapPanel();
-    if (!panel) return;
-    panel.style.display = "block";
-    populateMinimapPanel(panel);
-    applyFloatingUiOffsets();
+    minimapFeature.showMinimapPanel();
   }
 
   function toggleMinimapPanel() {
-    const panel = ensureMinimapPanel();
-    if (!panel) return;
-    const isOpen = panel.style.display !== "none";
-    if (isOpen) {
-      hideMinimapPanel();
-      return;
-    }
-    showMinimapPanel();
+    minimapFeature.toggleMinimapPanel();
   }
 
   function ensureMinimapButton() {
-    if (minimapButton && minimapButton.isConnected) {
-      return minimapButton;
-    }
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("data-chatgpt-minimap", "toggle");
-    button.style.position = "fixed";
-    button.style.right = `${MINIMAP_BUTTON_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${MINIMAP_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "10002";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.setAttribute("aria-hidden", "true");
-    icon.style.width = "14px";
-    icon.style.height = "14px";
-    icon.style.fill = "currentColor";
-
-    const lines = [
-      "M3 6h18v2H3zm0 5h18v2H3zm0 5h12v2H3z"
-    ];
-    lines.forEach((d) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", d);
-      icon.appendChild(path);
-    });
-
-    button.appendChild(icon);
-    button.setAttribute("aria-label", "Toggle conversation map");
-    styleSearchButton(button, MINIMAP_BUTTON_SIZE_PX);
-    button.style.display = "none";
-    button.addEventListener("click", toggleMinimapPanel);
-
-    document.body.appendChild(button);
-    minimapButton = button;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return button;
+    return minimapFeature.ensureMinimapButton();
   }
 
   function ensureMinimapPanel() {
-    if (minimapPanel && minimapPanel.isConnected) {
-      return minimapPanel;
-    }
-    if (!document.body) return null;
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-chatgpt-minimap", "panel");
-    panel.style.position = "fixed";
-    panel.style.top = `${MINIMAP_PANEL_TOP_OFFSET_PX}px`;
-    panel.style.right = `${MINIMAP_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "10001";
-    panel.style.width = `${MINIMAP_PANEL_WIDTH_PX}px`;
-    panel.style.height = `${MINIMAP_TRACK_HEIGHT_PX}px`;
-    panel.style.display = "none";
-    panel.style.padding = "0";
-    panel.style.borderRadius = "4px";
-    panel.style.background = "rgba(15, 23, 42, 0.5)";
-    panel.style.backdropFilter = "blur(2px)";
-    panel.style.overflow = "hidden";
-    panel.style.boxSizing = "border-box";
-
-    const track = document.createElement("div");
-    track.setAttribute("data-chatgpt-minimap", "track");
-    track.style.position = "relative";
-    track.style.height = "100%";
-    track.style.width = "100%";
-    track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.2), rgba(148,163,184,0.08))";
-    track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)";
-    track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)";
-
-    const viewportThumb = document.createElement("div");
-    viewportThumb.setAttribute("data-chatgpt-minimap", "viewport");
-    viewportThumb.style.position = "absolute";
-    viewportThumb.style.left = "2px";
-    viewportThumb.style.right = "2px";
-    viewportThumb.style.top = "0";
-    viewportThumb.style.height = "24px";
-    viewportThumb.style.borderRadius = "2px";
-    viewportThumb.style.background = "rgba(255,255,255,0.5)";
-    viewportThumb.style.border = "1px solid rgba(255,255,255,0.35)";
-    viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.2)";
-    viewportThumb.style.cursor = "grab";
-    viewportThumb.style.pointerEvents = "auto";
-    viewportThumb.style.zIndex = "4";
-    applyStandaloneMinimapViewportThumbTheme(viewportThumb);
-
-    let isDraggingViewport = false;
-    let dragOffsetY = 0;
-
-    const pointerToRatio = (clientY, centerOnPointer = false) => {
-      const rect = track.getBoundingClientRect();
-      const thumbHeight = viewportThumb.getBoundingClientRect().height || 24;
-      const rawTop = centerOnPointer
-        ? (clientY - rect.top - thumbHeight / 2)
-        : (clientY - rect.top - dragOffsetY);
-      const maxTop = Math.max(1, rect.height - thumbHeight);
-      const clampedTop = Math.min(maxTop, Math.max(0, rawTop));
-      return maxTop > 0 ? clampedTop / maxTop : 0;
-    };
-
-    viewportThumb.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      isDraggingViewport = true;
-      dragOffsetY = event.clientY - viewportThumb.getBoundingClientRect().top;
-      viewportThumb.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-    });
-
-    track.addEventListener("mousedown", (event) => {
-      if (!(event.target instanceof HTMLElement)) return;
-      if (event.target.closest('[data-chatgpt-minimap="viewport"]')) return;
-      event.preventDefault();
-      const ratio = pointerToRatio(event.clientY, true);
-      scrollToMinimapRatio(ratio, "auto");
-    });
-
-    window.addEventListener("mousemove", (event) => {
-      if (!isDraggingViewport) return;
-      const ratio = pointerToRatio(event.clientY, false);
-      scrollToMinimapRatio(ratio, "auto");
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (!isDraggingViewport) return;
-      isDraggingViewport = false;
-      dragOffsetY = 0;
-      viewportThumb.style.cursor = "grab";
-      document.body.style.userSelect = "";
-    });
-
-    track.appendChild(viewportThumb);
-    panel.appendChild(track);
-
-    document.body.appendChild(panel);
-    minimapPanel = panel;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return panel;
+    return minimapFeature.ensureMinimapPanel();
   }
 
   function updateMinimapVisibility(totalMessages) {
-    const shouldShow = state.enabled && uiSettings.minimapVisible && totalMessages > 0;
-    if (minimapButton) minimapButton.style.display = "none";
-    const panel = ensureMinimapPanel();
-    if (!panel) return;
-    if (!shouldShow) {
-      hideMinimapPanel();
-      return;
-    }
-    panel.style.display = "block";
-    if (!panel.querySelector("[data-gpt-boost-minimap-marker]")) {
-      populateMinimapPanel(panel);
-    }
-    applyFloatingUiOffsets();
+    minimapFeature.updateMinimapVisibility(totalMessages);
   }
 
   // ---------------------------------------------------------------------------
@@ -3721,430 +2246,16 @@ import {
     refreshSidebarTab();
   }
 
-  function ensureHighlightJsStyles() {
-    if (document.getElementById("gpt-boost-hljs-style")) return;
-    const style = document.createElement("style");
-    style.id = "gpt-boost-hljs-style";
-    style.textContent = `
-      .hljs{color:#c9d1d9;background:transparent}
-      .hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}
-      .hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}
-      .hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-variable,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id{color:#79c0ff}
-      .hljs-regexp,.hljs-string,.hljs-meta .hljs-string{color:#a5d6ff}
-      .hljs-built_in,.hljs-symbol{color:#ffa657}
-      .hljs-comment,.hljs-code,.hljs-formula{color:#8b949e}
-      .hljs-name,.hljs-quote,.hljs-selector-tag,.hljs-selector-pseudo{color:#7ee787}
-      .hljs-subst{color:#c9d1d9}
-      .hljs-section{color:#1f6feb;font-weight:700}
-      .hljs-bullet{color:#f2cc60}
-      .hljs-emphasis{color:#c9d1d9;font-style:italic}
-      .hljs-strong{color:#c9d1d9;font-weight:700}
-      .hljs-addition{color:#aff5b4;background-color:#033a16}
-      .hljs-deletion{color:#ffd8d3;background-color:#67060c}
-    `;
-    document.head.appendChild(style);
-  }
-
-  function normalizeLanguageTag(value) {
-    const raw = String(value || "")
-      .toLowerCase()
-      .trim()
-      .replace(/^language[-:_\s]*/, "")
-      .replace(/[`"'()[\]{}:;,.]/g, "")
-      .replace(/\s+/g, "");
-
-    if (!raw) return "";
-
-    const aliasMap = {
-      js: "javascript",
-      jsx: "javascript",
-      ts: "typescript",
-      tsx: "typescript",
-      py: "python",
-      sh: "bash",
-      shell: "bash",
-      zsh: "bash",
-      csharp: "c#",
-      cs: "c#",
-      "c++": "cpp",
-      yml: "yaml",
-      md: "markdown",
-      txt: "text",
-      plaintext: "text",
-      plain: "text"
-    };
-
-    return aliasMap[raw] || raw;
-  }
-
-  function normalizeSnippetHeaderLine(value) {
-    return String(value || "")
-      .replace(/[\u200B-\u200D\uFEFF]/g, "")
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, " ");
-  }
-
-  function isKnownSnippetLanguageTag(value) {
-    const normalized = normalizeLanguageTag(value);
-    if (!normalized) return false;
-
-    const known = new Set([
-      "bash",
-      "shell",
-      "yaml",
-      "json",
-      "ini",
-      "toml",
-      "xml",
-      "html",
-      "css",
-      "javascript",
-      "typescript",
-      "python",
-      "java",
-      "c",
-      "cpp",
-      "c#",
-      "go",
-      "rust",
-      "php",
-      "ruby",
-      "sql",
-      "dockerfile",
-      "makefile",
-      "text",
-      "markdown",
-      "powershell"
-    ]);
-
-    if (known.has(normalized)) return true;
-    if (normalized === "c#" && hljs.getLanguage("csharp")) return true;
-    return !!hljs.getLanguage(normalized);
-  }
-
-  function stripSnippetLeadingHeaderLines(text, inferredLang) {
-    const lines = toUnixNewlines(text).split("\n");
-    let normalizedLang = normalizeLanguageTag(inferredLang);
-    let guard = 0;
-
-    while (lines.length > 0 && guard < 10) {
-      guard += 1;
-      const normalizedLine = normalizeSnippetHeaderLine(lines[0]);
-      const compactLine = normalizedLine.replace(/[\s`"'()[\]{}:;,.#+-]/g, "");
-
-      if (!normalizedLine) {
-        lines.shift();
-        continue;
-      }
-
-      if (compactLine === "copycode" || compactLine === "copy") {
-        lines.shift();
-        continue;
-      }
-
-      const candidateFromLine = normalizeLanguageTag(normalizedLine);
-      const candidateFromCompact = normalizeLanguageTag(compactLine);
-      const candidateLang = normalizedLang || candidateFromLine || candidateFromCompact;
-      const candidateCompact = candidateLang
-        ? candidateLang.replace(/[^a-z0-9#]/g, "")
-        : "";
-
-      if (candidateLang && isKnownSnippetLanguageTag(candidateLang) && candidateCompact) {
-        const isLanguageOnlyLine =
-          compactLine === candidateCompact ||
-          compactLine === `language${candidateCompact}` ||
-          compactLine === `${candidateCompact}copycode` ||
-          compactLine === `${candidateCompact}copy` ||
-          compactLine === `${candidateCompact}code` ||
-          compactLine === `copy${candidateCompact}`;
-
-        if (isLanguageOnlyLine) {
-          if (!normalizedLang) normalizedLang = candidateLang;
-          lines.shift();
-          continue;
-        }
-      }
-
-      break;
-    }
-
-    return {
-      text: lines.join("\n").trimEnd(),
-      normalizedLang
-    };
-  }
-
   function renderSnippetsTabContent(container) {
-    ensureHighlightJsStyles();
-
-    const theme = getThemeTokens();
-    const searchRow = document.createElement("div");
-    searchRow.style.display = "flex";
-    searchRow.style.marginBottom = "8px";
-
-    const snippetSearchInput = document.createElement("input");
-    snippetSearchInput.type = "text";
-    snippetSearchInput.placeholder = "Filter code snippets...";
-    snippetSearchInput.style.flex = "1";
-    snippetSearchInput.style.height = "28px";
-    snippetSearchInput.style.borderRadius = "6px";
-    snippetSearchInput.style.border = `1px solid ${theme.inputBorder}`;
-    snippetSearchInput.style.background = theme.inputBg;
-    snippetSearchInput.style.color = theme.text;
-    snippetSearchInput.style.padding = "0 8px";
-    snippetSearchInput.style.fontSize = "11px";
-    snippetSearchInput.style.fontFamily = "inherit";
-
-    searchRow.appendChild(snippetSearchInput);
-    container.appendChild(searchRow);
-
-    const listContainer = document.createElement("div");
-    listContainer.style.display = "flex";
-    listContainer.style.flexDirection = "column";
-    listContainer.style.gap = "12px";
-    listContainer.style.overflowY = "auto";
-    listContainer.style.flex = "1";
-    listContainer.style.minHeight = "0";
-    listContainer.style.paddingRight = "4px"; // Scrollbar space
-
-    const snippets = [];
-
-    // Collect snippets
-    const sortedEntries = Array.from(state.articleMap.entries())
-      .sort((a, b) => Number(a[0]) - Number(b[0]));
-
-    sortedEntries.forEach(([id, node]) => {
-      const pres = node.querySelectorAll("pre");
-      pres.forEach((pre, i) => {
-        const codeEl = pre.querySelector("code");
-        const source = codeEl || pre;
-        let text = extractCodeSnippetText(pre);
-        if (!text) return;
-
-        let lang = inferCodeLanguage(source, pre);
-        const cleaned = stripSnippetLeadingHeaderLines(text, lang);
-        text = cleaned.text;
-        if (!lang && cleaned.normalizedLang) {
-          lang = cleaned.normalizedLang;
-        }
-        if (!text) return;
-
-        const lines = text.split("\n");
-        let titleLine = lines.find(l => l.trim().length > 0) || "";
-        titleLine = titleLine.trim();
-        if (titleLine.length > 45) {
-          titleLine = titleLine.substring(0, 42) + "...";
-        }
-
-        let rawLang = lang;
-        // Format the language for display
-        lang = lang ? (lang.charAt(0).toUpperCase() + lang.slice(1)) : "Code";
-
-        snippets.push({ text, messageId: id, lang, rawLang, titleLine, index: i });
-      });
-    });
-
-    if (!snippets.length) {
-      const empty = document.createElement("div");
-      empty.style.fontSize = "13px";
-      empty.style.opacity = "0.6";
-      empty.style.textAlign = "center";
-      empty.style.padding = "20px";
-      empty.textContent = "No code snippets found.";
-      listContainer.appendChild(empty);
-      container.appendChild(listContainer);
-      return;
-    }
-
-    const snippetElements = [];
-
-    snippets.forEach(({ text, messageId, lang, rawLang, titleLine, index }) => {
-      const wrapper = document.createElement("div");
-      wrapper.style.borderRadius = "8px";
-      wrapper.style.border = `1px solid ${theme.panelBorder}`;
-      wrapper.style.overflow = "hidden";
-      wrapper.style.background = theme.inputBg;
-      wrapper.style.display = "flex";
-      wrapper.style.flexDirection = "column";
-      wrapper.style.minWidth = "0";
-      wrapper.style.flexShrink = "0";
-
-      const header = document.createElement("div");
-      header.style.display = "flex";
-      header.style.alignItems = "center";
-      header.style.justifyContent = "space-between";
-      header.style.padding = "6px 10px";
-      header.style.background = theme.buttonMutedBg;
-      header.style.borderBottom = `1px solid ${theme.panelBorder}`;
-
-      const info = document.createElement("span");
-      info.style.fontSize = "11px";
-      info.style.fontWeight = "600";
-      info.style.color = theme.mutedText;
-      info.style.whiteSpace = "nowrap";
-      info.style.overflow = "hidden";
-      info.style.textOverflow = "ellipsis";
-
-      const langSpan = document.createElement("span");
-      langSpan.style.color = theme.text;
-      langSpan.textContent = lang;
-      info.appendChild(langSpan);
-
-      if (titleLine) {
-        const titleSpan = document.createElement("span");
-        titleSpan.style.opacity = "0.6";
-        titleSpan.style.marginLeft = "6px";
-        titleSpan.textContent = titleLine;
-        info.appendChild(titleSpan);
+    renderSidebarSnippetsTab({
+      container,
+      theme: getThemeTokens(),
+      articleMap: state.articleMap,
+      snippetMaxHeightPx: SIDEBAR_SNIPPET_MAX_HEIGHT_PX,
+      onJumpToMessage: (virtualId) => {
+        scrollToVirtualId(virtualId);
       }
-
-      const actions = document.createElement("div");
-      actions.style.display = "flex";
-      actions.style.gap = "6px";
-
-      const copyBtn = document.createElement("button");
-      copyBtn.type = "button";
-      copyBtn.textContent = "Copy";
-      copyBtn.style.fontSize = "10px";
-      copyBtn.style.padding = "2px 8px";
-      copyBtn.style.borderRadius = "4px";
-      copyBtn.style.border = "none";
-      copyBtn.style.cursor = "pointer";
-      copyBtn.style.background = theme.buttonBg;
-      copyBtn.style.color = theme.buttonText;
-      copyBtn.addEventListener("click", () => {
-        navigator.clipboard.writeText(text).then(() => {
-          copyBtn.textContent = "Copied!";
-          setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000);
-        });
-      });
-
-      const jumpBtn = document.createElement("button");
-      jumpBtn.type = "button";
-      jumpBtn.textContent = "Jump";
-      jumpBtn.style.fontSize = "10px";
-      jumpBtn.style.padding = "2px 8px";
-      jumpBtn.style.borderRadius = "4px";
-      jumpBtn.style.border = "none";
-      jumpBtn.style.cursor = "pointer";
-      jumpBtn.style.background = theme.buttonMutedBg;
-      jumpBtn.style.color = theme.text;
-      jumpBtn.addEventListener("click", () => {
-        scrollToVirtualId(messageId);
-      });
-
-      actions.appendChild(copyBtn);
-      actions.appendChild(jumpBtn);
-      header.appendChild(info);
-      header.appendChild(actions);
-
-      const pre = document.createElement("pre");
-      pre.style.display = "block";
-      pre.style.margin = "0";
-      pre.style.padding = "10px";
-      pre.style.fontSize = "11px";
-      pre.style.lineHeight = "1.45";
-      pre.style.fontFamily = "Consolas, Monaco, 'Andale Mono', monospace";
-      pre.style.overflowX = "auto";
-      pre.style.maxHeight = `${SIDEBAR_SNIPPET_MAX_HEIGHT_PX} px`;
-      pre.style.whiteSpace = "pre";
-      pre.style.color = theme.text;
-      pre.style.background = "transparent";
-      // flex-shrink:0 prevents Firefox from collapsing the pre height
-      // when it is a flex item inside a flex-column wrapper.
-      pre.style.flexShrink = "0";
-
-      const code = document.createElement("code");
-      code.style.display = "block";
-      code.style.whiteSpace = "pre";
-      code.style.color = "inherit";
-      code.style.fontFamily = "inherit";
-      if (typeof rawLang === 'string' && rawLang && hljs.getLanguage(rawLang)) {
-        try {
-          code.innerHTML = hljs.highlight(text, { language: rawLang, ignoreIllegals: true }).value;
-          code.classList.add('hljs');
-        } catch (e) {
-          code.textContent = text;
-        }
-      } else {
-        try {
-          code.innerHTML = hljs.highlightAuto(text).value;
-          code.classList.add('hljs');
-        } catch (e) {
-          code.textContent = text;
-        }
-      }
-      pre.appendChild(code);
-
-      wrapper.appendChild(header);
-      wrapper.appendChild(pre);
-      listContainer.appendChild(wrapper);
-
-      snippetElements.push({ el: wrapper, text: text.toLowerCase() });
     });
-
-    container.appendChild(listContainer);
-
-    snippetSearchInput.addEventListener("input", (e) => {
-      const query = e.target.value.toLowerCase().trim();
-      snippetElements.forEach(item => {
-        if (!query || item.text.includes(query)) {
-          item.el.style.display = "flex";
-        } else {
-          item.el.style.display = "none";
-        }
-      });
-    });
-  }
-
-  function extractTextPreservingNewlines(element) {
-    if (!element) return "";
-    if (element.isConnected) {
-      return element.innerText || element.textContent || "";
-    }
-    let text = "";
-    try {
-      const hiddenContainer = document.createElement("div");
-      // Use off-screen rendering instead of visibility: hidden
-      // innerText fails and returns empty if an element is not rendered
-      hiddenContainer.style.position = "absolute";
-      hiddenContainer.style.left = "-9999px";
-      hiddenContainer.style.top = "-9999px";
-      hiddenContainer.style.width = "1000px";
-      hiddenContainer.style.whiteSpace = "pre-wrap"; // Force newlines to be preserved
-      document.body.appendChild(hiddenContainer);
-      const clone = element.cloneNode(true);
-      hiddenContainer.appendChild(clone);
-
-      text = hiddenContainer.innerText || hiddenContainer.textContent || "";
-      document.body.removeChild(hiddenContainer);
-    } catch (e) {
-      text = element.textContent || "";
-    }
-    return text;
-  }
-
-  function extractCodeSnippetText(pre) {
-    if (!(pre instanceof HTMLElement)) return "";
-
-    const codeViewerContent = pre.querySelector("#code-block-viewer .cm-content, .cm-editor .cm-content");
-    const codeEl = pre.querySelector("code");
-    let rawText = extractTextPreservingNewlines(codeViewerContent);
-    if (!rawText || !rawText.trim()) {
-      rawText = extractTextPreservingNewlines(codeEl);
-    }
-    if (!rawText || !rawText.trim()) {
-      rawText = extractTextPreservingNewlines(pre);
-    }
-
-    let text = toUnixNewlines(rawText);
-
-    text = text
-      .replace(/^\n+/, "")
-      .replace(/\n+$/, "")
-      .replace(/\n{4,}/g, "\n\n\n");
-    return text.trim() ? text : "";
   }
 
   // ---------------------------------------------------------------------------
@@ -4188,63 +2299,6 @@ import {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-  }
-
-  function toUnixNewlines(text) {
-    return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  }
-
-  function inferCodeLanguage(el, preEl) {
-    let lang = "";
-    const classCandidates = [];
-    if (el instanceof HTMLElement && el.className) classCandidates.push(el.className);
-    const nestedCode = el instanceof HTMLElement ? el.querySelector("code") : null;
-    if (nestedCode instanceof HTMLElement && nestedCode.className) {
-      classCandidates.push(nestedCode.className);
-    }
-    const classBlob = classCandidates.join(" ");
-    const match = classBlob.match(/\blanguage-([a-z0-9_+-]+)/i);
-    if (match) {
-      lang = match[1].toLowerCase();
-    }
-
-    // Try to parse from ChatGPT's codeblock header if class fails
-    if (!lang && preEl && preEl instanceof HTMLElement) {
-      const header = preEl.firstElementChild;
-      if (header && header.tagName === "DIV" && !header.querySelector("code")) {
-        const span = header.querySelector("span");
-        if (span && span.textContent) {
-          lang = span.textContent.trim().toLowerCase();
-        } else {
-          const clone = header.cloneNode(true);
-          const btns = clone.querySelectorAll("button");
-          btns.forEach(b => b.remove());
-          lang = clone.textContent.trim().toLowerCase();
-        }
-
-        if (lang.length > 20 || lang.includes('\n')) {
-          // False positive, grabbed the code or a large title
-          lang = "";
-        }
-      }
-    }
-
-    // Fallback for newer ChatGPT code block renderer (CodeMirror viewer shell).
-    if (!lang && preEl && preEl instanceof HTMLElement) {
-      const headerLabel = preEl.querySelector(
-        '[id="code-block-viewer"] ~ div [class*="font-medium"], [class*="font-medium"][class*="text-sm"]'
-      );
-      if (headerLabel instanceof HTMLElement) {
-        const labelText = normalizeSnippetHeaderLine(headerLabel.textContent || "");
-        const compact = labelText.replace(/[\s`"'()[\]{}:;,.#+-]/g, "");
-        const candidate = normalizeLanguageTag(compact || labelText);
-        if (candidate && candidate.length <= 20 && isKnownSnippetLanguageTag(candidate)) {
-          lang = candidate;
-        }
-      }
-    }
-
-    return lang;
   }
 
   function convertDomToMarkdown(node) {
@@ -5038,12 +3092,6 @@ import {
     sidebarToggleButton = null;
     sidebarPanel = null;
     sidebarContentContainer = null;
-    settingsEnabledInput = null;
-    settingsDebugInput = null;
-    settingsMarginInput = null;
-    settingsConversationPaddingInput = null;
-    settingsComposerWidthInput = null;
-
     if (tokenGaugeElement && tokenGaugeElement.isConnected) tokenGaugeElement.remove();
     tokenGaugeElement = null;
 
