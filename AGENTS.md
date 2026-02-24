@@ -13,6 +13,9 @@
   - `src/ui/features/search/` contains search behavior (`searchFeature.js`) and match-highlighting utilities (`searchHighlighting.js`).
   - `src/ui/features/minimap/` contains minimap rendering/interaction (`minimapFeature.js`) and geometry math helpers (`minimapMath.js`).
   - `src/ui/features/map/mapFeature.js` contains sidebar map-tab rendering/state logic.
+  - `src/ui/features/bookmarks/bookmarksFeature.js` contains sidebar marks/bookmarks behavior.
+  - `src/ui/features/outline/outlineFeature.js` contains outline-tab rendering and collapse controls.
+  - `src/ui/features/download/downloadFeature.js` contains markdown-download button lifecycle behavior.
   - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`).
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/ui/features/snippets/markdownExport.js` contains markdown export conversion logic.
@@ -39,6 +42,7 @@
   - `npm run version:patch`
   - `npm run version:minor`
   - `npm run version:major`
+- Regenerate extension icons from `icons/gpt-boost.png`: `npm run icons:generate`.
 - Chrome/Edge/Brave local dev: open `chrome://extensions`, enable Developer mode, “Load unpacked”, select repo root (with `manifest.json`).
 - Firefox local dev: open `about:debugging#/runtime/this-firefox`, “Load Temporary Add-on…”, pick `manifest.json`.
 - Test suite: `npm test` (Jest).
@@ -90,10 +94,9 @@
 
 ## Current Refactor Priorities
 - Continue reducing `src/virtualization.js` orchestration size by extracting:
-  - Sidebar shell/tab lifecycle management.
   - Per-article action rail/collapse injection lifecycle.
-  - Markdown export conversion pipeline.
-  - Bookmarks floating panel lifecycle.
+  - Remaining sidebar tab renderers (especially outline/settings) into feature modules.
+  - Sidebar marks/bookmarks integration cleanup (sidebar-only path, no floating panel).
 - Keep behavior stable by using wrapper delegates in `virtualization.js` and implementing feature modules under `src/ui/features/`.
 
 ## Commit & Pull Request Guidelines

@@ -7,7 +7,10 @@ import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/f
 import { renderSidebarSettingsTab } from './ui/features/sidebar/settingsTab.js';
 import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
 import { createSidebarShellFeature } from './ui/features/sidebar/shellFeature.js';
+import { createBookmarksFeature } from './ui/features/bookmarks/bookmarksFeature.js';
+import { createOutlineFeature } from './ui/features/outline/outlineFeature.js';
 import { createMarkdownExportFeature } from './ui/features/snippets/markdownExport.js';
+import { createDownloadFeature } from './ui/features/download/downloadFeature.js';
 import { createSearchFeature } from './ui/features/search/searchFeature.js';
 import { createMinimapFeature } from './ui/features/minimap/minimapFeature.js';
 import { createMapFeature } from './ui/features/map/mapFeature.js';
@@ -78,8 +81,6 @@ import {
     matchCount: 0
   };
   let downloadButton = null;
-  let bookmarksButton = null;
-  let bookmarksPanel = null;
   // codePanelButton/codePanelPanel were refactored into the sidebar snippets tab
   // in b232a91, but their call sites (applyThemeToUi, teardownVirtualizer, updateIndicator)
   // were not cleaned up. Keeping them as null guards prevents ReferenceErrors.
@@ -238,6 +239,13 @@ import {
       set: (value) => { currentSidebarWidthPx = value; }
     }
   });
+  const downloadRefs = {};
+  Object.defineProperties(downloadRefs, {
+    downloadButton: {
+      get: () => downloadButton,
+      set: (value) => { downloadButton = value; }
+    }
+  });
 
   const searchFeature = createSearchFeature({
     refs: searchRefs,
@@ -366,6 +374,61 @@ import {
   });
 
   const markdownExportFeature = createMarkdownExportFeature({ state });
+  const bookmarksFeature = createBookmarksFeature({
+    state,
+    constants: {
+      minimapPromptSnippetLength: MINIMAP_PROMPT_SNIPPET_LENGTH
+    },
+    deps: {
+      getCurrentConversationKey: () => currentConversationKey,
+      setCurrentConversationKey,
+      getConversationStorageKey,
+      getArticleMessageKey,
+      getPersistedBookmarkedMessageKeys: () => persistedBookmarkedMessageKeys,
+      scheduleFlagsSave,
+      updateBookmarkButtonAppearance,
+      refreshSidebarTab,
+      getThemeTokens,
+      getMessageRole,
+      getRoleSurfaceStyle,
+      createRoleChip,
+      scrollToVirtualId,
+      openSidebar,
+      toggleSidebar,
+      updateSidebarVisibility
+    }
+  });
+  const outlineFeature = createOutlineFeature({
+    state,
+    deps: {
+      ensureVirtualIds,
+      applyCollapseState,
+      getThemeTokens,
+      getMessageRole,
+      getRoleSurfaceStyle,
+      createRoleChip,
+      scrollToVirtualId,
+      togglePin,
+      toggleBookmark,
+      toggleCollapse,
+      renderSidebarTab
+    }
+  });
+  const downloadFeature = createDownloadFeature({
+    refs: downloadRefs,
+    state,
+    constants: {
+      downloadButtonSizePx: DOWNLOAD_BUTTON_SIZE_PX,
+      downloadButtonRightOffsetPx: DOWNLOAD_BUTTON_RIGHT_OFFSET_PX,
+      downloadButtonTopOffsetPx: DOWNLOAD_BUTTON_TOP_OFFSET_PX
+    },
+    deps: {
+      styleSearchButton,
+      applyFloatingUiOffsets,
+      applyThemeToUi,
+      downloadMarkdown
+    }
+  });
 
   function syncFlagsFromPersistedKeys() {
     const nextPinned = new Set();
@@ -389,9 +452,6 @@ import {
     state.pinnedMessages = nextPinned;
     state.bookmarkedMessages = nextBookmarked;
     updatePinnedBar();
-    if (bookmarksPanel && bookmarksPanel.style.display !== "none") {
-      populateBookmarksPanel(bookmarksPanel);
-    }
     state.articleMap.forEach((article, virtualId) => {
       updatePinButtonAppearance(article, virtualId);
       updateBookmarkButtonAppearance(article, virtualId);
@@ -482,14 +542,6 @@ import {
       downloadButton.style.top = `${currentTop}px`;
       downloadButton.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX + offset}px`;
       currentTop += DOWNLOAD_BUTTON_SIZE_PX + DOWNLOAD_BUTTON_GAP_PX;
-    }
-
-    if (bookmarksButton && bookmarksButton.style.display !== "none") {
-      bookmarksButton.style.top = `${currentTop}px`;
-      bookmarksButton.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-      if (bookmarksPanel) bookmarksPanel.style.top = `${currentTop}px`;
-      if (bookmarksPanel) bookmarksPanel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX + offset}px`;
-      currentTop += BOOKMARKS_BUTTON_SIZE_PX + BOOKMARKS_BUTTON_GAP_PX;
     }
 
     if (scrollToTopButton && scrollToTopButton.style.display !== "none") {
@@ -879,7 +931,7 @@ import {
     }
 
     const buttons = [scrollToTopButton, scrollToBottomButton, searchButton, minimapButton,
-      codePanelButton, downloadButton, bookmarksButton, sidebarToggleButton];
+      codePanelButton, downloadButton, sidebarToggleButton];
     buttons.forEach((button) => {
       if (!button) return;
       button.style.background = theme.buttonBg;
@@ -925,13 +977,6 @@ import {
       codePanelPanel.style.boxShadow = theme.panelShadow;
       codePanelPanel.style.border = `1px solid ${theme.panelBorder}`;
       codePanelPanel.style.color = theme.text;
-    }
-
-    if (bookmarksPanel) {
-      bookmarksPanel.style.background = theme.panelBg;
-      bookmarksPanel.style.boxShadow = theme.panelShadow;
-      bookmarksPanel.style.border = `1px solid ${theme.panelBorder}`;
-      bookmarksPanel.style.color = theme.text;
     }
 
     if (sidebarPanel) {
@@ -1180,140 +1225,15 @@ import {
   }
 
   function collapseAllMessages() {
-    ensureVirtualIds();
-    state.articleMap.forEach((_article, id) => state.collapsedMessages.add(id));
-    state.articleMap.forEach((article, id) => applyCollapseState(article, id));
+    outlineFeature.collapseAllMessages();
   }
 
   function expandAllMessages() {
-    ensureVirtualIds();
-    state.collapsedMessages.clear();
-    state.articleMap.forEach((article, id) => applyCollapseState(article, id));
+    outlineFeature.expandAllMessages();
   }
 
   function renderOutlineTabContent(container) {
-    const theme = getThemeTokens();
-    const controls = document.createElement("div");
-    controls.style.display = "flex";
-    controls.style.gap = "6px";
-    controls.style.marginBottom = "8px";
-
-    const collapseAllBtn = document.createElement("button");
-    collapseAllBtn.type = "button";
-    collapseAllBtn.textContent = "Collapse All";
-    collapseAllBtn.style.padding = "4px 8px";
-    collapseAllBtn.style.fontSize = "11px";
-    collapseAllBtn.style.border = "none";
-    collapseAllBtn.style.borderRadius = "8px";
-    collapseAllBtn.style.cursor = "pointer";
-    collapseAllBtn.style.background = theme.buttonMutedBg;
-    collapseAllBtn.style.color = theme.buttonMutedText;
-    collapseAllBtn.addEventListener("click", () => {
-      collapseAllMessages();
-      renderSidebarTab("outline");
-    });
-
-    const expandAllBtn = document.createElement("button");
-    expandAllBtn.type = "button";
-    expandAllBtn.textContent = "Expand All";
-    expandAllBtn.style.padding = "4px 8px";
-    expandAllBtn.style.fontSize = "11px";
-    expandAllBtn.style.border = "none";
-    expandAllBtn.style.borderRadius = "8px";
-    expandAllBtn.style.cursor = "pointer";
-    expandAllBtn.style.background = theme.buttonMutedBg;
-    expandAllBtn.style.color = theme.buttonMutedText;
-    expandAllBtn.addEventListener("click", () => {
-      expandAllMessages();
-      renderSidebarTab("outline");
-    });
-
-    controls.appendChild(collapseAllBtn);
-    controls.appendChild(expandAllBtn);
-    container.appendChild(controls);
-
-    const list = document.createElement("div");
-    list.style.display = "flex";
-    list.style.flexDirection = "column";
-    list.style.gap = "6px";
-    list.style.overflowY = "auto";
-    list.style.minHeight = "0";
-    list.style.flex = "1";
-    container.appendChild(list);
-
-    const entries = Array.from(state.articleMap.entries()).sort((a, b) => Number(a[0]) - Number(b[0]));
-    entries.forEach(([id, article], index) => {
-      if (!(article instanceof HTMLElement)) return;
-      const textSource = article.querySelector("[data-message-author-role]") || article;
-      const text = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-      if (!text) return;
-      const role = getMessageRole(article);
-      const roleStyle = getRoleSurfaceStyle(role, theme);
-
-      const item = document.createElement("div");
-      item.style.border = `1px solid ${roleStyle.borderColor}`;
-      item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
-      item.style.borderRadius = "10px";
-      item.style.padding = "6px 8px";
-      item.style.display = "flex";
-      item.style.flexShrink = "0";
-      item.style.flexDirection = "column";
-      item.style.gap = "6px";
-      item.style.background = roleStyle.surfaceBg;
-      item.style.width = "100%";
-
-      const roleChip = createRoleChip(roleStyle);
-
-      const title = document.createElement("button");
-      title.type = "button";
-      title.textContent = `${index + 1}. ${text.slice(0, 90)}${text.length > 90 ? "…" : ""}`;
-      title.style.textAlign = "left";
-      title.style.border = "none";
-      title.style.background = "transparent";
-      title.style.padding = "0";
-      title.style.cursor = "pointer";
-      title.style.fontSize = "12px";
-      title.style.color = theme.text;
-      title.style.fontFamily = "inherit";
-      title.addEventListener("click", () => scrollToVirtualId(id));
-
-      const actions = document.createElement("div");
-      actions.style.display = "flex";
-      actions.style.gap = "6px";
-
-      const mkBtn = (label, onClick) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.textContent = label;
-        b.style.border = "none";
-        b.style.borderRadius = "6px";
-        b.style.padding = "2px 6px";
-        b.style.fontSize = "10px";
-        b.style.cursor = "pointer";
-        b.style.background = theme.buttonMutedBg;
-        b.style.color = theme.buttonMutedText;
-        b.addEventListener("click", onClick);
-        return b;
-      };
-
-      actions.appendChild(mkBtn(state.pinnedMessages.has(id) ? "Unpin" : "Pin", () => {
-        togglePin(id);
-        renderSidebarTab("outline");
-      }));
-      actions.appendChild(mkBtn(state.bookmarkedMessages.has(id) ? "Unbookmark" : "Bookmark", () => {
-        toggleBookmark(id);
-        renderSidebarTab("outline");
-      }));
-      actions.appendChild(mkBtn(state.collapsedMessages.has(id) ? "Expand" : "Collapse", () => {
-        toggleCollapse(id);
-        renderSidebarTab("outline");
-      }));
-
-      item.appendChild(roleChip);
-      item.appendChild(title);
-      item.appendChild(actions);
-      list.appendChild(item);
-    });
+    outlineFeature.renderOutlineTabContent(container);
   }
 
   function renderSettingsTabContent(container) {
@@ -2065,58 +1985,11 @@ import {
   }
 
   function ensureDownloadButton() {
-    if (downloadButton && downloadButton.isConnected) return downloadButton;
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("data-chatgpt-download", "trigger");
-    button.style.position = "fixed";
-    button.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${DOWNLOAD_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "10002";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.setAttribute("aria-hidden", "true");
-    icon.style.width = "14px";
-    icon.style.height = "14px";
-    icon.style.fill = "none";
-    icon.style.stroke = "currentColor";
-    icon.style.strokeWidth = "2";
-    icon.style.strokeLinecap = "round";
-    icon.style.strokeLinejoin = "round";
-    const ln1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    ln1.setAttribute("x1", "12"); ln1.setAttribute("y1", "3");
-    ln1.setAttribute("x2", "12"); ln1.setAttribute("y2", "15");
-    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    poly.setAttribute("points", "7 10 12 15 17 10");
-    const ln2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    ln2.setAttribute("x1", "5"); ln2.setAttribute("y1", "21");
-    ln2.setAttribute("x2", "19"); ln2.setAttribute("y2", "21");
-    icon.appendChild(ln1);
-    icon.appendChild(poly);
-    icon.appendChild(ln2);
-
-    button.appendChild(icon);
-    button.setAttribute("aria-label", "Download conversation as Markdown");
-    styleSearchButton(button, DOWNLOAD_BUTTON_SIZE_PX);
-    button.style.display = "none";
-    button.addEventListener("click", downloadMarkdown);
-
-    document.body.appendChild(button);
-    downloadButton = button;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return button;
+    return downloadFeature.ensureDownloadButton();
   }
 
   function updateDownloadVisibility(totalMessages) {
-    const shouldShow = state.enabled && totalMessages > 0;
-    const button = ensureDownloadButton();
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
+    downloadFeature.updateDownloadVisibility(totalMessages);
   }
 
   // updateCodePanelVisibility was removed when the standalone floating code-panel
@@ -2132,246 +2005,39 @@ import {
   // ---------------------------------------------------------------------------
 
   function toggleBookmark(virtualId) {
-    if (!currentConversationKey) {
-      setCurrentConversationKey(getConversationStorageKey());
-    }
-    const article = state.articleMap.get(virtualId);
-    const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : "";
-    if (state.bookmarkedMessages.has(virtualId)) {
-      state.bookmarkedMessages.delete(virtualId);
-      if (key) persistedBookmarkedMessageKeys.delete(key);
-    } else {
-      state.bookmarkedMessages.add(virtualId);
-      if (key) persistedBookmarkedMessageKeys.add(key);
-    }
-    scheduleFlagsSave();
-    if (article) updateBookmarkButtonAppearance(article, virtualId);
-    if (bookmarksPanel && bookmarksPanel.style.display !== "none") {
-      populateBookmarksPanel(bookmarksPanel);
-    }
-    refreshSidebarTab();
+    bookmarksFeature.toggleBookmark(virtualId);
   }
 
   function hideBookmarksPanel() {
-    if (bookmarksPanel) bookmarksPanel.style.display = "none";
+    bookmarksFeature.hideBookmarksPanel();
   }
 
   function hideBookmarksUi() {
-    if (bookmarksButton) bookmarksButton.style.display = "none";
-    hideBookmarksPanel();
+    bookmarksFeature.hideBookmarksUi();
   }
 
   function populateBookmarksPanel(panel) {
-    const listContainer = panel.querySelector("[data-chatgpt-bookmarks=\"list\"]");
-    if (!listContainer) return;
-
-    listContainer.innerHTML = "";
-    const theme = getThemeTokens();
-
-    const appendSection = (titleText, ids, emptyText) => {
-      const section = document.createElement("div");
-      section.style.display = "flex";
-      section.style.flexDirection = "column";
-      section.style.gap = "6px";
-      section.style.padding = "4px 0";
-
-      const title = document.createElement("div");
-      title.textContent = `${titleText} (${ids.length})`;
-      title.style.fontSize = "10px";
-      title.style.letterSpacing = "0.12em";
-      title.style.textTransform = "uppercase";
-      title.style.opacity = "0.72";
-      section.appendChild(title);
-
-      if (!ids.length) {
-        const empty = document.createElement("div");
-        empty.style.fontSize = "12px";
-        empty.style.opacity = "0.6";
-        empty.style.padding = "4px 2px";
-        empty.textContent = emptyText;
-        section.appendChild(empty);
-        listContainer.appendChild(section);
-        return;
-      }
-
-      ids.forEach((id, index) => {
-        const article = state.articleMap.get(id);
-        if (!article) return;
-
-        const role = getMessageRole(article);
-        const roleStyle = getRoleSurfaceStyle(role, theme);
-        const textSource = article.querySelector("[data-message-author-role]") || article;
-        const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-        const snippet = rawText.length > MINIMAP_PROMPT_SNIPPET_LENGTH
-          ? rawText.slice(0, MINIMAP_PROMPT_SNIPPET_LENGTH) + "…"
-          : rawText;
-
-        const item = document.createElement("button");
-        item.type = "button";
-        item.style.display = "flex";
-        item.style.flexDirection = "column";
-        item.style.gap = "4px";
-        item.style.flexShrink = "0";
-        item.style.width = "100%";
-        item.style.textAlign = "left";
-        item.style.background = roleStyle.surfaceBg;
-        item.style.border = `1px solid ${roleStyle.borderColor}`;
-        item.style.borderLeft = `3px solid ${roleStyle.accentColor}`;
-        item.style.borderRadius = "10px";
-        item.style.padding = "6px 8px";
-        item.style.cursor = "pointer";
-        item.style.color = theme.text;
-        item.style.wordBreak = "break-word";
-        item.style.fontFamily = "inherit";
-        item.addEventListener("mouseenter", () => { item.style.background = roleStyle.activeSurfaceBg; });
-        item.addEventListener("mouseleave", () => { item.style.background = roleStyle.surfaceBg; });
-        item.addEventListener("click", () => {
-          hideBookmarksPanel();
-          scrollToVirtualId(id);
-        });
-
-        const roleChip = createRoleChip(roleStyle);
-
-        const snippetLine = document.createElement("div");
-        snippetLine.textContent = `${index + 1}. ${snippet}`;
-        snippetLine.style.fontSize = "12px";
-        snippetLine.style.lineHeight = "1.4";
-
-        const metaLine = document.createElement("div");
-        metaLine.textContent = `#${id} • ${index + 1}/${ids.length}`;
-        metaLine.style.fontSize = "10px";
-        metaLine.style.opacity = "0.72";
-
-        item.appendChild(roleChip);
-        item.appendChild(snippetLine);
-        item.appendChild(metaLine);
-        section.appendChild(item);
-      });
-
-      listContainer.appendChild(section);
-    };
-
-    const sortedPinnedIds = Array.from(state.pinnedMessages).sort((a, b) => Number(a) - Number(b));
-    const sortedBookmarkedIds = Array.from(state.bookmarkedMessages).sort((a, b) => Number(a) - Number(b));
-    appendSection("Pinned", sortedPinnedIds, "No pinned messages.");
-    appendSection("Bookmarked", sortedBookmarkedIds, "No bookmarked messages.");
+    bookmarksFeature.populateBookmarksPanel(panel);
   }
 
   function showBookmarksPanel() {
-    openSidebar("bookmarks");
+    bookmarksFeature.showBookmarksPanel();
   }
 
   function toggleBookmarksPanel() {
-    toggleSidebar("bookmarks");
+    bookmarksFeature.toggleBookmarksPanel();
   }
 
   function ensureBookmarksButton() {
-    if (bookmarksButton && bookmarksButton.isConnected) return bookmarksButton;
-    if (!document.body) return null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("data-chatgpt-bookmarks", "toggle");
-    button.style.position = "fixed";
-    button.style.right = `${BOOKMARKS_BUTTON_RIGHT_OFFSET_PX}px`;
-    button.style.top = `${BOOKMARKS_BUTTON_TOP_OFFSET_PX}px`;
-    button.style.zIndex = "10002";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.setAttribute("aria-hidden", "true");
-    icon.style.width = "14px";
-    icon.style.height = "14px";
-    icon.style.fill = "none";
-    icon.style.stroke = "currentColor";
-    icon.style.strokeWidth = "2";
-    icon.style.strokeLinecap = "round";
-    icon.style.strokeLinejoin = "round";
-    const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    pathEl.setAttribute("d", "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z");
-    icon.appendChild(pathEl);
-
-    button.appendChild(icon);
-    button.setAttribute("aria-label", "View bookmarks");
-    styleSearchButton(button, BOOKMARKS_BUTTON_SIZE_PX);
-    button.style.display = "none";
-    button.addEventListener("click", toggleBookmarksPanel);
-
-    document.body.appendChild(button);
-    bookmarksButton = button;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return button;
+    return bookmarksFeature.ensureBookmarksButton();
   }
 
   function ensureBookmarksPanel() {
-    if (bookmarksPanel && bookmarksPanel.isConnected) return bookmarksPanel;
-    if (!document.body) return null;
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-chatgpt-bookmarks", "panel");
-    panel.style.position = "fixed";
-    panel.style.top = `${BOOKMARKS_PANEL_TOP_OFFSET_PX}px`;
-    panel.style.right = `${BOOKMARKS_PANEL_RIGHT_OFFSET_PX}px`;
-    panel.style.zIndex = "10001";
-    panel.style.width = `${BOOKMARKS_PANEL_WIDTH_PX}px`;
-    panel.style.maxHeight = `calc(100vh - ${BOOKMARKS_PANEL_TOP_OFFSET_PX + 16}px)`;
-    panel.style.display = "none";
-    panel.style.flexDirection = "column";
-    panel.style.gap = "8px";
-    panel.style.padding = "10px";
-    panel.style.borderRadius = "14px";
-    panel.style.background = "rgba(15, 23, 42, 0.92)";
-    panel.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.28)";
-    panel.style.color = "#f9fafb";
-    panel.style.backdropFilter = "blur(6px)";
-    panel.style.boxSizing = "border-box";
-
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.alignItems = "center";
-    header.style.justifyContent = "space-between";
-    header.style.gap = "8px";
-
-    const title = document.createElement("span");
-    title.textContent = "Bookmarks";
-    title.style.fontSize = "12px";
-    title.style.fontWeight = "600";
-    title.style.lineHeight = "1.2";
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.textContent = "×";
-    closeBtn.setAttribute("aria-label", "Close bookmarks");
-    styleSearchButton(closeBtn, 22);
-    closeBtn.style.display = "flex";
-    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
-    closeBtn.addEventListener("click", hideBookmarksPanel);
-
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-
-    const listContainer = document.createElement("div");
-    listContainer.setAttribute("data-chatgpt-bookmarks", "list");
-    listContainer.style.overflowY = "auto";
-    listContainer.style.display = "flex";
-    listContainer.style.flexDirection = "column";
-    listContainer.style.gap = "2px";
-
-    panel.appendChild(header);
-    panel.appendChild(listContainer);
-
-    document.body.appendChild(panel);
-    bookmarksPanel = panel;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return panel;
+    return bookmarksFeature.ensureBookmarksPanel();
   }
 
   function updateBookmarksVisibility(totalMessages) {
-    if (bookmarksButton) bookmarksButton.style.display = "none";
-    updateSidebarVisibility(totalMessages);
+    bookmarksFeature.updateBookmarksVisibility(totalMessages);
   }
 
   function updateIndicator(totalMessages, renderedMessages) {
@@ -2767,11 +2433,6 @@ import {
 
     if (downloadButton && downloadButton.isConnected) downloadButton.remove();
     downloadButton = null;
-
-    if (bookmarksButton && bookmarksButton.isConnected) bookmarksButton.remove();
-    if (bookmarksPanel && bookmarksPanel.isConnected) bookmarksPanel.remove();
-    bookmarksButton = null;
-    bookmarksPanel = null;
 
     if (sidebarToggleButton && sidebarToggleButton.isConnected) sidebarToggleButton.remove();
     if (sidebarPanel && sidebarPanel.isConnected) sidebarPanel.remove();

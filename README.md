@@ -117,6 +117,9 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/search/           # Search feature + highlighting helpers
 ├── src/ui/features/minimap/          # Minimap UI + geometry helpers
 ├── src/ui/features/map/              # Sidebar map tab feature
+├── src/ui/features/bookmarks/        # Sidebar-only marks/bookmarks feature
+├── src/ui/features/outline/          # Outline tab render + collapse controls
+├── src/ui/features/download/         # Markdown download button lifecycle
 ├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
 ├── src/ui/features/snippets/         # Snippet extraction + markdown export
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
@@ -132,6 +135,7 @@ It makes massive message lists behave like small ones.
 - Build once: `npm run build`
 - Build in watch mode: `npm run dev`
 - Build Firefox package: `npm run build:firefox`
+- Regenerate extension icons from `icons/gpt-boost.png`: `npm run icons:generate`
 - Load unpacked extension and reload after changes.
 
 ### Testing
@@ -154,10 +158,9 @@ It makes massive message lists behave like small ones.
 - Recent extractions moved search, minimap, and map behavior into `src/ui/features/*`.
 - `src/virtualization.js` remains the primary orchestration layer and largest file.
 - Next high-value extraction targets:
-  - Sidebar shell/tab orchestration (`renderSidebarTab`, panel/toggle lifecycle, hotkey wiring)
   - Per-message action rail and collapse/pin/bookmark injection lifecycle
-  - Markdown export pipeline (`downloadMarkdown`, DOM-to-markdown conversion)
-  - Bookmarks panel/floating control lifecycle
+  - Remaining sidebar tab renderers (`outline`/`settings`) into dedicated feature modules
+  - Bookmarks/marks controls integration cleanup with sidebar-only architecture
 
 ### Firefox signing (unlisted/private)
 - Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).
