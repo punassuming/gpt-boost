@@ -32,6 +32,8 @@ import {
 } from "./core/storage.js";
 import {
   buildCachedConversationPayload,
+  buildCustomRoleColorPatch,
+  buildRoleThemePresetPatch,
   getRoleThemeOptions
 } from "./ui/features/settings/settingsData.js";
 
@@ -146,13 +148,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyRoleThemePreset(themeKey) {
-    const normalizedThemeKey = normalizeRoleThemeKey(themeKey, DEFAULT_ROLE_THEME_KEY);
-    if (normalizedThemeKey === CUSTOM_ROLE_THEME_KEY) return;
-    const colorPatch = getRoleThemeColorPatch(normalizedThemeKey, DEFAULT_ROLE_THEME_KEY);
-    const patch = {
-      roleThemeKey: normalizedThemeKey,
-      ...colorPatch
-    };
+    const patch = buildRoleThemePresetPatch({
+      themeKey,
+      roleThemePresets: ROLE_THEME_PRESETS,
+      normalizeRoleThemeKey,
+      defaultRoleThemeKey: DEFAULT_ROLE_THEME_KEY,
+      customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+    });
+    if (!patch) return;
     settingsState = { ...settingsState, ...patch };
     applySettingsToInputs();
     persistSettingsPatch(patch);
@@ -299,50 +302,70 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   userColorDarkElement.addEventListener("change", () => {
-    const next = normalizeColorHex(userColorDarkElement.value, DEFAULT_EXTENSION_SETTINGS.userColorDark);
-    userColorDarkElement.value = next;
-    settingsState.userColorDark = next;
-    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
-    persistSettingsPatch({ userColorDark: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "userColorDark",
+      colorValue: userColorDarkElement.value,
+      normalizeColorHex,
+      fallbackColor: DEFAULT_EXTENSION_SETTINGS.userColorDark,
+      customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+    });
+    if (!patch) return;
+    settingsState = { ...settingsState, ...patch };
+    persistSettingsPatch(patch);
     applySettingsToInputs();
   });
 
   assistantColorDarkElement.addEventListener("change", () => {
-    const next = normalizeColorHex(
-      assistantColorDarkElement.value,
-      DEFAULT_EXTENSION_SETTINGS.assistantColorDark
-    );
-    assistantColorDarkElement.value = next;
-    settingsState.assistantColorDark = next;
-    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
-    persistSettingsPatch({ assistantColorDark: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "assistantColorDark",
+      colorValue: assistantColorDarkElement.value,
+      normalizeColorHex,
+      fallbackColor: DEFAULT_EXTENSION_SETTINGS.assistantColorDark,
+      customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+    });
+    if (!patch) return;
+    settingsState = { ...settingsState, ...patch };
+    persistSettingsPatch(patch);
     applySettingsToInputs();
   });
 
   userColorLightElement.addEventListener("change", () => {
-    const next = normalizeColorHex(userColorLightElement.value, DEFAULT_EXTENSION_SETTINGS.userColorLight);
-    userColorLightElement.value = next;
-    settingsState.userColorLight = next;
-    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
-    persistSettingsPatch({ userColorLight: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "userColorLight",
+      colorValue: userColorLightElement.value,
+      normalizeColorHex,
+      fallbackColor: DEFAULT_EXTENSION_SETTINGS.userColorLight,
+      customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+    });
+    if (!patch) return;
+    settingsState = { ...settingsState, ...patch };
+    persistSettingsPatch(patch);
     applySettingsToInputs();
   });
 
   assistantColorLightElement.addEventListener("change", () => {
-    const next = normalizeColorHex(
-      assistantColorLightElement.value,
-      DEFAULT_EXTENSION_SETTINGS.assistantColorLight
-    );
-    assistantColorLightElement.value = next;
-    settingsState.assistantColorLight = next;
-    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
-    persistSettingsPatch({ assistantColorLight: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "assistantColorLight",
+      colorValue: assistantColorLightElement.value,
+      normalizeColorHex,
+      fallbackColor: DEFAULT_EXTENSION_SETTINGS.assistantColorLight,
+      customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+    });
+    if (!patch) return;
+    settingsState = { ...settingsState, ...patch };
+    persistSettingsPatch(patch);
     applySettingsToInputs();
   });
 
   if (resetColorsElement) {
     resetColorsElement.addEventListener("click", () => {
-      const patch = {
+      const patch = buildRoleThemePresetPatch({
+        themeKey: DEFAULT_ROLE_THEME_KEY,
+        roleThemePresets: ROLE_THEME_PRESETS,
+        normalizeRoleThemeKey,
+        defaultRoleThemeKey: DEFAULT_ROLE_THEME_KEY,
+        customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+      }) || {
         roleThemeKey: DEFAULT_ROLE_THEME_KEY,
         ...getRoleThemeColorPatch(DEFAULT_ROLE_THEME_KEY, DEFAULT_ROLE_THEME_KEY)
       };

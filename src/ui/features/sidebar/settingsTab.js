@@ -1,5 +1,7 @@
 import {
   buildCachedConversationPayload,
+  buildCustomRoleColorPatch,
+  buildRoleThemePresetPatch,
   getRoleThemeOptions
 } from '../settings/settingsData.js';
 
@@ -261,24 +263,52 @@ export function renderSidebarSettingsTab({
   );
 
   const colorUserDark = createColorInput(uiSettings.userColorDark, (value) => {
-    const next = helpers.normalizeColorHex(value, defaults.roleColors.userDark);
-    callbacks.applyUiSettings({ userColorDark: next, roleThemeKey: constants.customRoleThemeKey });
-    persist({ userColorDark: next, roleThemeKey: constants.customRoleThemeKey });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "userColorDark",
+      colorValue: value,
+      normalizeColorHex: helpers.normalizeColorHex,
+      fallbackColor: defaults.roleColors.userDark,
+      customRoleThemeKey: constants.customRoleThemeKey
+    });
+    if (!patch) return;
+    callbacks.applyUiSettings(patch);
+    persist(patch);
   });
   const colorAssistantDark = createColorInput(uiSettings.assistantColorDark, (value) => {
-    const next = helpers.normalizeColorHex(value, defaults.roleColors.assistantDark);
-    callbacks.applyUiSettings({ assistantColorDark: next, roleThemeKey: constants.customRoleThemeKey });
-    persist({ assistantColorDark: next, roleThemeKey: constants.customRoleThemeKey });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "assistantColorDark",
+      colorValue: value,
+      normalizeColorHex: helpers.normalizeColorHex,
+      fallbackColor: defaults.roleColors.assistantDark,
+      customRoleThemeKey: constants.customRoleThemeKey
+    });
+    if (!patch) return;
+    callbacks.applyUiSettings(patch);
+    persist(patch);
   });
   const colorUserLight = createColorInput(uiSettings.userColorLight, (value) => {
-    const next = helpers.normalizeColorHex(value, defaults.roleColors.userLight);
-    callbacks.applyUiSettings({ userColorLight: next, roleThemeKey: constants.customRoleThemeKey });
-    persist({ userColorLight: next, roleThemeKey: constants.customRoleThemeKey });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "userColorLight",
+      colorValue: value,
+      normalizeColorHex: helpers.normalizeColorHex,
+      fallbackColor: defaults.roleColors.userLight,
+      customRoleThemeKey: constants.customRoleThemeKey
+    });
+    if (!patch) return;
+    callbacks.applyUiSettings(patch);
+    persist(patch);
   });
   const colorAssistantLight = createColorInput(uiSettings.assistantColorLight, (value) => {
-    const next = helpers.normalizeColorHex(value, defaults.roleColors.assistantLight);
-    callbacks.applyUiSettings({ assistantColorLight: next, roleThemeKey: constants.customRoleThemeKey });
-    persist({ assistantColorLight: next, roleThemeKey: constants.customRoleThemeKey });
+    const patch = buildCustomRoleColorPatch({
+      colorKey: "assistantColorLight",
+      colorValue: value,
+      normalizeColorHex: helpers.normalizeColorHex,
+      fallbackColor: defaults.roleColors.assistantLight,
+      customRoleThemeKey: constants.customRoleThemeKey
+    });
+    if (!patch) return;
+    callbacks.applyUiSettings(patch);
+    persist(patch);
   });
 
   const roleThemeOptions = getRoleThemeOptions(
@@ -289,21 +319,18 @@ export function renderSidebarSettingsTab({
     uiSettings.roleThemeKey,
     roleThemeOptions,
     (value) => {
-      const nextThemeKey = helpers.normalizeRoleThemeKey(value, defaults.roleThemeKey);
-      if (nextThemeKey === constants.customRoleThemeKey) {
+      const patch = buildRoleThemePresetPatch({
+        themeKey: value,
+        roleThemePresets: defaults.roleThemePresets,
+        normalizeRoleThemeKey: helpers.normalizeRoleThemeKey,
+        defaultRoleThemeKey: defaults.roleThemeKey,
+        customRoleThemeKey: constants.customRoleThemeKey
+      });
+      if (!patch) {
         callbacks.applyUiSettings({ roleThemeKey: constants.customRoleThemeKey });
         persist({ roleThemeKey: constants.customRoleThemeKey });
         return;
       }
-      const preset = defaults.roleThemePresets[nextThemeKey];
-      if (!preset) return;
-      const patch = {
-        roleThemeKey: nextThemeKey,
-        userColorDark: preset.userColorDark,
-        assistantColorDark: preset.assistantColorDark,
-        userColorLight: preset.userColorLight,
-        assistantColorLight: preset.assistantColorLight
-      };
       callbacks.applyUiSettings(patch);
       persist(patch);
       callbacks.rerenderSettings();

@@ -10,6 +10,43 @@ export function getRoleThemeOptions(roleThemePresets = {}, customRoleThemeKey = 
   return options;
 }
 
+export function buildRoleThemePresetPatch({
+  themeKey,
+  roleThemePresets = {},
+  normalizeRoleThemeKey,
+  defaultRoleThemeKey = "chatgpt",
+  customRoleThemeKey = "custom"
+}) {
+  if (typeof normalizeRoleThemeKey !== "function") return null;
+  const normalizedThemeKey = normalizeRoleThemeKey(themeKey, defaultRoleThemeKey);
+  if (normalizedThemeKey === customRoleThemeKey) return null;
+  const preset = roleThemePresets[normalizedThemeKey];
+  if (!preset) return null;
+  return {
+    roleThemeKey: normalizedThemeKey,
+    userColorDark: preset.userColorDark,
+    assistantColorDark: preset.assistantColorDark,
+    userColorLight: preset.userColorLight,
+    assistantColorLight: preset.assistantColorLight
+  };
+}
+
+export function buildCustomRoleColorPatch({
+  colorKey,
+  colorValue,
+  normalizeColorHex,
+  fallbackColor,
+  customRoleThemeKey = "custom"
+}) {
+  if (typeof normalizeColorHex !== "function") return null;
+  if (!colorKey) return null;
+  const normalizedColor = normalizeColorHex(colorValue, fallbackColor);
+  return {
+    roleThemeKey: customRoleThemeKey,
+    [colorKey]: normalizedColor
+  };
+}
+
 export function buildCachedConversationPayload({
   flagsStore,
   knownStore,

@@ -1817,38 +1817,7 @@ import {
     persistedPinnedMessageKeys.clear();
     persistedBookmarkedMessageKeys.clear();
 
-    document.querySelectorAll("[data-gpt-boost-ui-injected]").forEach((el) => {
-      el.removeAttribute("data-gpt-boost-ui-injected");
-      const overlay = el.querySelector("[data-gpt-boost-overlay]");
-      if (overlay) overlay.remove();
-      const sideRail = el.querySelector("[data-gpt-boost-side-rail]");
-      if (sideRail) sideRail.remove();
-      const snippet = el.querySelector("[data-gpt-boost-snippet]");
-      if (snippet) snippet.remove();
-      el.querySelectorAll("[data-gpt-boost-orig-display]").forEach((row) => {
-        if (!(row instanceof HTMLElement)) return;
-        row.style.display = row.dataset.gptBoostOrigDisplay || "";
-        delete row.dataset.gptBoostOrigDisplay;
-      });
-      if (el instanceof HTMLElement) {
-        el.style.boxShadow = "";
-        const hoverTarget = getArticleHoverTarget(el);
-        if (hoverTarget instanceof HTMLElement) {
-          hoverTarget.style.boxShadow = "";
-          hoverTarget.style.borderRadius = "";
-          hoverTarget.style.outline = "";
-          hoverTarget.style.outlineOffset = "";
-          const hoverOriginalPaddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
-          hoverTarget.style.paddingLeft = hoverOriginalPaddingLeft;
-          delete hoverTarget.dataset.gptBoostOrigPaddingLeft;
-          const hoverOverlay = hoverTarget.querySelector("[data-gpt-boost-overlay]");
-          if (hoverOverlay) hoverOverlay.remove();
-        }
-        const originalPaddingLeft = el.dataset.gptBoostOrigPaddingLeft || "";
-        el.style.paddingLeft = originalPaddingLeft;
-        delete el.dataset.gptBoostOrigPaddingLeft;
-      }
-    });
+    articleActionsFeature.cleanupInjectedUi();
 
     document.querySelectorAll("[data-chatgpt-virtual-id]").forEach((el) => {
       el.removeAttribute("data-chatgpt-virtual-id");
