@@ -11,9 +11,11 @@
   - `src/core/settings.js` is the shared settings source of truth (defaults, normalization, hotkey parsing, storage helpers).
   - `src/core/virtualizer/` contains virtualizer-domain modules (`store.ts`, `observer.ts`, `types.ts`).
   - `src/ui/shell/theme.ts` contains theme token logic.
+  - `src/ui/shell/layoutSettings.js` contains conversation/composer layout CSS application helpers.
+  - `src/ui/shell/themeApplier.js` contains centralized runtime theme application across floating/sidebar surfaces.
   - `src/ui/shell/floatingControls.js` contains shared floating circular control styling helpers.
   - `src/ui/features/roleStyles.ts` contains user/agent role presentation rules.
-  - `src/ui/features/search/` contains search behavior (`searchFeature.js`), indexing/model helpers (`searchIndex.js`), and match-highlighting utilities (`searchHighlighting.js`).
+  - `src/ui/features/search/` contains search behavior (`searchFeature.js`), indexing/model helpers (`searchIndex.js`), match-highlighting utilities (`searchHighlighting.js`), floating UI (`searchFloatingUi.js`), and sidebar tab rendering (`searchSidebarTab.js`).
   - `src/ui/features/minimap/` contains minimap rendering/interaction (`minimapFeature.js`), geometry/model helpers (`minimapMath.js`, `minimapModel.js`).
   - `src/ui/features/map/mapFeature.js` contains sidebar map-tab rendering/state logic.
   - `src/ui/features/bookmarks/bookmarksFeature.js` contains sidebar marks/bookmarks behavior.
@@ -21,7 +23,10 @@
   - `src/ui/features/download/downloadFeature.js` contains markdown-download button lifecycle behavior.
   - `src/ui/features/tokenGauge/tokenGaugeFeature.js` contains token pressure gauge lifecycle behavior.
   - `src/ui/features/articleActions/articleActionsFeature.js` contains per-message collapse/pin/bookmark side-rail behavior.
-  - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`).
+  - `src/ui/features/pinned/pinnedBarFeature.js` contains pinned-message top-bar lifecycle behavior.
+  - `src/ui/features/scroll/scrollUiFeature.js` contains virtualization indicator + scroll controls lifecycle behavior.
+  - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`, `settingsFeature.js`).
+  - `src/ui/features/settings/settingsData.js` contains shared settings-tab/popup data shaping helpers (theme options + cached conversation payload formatting).
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/ui/features/snippets/markdownExport.js` contains markdown export conversion logic.
   - `src/adapters/chromeApi.ts` contains extension API wrappers/fallback behavior.

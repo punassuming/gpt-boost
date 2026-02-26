@@ -1,3 +1,8 @@
+import {
+  buildCachedConversationPayload,
+  getRoleThemeOptions
+} from '../settings/settingsData.js';
+
 export function renderSidebarSettingsTab({
   container,
   storage,
@@ -101,6 +106,29 @@ export function renderSidebarSettingsTab({
     input.style.background = theme.inputBg;
     input.style.color = theme.text;
     input.addEventListener("change", () => onChange(input));
+    return input;
+  };
+
+  const createSelectInput = (value, options, onChange) => {
+    const input = document.createElement("select");
+    input.style.width = "132px";
+    input.style.height = "30px";
+    input.style.borderRadius = "8px";
+    input.style.border = `1px solid ${theme.inputBorder}`;
+    input.style.padding = "0 8px";
+    input.style.fontSize = "12px";
+    input.style.fontFamily = "inherit";
+    input.style.background = theme.inputBg;
+    input.style.color = theme.text;
+    input.style.cursor = "pointer";
+    options.forEach((optionConfig) => {
+      const option = document.createElement("option");
+      option.value = optionConfig.value;
+      option.textContent = optionConfig.label;
+      input.appendChild(option);
+    });
+    input.value = value;
+    input.addEventListener("change", () => onChange(input.value));
     return input;
   };
 
@@ -234,24 +262,53 @@ export function renderSidebarSettingsTab({
 
   const colorUserDark = createColorInput(uiSettings.userColorDark, (value) => {
     const next = helpers.normalizeColorHex(value, defaults.roleColors.userDark);
-    callbacks.applyUiSettings({ userColorDark: next });
-    persist({ userColorDark: next });
+    callbacks.applyUiSettings({ userColorDark: next, roleThemeKey: constants.customRoleThemeKey });
+    persist({ userColorDark: next, roleThemeKey: constants.customRoleThemeKey });
   });
   const colorAssistantDark = createColorInput(uiSettings.assistantColorDark, (value) => {
     const next = helpers.normalizeColorHex(value, defaults.roleColors.assistantDark);
-    callbacks.applyUiSettings({ assistantColorDark: next });
-    persist({ assistantColorDark: next });
+    callbacks.applyUiSettings({ assistantColorDark: next, roleThemeKey: constants.customRoleThemeKey });
+    persist({ assistantColorDark: next, roleThemeKey: constants.customRoleThemeKey });
   });
   const colorUserLight = createColorInput(uiSettings.userColorLight, (value) => {
     const next = helpers.normalizeColorHex(value, defaults.roleColors.userLight);
-    callbacks.applyUiSettings({ userColorLight: next });
-    persist({ userColorLight: next });
+    callbacks.applyUiSettings({ userColorLight: next, roleThemeKey: constants.customRoleThemeKey });
+    persist({ userColorLight: next, roleThemeKey: constants.customRoleThemeKey });
   });
   const colorAssistantLight = createColorInput(uiSettings.assistantColorLight, (value) => {
     const next = helpers.normalizeColorHex(value, defaults.roleColors.assistantLight);
-    callbacks.applyUiSettings({ assistantColorLight: next });
-    persist({ assistantColorLight: next });
+    callbacks.applyUiSettings({ assistantColorLight: next, roleThemeKey: constants.customRoleThemeKey });
+    persist({ assistantColorLight: next, roleThemeKey: constants.customRoleThemeKey });
   });
+
+  const roleThemeOptions = getRoleThemeOptions(
+    defaults.roleThemePresets || {},
+    constants.customRoleThemeKey
+  );
+  const roleThemeSelect = createSelectInput(
+    uiSettings.roleThemeKey,
+    roleThemeOptions,
+    (value) => {
+      const nextThemeKey = helpers.normalizeRoleThemeKey(value, defaults.roleThemeKey);
+      if (nextThemeKey === constants.customRoleThemeKey) {
+        callbacks.applyUiSettings({ roleThemeKey: constants.customRoleThemeKey });
+        persist({ roleThemeKey: constants.customRoleThemeKey });
+        return;
+      }
+      const preset = defaults.roleThemePresets[nextThemeKey];
+      if (!preset) return;
+      const patch = {
+        roleThemeKey: nextThemeKey,
+        userColorDark: preset.userColorDark,
+        assistantColorDark: preset.assistantColorDark,
+        userColorLight: preset.userColorLight,
+        assistantColorLight: preset.assistantColorLight
+      };
+      callbacks.applyUiSettings(patch);
+      persist(patch);
+      callbacks.rerenderSettings();
+    }
+  );
 
   const resetColorsButton = document.createElement("button");
   resetColorsButton.type = "button";
@@ -266,11 +323,13 @@ export function renderSidebarSettingsTab({
   resetColorsButton.style.fontSize = "11px";
   resetColorsButton.style.fontFamily = "inherit";
   resetColorsButton.addEventListener("click", () => {
+    const defaultPreset = defaults.roleThemePresets[defaults.roleThemeKey];
     const colorPatch = {
-      userColorDark: defaults.roleColors.userDark,
-      assistantColorDark: defaults.roleColors.assistantDark,
-      userColorLight: defaults.roleColors.userLight,
-      assistantColorLight: defaults.roleColors.assistantLight
+      roleThemeKey: defaults.roleThemeKey,
+      userColorDark: defaultPreset ? defaultPreset.userColorDark : defaults.roleColors.userDark,
+      assistantColorDark: defaultPreset ? defaultPreset.assistantColorDark : defaults.roleColors.assistantDark,
+      userColorLight: defaultPreset ? defaultPreset.userColorLight : defaults.roleColors.userLight,
+      assistantColorLight: defaultPreset ? defaultPreset.assistantColorLight : defaults.roleColors.assistantLight
     };
     callbacks.applyUiSettings(colorPatch);
     persist(colorPatch);
@@ -303,6 +362,13 @@ export function renderSidebarSettingsTab({
       "Controls the ChatGPT composer/content width (px).",
       composerWidthInput
     )
+  );
+
+  controlList.appendChild(sectionTitle("Themes"));
+  const roleThemeShell = createInputShell();
+  roleThemeShell.appendChild(roleThemeSelect);
+  controlList.appendChild(
+    settingRow("Boost Theme", "Preset role styling for ChatGPT light and dark mode.", roleThemeShell)
   );
 
   controlList.appendChild(sectionTitle("Colors"));
@@ -378,27 +444,12 @@ export function renderSidebarSettingsTab({
 
   Promise.all([callbacks.loadFlagsStore(), callbacks.loadKnownConversationsStore()]).then(([flagsStore, knownStore]) => {
     const summary = callbacks.summarizeConversationCaches(flagsStore, knownStore);
-    const flagKeys = Object.keys(flagsStore || {});
-    const knownKeys = Object.keys(knownStore || {});
-    const payload = {
-      totalCachedConversations: summary.totalKnownConversations,
-      totalFlaggedConversations: summary.totalFlaggedConversations,
-      currentConversationKey: callbacks.currentConversationKey || "(none)",
-      cachedPinnedMessages: summary.cachedPinnedMessages,
-      cachedBookmarkedMessages: summary.cachedBookmarkedMessages,
-      approxFlagsBytes: summary.approxFlagsBytes,
-      approxKnownBytes: summary.approxKnownBytes,
-      flaggedConversations: flagKeys.slice(0, 10).map((key) => ({
-        key,
-        pinned: Array.isArray(flagsStore[key]?.pinned) ? flagsStore[key].pinned.length : 0,
-        bookmarked: Array.isArray(flagsStore[key]?.bookmarked) ? flagsStore[key].bookmarked.length : 0
-      })),
-      knownConversations: knownKeys.slice(0, 10).map((key) => ({
-        key,
-        visits: Number(knownStore[key]?.visits || 0),
-        lastSeenAt: knownStore[key]?.lastSeenAt || ""
-      }))
-    };
+    const payload = buildCachedConversationPayload({
+      flagsStore,
+      knownStore,
+      summary,
+      currentConversationKey: callbacks.currentConversationKey || "(none)"
+    });
     cacheDetails.textContent = JSON.stringify(payload, null, 2);
   }).catch(() => {
     cacheDetails.textContent = "Cached conversation stats unavailable.";

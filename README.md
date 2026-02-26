@@ -32,7 +32,8 @@ GPT Boost is a **Chrome and Firefox** extension that uses intelligent message vi
 ### Layout & Styling Controls
 - **Sidebar width and hotkey** configuration.
 - **Conversation padding and composer width** controls.
-- **Role color customization** (User/Agent for dark and light themes, with defaults reset).
+- **Boost theme presets** mapped to ChatGPT light/dark mode.
+- **Manual role color customization** (User/Agent for dark and light themes, with defaults reset).
 - **Minimap visibility** toggle.
 
 ### Observability & Privacy
@@ -115,9 +116,11 @@ It makes massive message lists behave like small ones.
 ├── src/core/runtime/                 # Feature registry + lifecycle + runtime engine modules
 ├── src/core/services/                # Typed shared service container
 ├── src/ui/shell/theme.ts             # Theme mode/tokens
+├── src/ui/shell/layoutSettings.js    # Conversation/composer layout style application
+├── src/ui/shell/themeApplier.js      # Centralized runtime UI theme application
 ├── src/ui/shell/floatingControls.js  # Shared floating round-control styling helper
 ├── src/ui/features/roleStyles.ts     # Role chip/surface styling rules
-├── src/ui/features/search/           # Search feature + indexing + highlighting helpers
+├── src/ui/features/search/           # Search feature + indexing/highlighting + floating/sidebar UI
 ├── src/ui/features/minimap/          # Minimap UI + geometry/model helpers
 ├── src/ui/features/map/              # Sidebar map tab feature
 ├── src/ui/features/bookmarks/        # Sidebar-only marks/bookmarks feature
@@ -125,6 +128,9 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/download/         # Markdown download button lifecycle
 ├── src/ui/features/tokenGauge/       # Token pressure gauge lifecycle
 ├── src/ui/features/articleActions/   # Per-message collapse/pin/bookmark side-rail UI
+├── src/ui/features/pinned/           # Pinned-message top bar feature
+├── src/ui/features/scroll/           # Virtualization indicator + scroll controls feature
+├── src/ui/features/settings/         # Shared settings data-shaping utilities
 ├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
 ├── src/ui/features/snippets/         # Snippet extraction + markdown export
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
@@ -152,6 +158,7 @@ It makes massive message lists behave like small ones.
 - Shared settings defaults and normalization live in `src/core/settings.js`.
 - `boot.js` is responsible for loading persisted settings from extension storage and applying runtime updates on storage changes.
 - In-chat sidebar settings and toolbar popup/options settings should remain parity UI: when adding a new setting, update both surfaces in the same change.
+- Shared settings data-shaping helpers for both surfaces live in `src/ui/features/settings/settingsData.js`.
 - Persisted message-level state (pins/bookmarks by conversation) is separate from global UI settings and lives in `src/core/storage.js`.
 - If you add a new persisted setting:
   - Add default + normalization in `src/core/settings.js`
@@ -161,6 +168,7 @@ It makes massive message lists behave like small ones.
 
 ### Modularization Status and Next Targets
 - Recent extractions moved search/minimap/map/outline/bookmarks/download/token-gauge/article-actions into `src/ui/features/*`.
+- Runtime UI concerns were further extracted into `src/ui/shell/layoutSettings.js`, `src/ui/shell/themeApplier.js`, `src/ui/features/scroll/scrollUiFeature.js`, and `src/ui/features/pinned/pinnedBarFeature.js`.
 - Runtime orchestration now includes a feature registry, lifecycle manager, and typed service container in `src/core/runtime` and `src/core/services`.
 - `src/virtualization.js` remains the primary compatibility wrapper and is still being reduced.
 - Next high-value extraction targets:

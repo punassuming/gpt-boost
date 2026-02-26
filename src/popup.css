@@ -194,7 +194,8 @@ body {
   gap: 4px;
 }
 
-.buffer-control input {
+.buffer-control input,
+.buffer-control select {
   width: 70px;
   padding: 5px 7px;
   border: 1px solid var(--md-outline);
@@ -204,6 +205,11 @@ body {
   color: var(--md-text);
   background: #f8faff;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#roleThemeKey {
+  width: 118px;
+  text-align: left;
 }
 
 #sidebarHotkey {
@@ -276,7 +282,8 @@ body {
   border-color: var(--md-primary);
 }
 
-.buffer-control input:focus {
+.buffer-control input:focus,
+.buffer-control select:focus {
   outline: none;
   border-color: var(--md-primary);
   box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);

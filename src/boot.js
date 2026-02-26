@@ -84,6 +84,7 @@ import { DEFAULT_EXTENSION_SETTINGS, normalizeExtensionSettings } from './core/s
       if (changes.sidebarWidthPx) nextSettings.sidebarWidthPx = changes.sidebarWidthPx.newValue;
       if (changes.minimapVisible) nextSettings.minimapVisible = changes.minimapVisible.newValue;
       if (changes.sidebarHotkey) nextSettings.sidebarHotkey = changes.sidebarHotkey.newValue;
+      if (changes.roleThemeKey) nextSettings.roleThemeKey = changes.roleThemeKey.newValue;
       if (changes.conversationPaddingPx) nextSettings.conversationPaddingPx = changes.conversationPaddingPx.newValue;
       if (changes.composerWidthPx) nextSettings.composerWidthPx = changes.composerWidthPx.newValue;
       if (changes.scrollThrottleMs) nextSettings.scrollThrottleMs = changes.scrollThrottleMs.newValue;

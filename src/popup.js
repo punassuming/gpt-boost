@@ -1,5 +1,10 @@
 import {
   DEFAULT_EXTENSION_SETTINGS,
+  CUSTOM_ROLE_THEME_KEY,
+  DEFAULT_ROLE_THEME_KEY,
+  ROLE_THEME_PRESETS,
+  getRoleThemeColorPatch,
+  normalizeRoleThemeKey,
   normalizeExtensionSettings,
   normalizeSidebarHotkey,
   normalizeColorHex,
@@ -25,6 +30,10 @@ import {
   KNOWN_CONVERSATIONS_STORAGE_KEY,
   summarizeConversationCaches
 } from "./core/storage.js";
+import {
+  buildCachedConversationPayload,
+  getRoleThemeOptions
+} from "./ui/features/settings/settingsData.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   const totalMessagesElement = document.getElementById("statTotalMessages");
@@ -42,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const conversationPaddingElement = document.getElementById("conversationPadding");
   const composerWidthElement = document.getElementById("composerWidth");
   const sidebarHotkeyElement = document.getElementById("sidebarHotkey");
+  const roleThemeKeyElement = document.getElementById("roleThemeKey");
   const userColorDarkElement = document.getElementById("userColorDark");
   const assistantColorDarkElement = document.getElementById("assistantColorDark");
   const userColorLightElement = document.getElementById("userColorLight");
@@ -78,6 +88,18 @@ document.addEventListener("DOMContentLoaded", () => {
   composerWidthElement.min = String(COMPOSER_WIDTH_MIN_PX);
   composerWidthElement.max = String(COMPOSER_WIDTH_MAX_PX);
 
+  function ensureRoleThemeOptions() {
+    if (!roleThemeKeyElement) return;
+    roleThemeKeyElement.innerHTML = "";
+    const options = getRoleThemeOptions(ROLE_THEME_PRESETS, CUSTOM_ROLE_THEME_KEY);
+    options.forEach((optionData) => {
+      const option = document.createElement("option");
+      option.value = optionData.value;
+      option.textContent = optionData.label;
+      roleThemeKeyElement.appendChild(option);
+    });
+  }
+
   function updateStatusText(enabled) {
     statusElement.textContent = enabled ? "Active" : "Disabled";
     statusElement.classList.toggle("status-active", enabled);
@@ -95,6 +117,13 @@ document.addEventListener("DOMContentLoaded", () => {
     conversationPaddingElement.value = String(settingsState.conversationPaddingPx);
     composerWidthElement.value = String(settingsState.composerWidthPx);
     sidebarHotkeyElement.value = settingsState.sidebarHotkey;
+    if (roleThemeKeyElement) {
+      const nextThemeKey = normalizeRoleThemeKey(
+        settingsState.roleThemeKey,
+        DEFAULT_EXTENSION_SETTINGS.roleThemeKey
+      );
+      roleThemeKeyElement.value = nextThemeKey;
+    }
     userColorDarkElement.value = settingsState.userColorDark;
     assistantColorDarkElement.value = settingsState.assistantColorDark;
     userColorLightElement.value = settingsState.userColorLight;
@@ -116,36 +145,32 @@ document.addEventListener("DOMContentLoaded", () => {
     return next;
   }
 
+  function applyRoleThemePreset(themeKey) {
+    const normalizedThemeKey = normalizeRoleThemeKey(themeKey, DEFAULT_ROLE_THEME_KEY);
+    if (normalizedThemeKey === CUSTOM_ROLE_THEME_KEY) return;
+    const colorPatch = getRoleThemeColorPatch(normalizedThemeKey, DEFAULT_ROLE_THEME_KEY);
+    const patch = {
+      roleThemeKey: normalizedThemeKey,
+      ...colorPatch
+    };
+    settingsState = { ...settingsState, ...patch };
+    applySettingsToInputs();
+    persistSettingsPatch(patch);
+  }
+
   function refreshCacheDetails() {
     if (!cacheDetailsElement) return;
     readStorageArea(chrome.storage?.local).then((store) => {
       const flagsStore = store[MESSAGE_FLAGS_STORAGE_KEY] || {};
       const knownStore = store[KNOWN_CONVERSATIONS_STORAGE_KEY] || {};
       const summary = summarizeConversationCaches(flagsStore, knownStore);
-      const flaggedKeys = Object.keys(flagsStore || {});
-      const knownKeys = Object.keys(knownStore || {});
-      cacheDetailsElement.textContent = JSON.stringify(
-        {
-          totalCachedConversations: summary.totalKnownConversations,
-          totalFlaggedConversations: summary.totalFlaggedConversations,
-          cachedPinnedMessages: summary.cachedPinnedMessages,
-          cachedBookmarkedMessages: summary.cachedBookmarkedMessages,
-          approxFlagsBytes: summary.approxFlagsBytes,
-          approxKnownBytes: summary.approxKnownBytes,
-          flaggedConversations: flaggedKeys.slice(0, 10).map((key) => ({
-            key,
-            pinned: Array.isArray(flagsStore[key]?.pinned) ? flagsStore[key].pinned.length : 0,
-            bookmarked: Array.isArray(flagsStore[key]?.bookmarked) ? flagsStore[key].bookmarked.length : 0
-          })),
-          knownConversations: knownKeys.slice(0, 10).map((key) => ({
-            key,
-            visits: Number(knownStore[key]?.visits || 0),
-            lastSeenAt: knownStore[key]?.lastSeenAt || ""
-          }))
-        },
-        null,
-        2
-      );
+      const payload = buildCachedConversationPayload({
+        flagsStore,
+        knownStore,
+        summary,
+        currentConversationKey: "(popup)"
+      });
+      cacheDetailsElement.textContent = JSON.stringify(payload, null, 2);
     }).catch(() => {
       cacheDetailsElement.textContent = "Cached conversation stats unavailable.";
     });
@@ -169,6 +194,8 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     applySettingsToInputs();
   }
+  ensureRoleThemeOptions();
+  applySettingsToInputs();
 
   toggleEnabledElement.addEventListener("change", () => {
     settingsState.enabled = toggleEnabledElement.checked;
@@ -258,11 +285,26 @@ document.addEventListener("DOMContentLoaded", () => {
     persistSettingsPatch({ sidebarHotkey: next });
   });
 
+  if (roleThemeKeyElement) {
+    roleThemeKeyElement.addEventListener("change", () => {
+      const nextThemeKey = normalizeRoleThemeKey(roleThemeKeyElement.value, DEFAULT_ROLE_THEME_KEY);
+      if (nextThemeKey === CUSTOM_ROLE_THEME_KEY) {
+        settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
+        persistSettingsPatch({ roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+        applySettingsToInputs();
+        return;
+      }
+      applyRoleThemePreset(nextThemeKey);
+    });
+  }
+
   userColorDarkElement.addEventListener("change", () => {
     const next = normalizeColorHex(userColorDarkElement.value, DEFAULT_EXTENSION_SETTINGS.userColorDark);
     userColorDarkElement.value = next;
     settingsState.userColorDark = next;
-    persistSettingsPatch({ userColorDark: next });
+    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
+    persistSettingsPatch({ userColorDark: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    applySettingsToInputs();
   });
 
   assistantColorDarkElement.addEventListener("change", () => {
@@ -272,14 +314,18 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     assistantColorDarkElement.value = next;
     settingsState.assistantColorDark = next;
-    persistSettingsPatch({ assistantColorDark: next });
+    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
+    persistSettingsPatch({ assistantColorDark: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    applySettingsToInputs();
   });
 
   userColorLightElement.addEventListener("change", () => {
     const next = normalizeColorHex(userColorLightElement.value, DEFAULT_EXTENSION_SETTINGS.userColorLight);
     userColorLightElement.value = next;
     settingsState.userColorLight = next;
-    persistSettingsPatch({ userColorLight: next });
+    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
+    persistSettingsPatch({ userColorLight: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    applySettingsToInputs();
   });
 
   assistantColorLightElement.addEventListener("change", () => {
@@ -289,16 +335,16 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     assistantColorLightElement.value = next;
     settingsState.assistantColorLight = next;
-    persistSettingsPatch({ assistantColorLight: next });
+    settingsState.roleThemeKey = CUSTOM_ROLE_THEME_KEY;
+    persistSettingsPatch({ assistantColorLight: next, roleThemeKey: CUSTOM_ROLE_THEME_KEY });
+    applySettingsToInputs();
   });
 
   if (resetColorsElement) {
     resetColorsElement.addEventListener("click", () => {
       const patch = {
-        userColorDark: DEFAULT_EXTENSION_SETTINGS.userColorDark,
-        assistantColorDark: DEFAULT_EXTENSION_SETTINGS.assistantColorDark,
-        userColorLight: DEFAULT_EXTENSION_SETTINGS.userColorLight,
-        assistantColorLight: DEFAULT_EXTENSION_SETTINGS.assistantColorLight
+        roleThemeKey: DEFAULT_ROLE_THEME_KEY,
+        ...getRoleThemeColorPatch(DEFAULT_ROLE_THEME_KEY, DEFAULT_ROLE_THEME_KEY)
       };
       settingsState = { ...settingsState, ...patch };
       applySettingsToInputs();

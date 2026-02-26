@@ -9,6 +9,72 @@ export const SCROLL_THROTTLE_MAX_MS = 250;
 export const MUTATION_DEBOUNCE_MIN_MS = 0;
 export const MUTATION_DEBOUNCE_MAX_MS = 500;
 
+export const CUSTOM_ROLE_THEME_KEY = "custom";
+export const DEFAULT_ROLE_THEME_KEY = "chatgpt";
+
+export const ROLE_THEME_PRESETS = {
+  chatgpt: {
+    label: "ChatGPT",
+    userColorDark: "#303030",
+    assistantColorDark: "#202020",
+    userColorLight: "#F4F4F4",
+    assistantColorLight: "#FFFFFF"
+  },
+  slate: {
+    label: "Slate",
+    userColorDark: "#2F3441",
+    assistantColorDark: "#1F2430",
+    userColorLight: "#E9EEF7",
+    assistantColorLight: "#F8FAFF"
+  },
+  sepia: {
+    label: "Sepia",
+    userColorDark: "#3A312A",
+    assistantColorDark: "#28211B",
+    userColorLight: "#F3EBDD",
+    assistantColorLight: "#FFF8ED"
+  },
+  contrast: {
+    label: "High Contrast",
+    userColorDark: "#3A3A3A",
+    assistantColorDark: "#141414",
+    userColorLight: "#EFEFEF",
+    assistantColorLight: "#FFFFFF"
+  }
+};
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+export function normalizeRoleThemeKey(value, fallback = DEFAULT_ROLE_THEME_KEY) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === CUSTOM_ROLE_THEME_KEY) return CUSTOM_ROLE_THEME_KEY;
+  if (hasOwn(ROLE_THEME_PRESETS, raw)) return raw;
+  return hasOwn(ROLE_THEME_PRESETS, fallback) ? fallback : DEFAULT_ROLE_THEME_KEY;
+}
+
+export function getRoleThemePreset(themeKey, fallback = DEFAULT_ROLE_THEME_KEY) {
+  const normalized = normalizeRoleThemeKey(themeKey, fallback);
+  if (normalized === CUSTOM_ROLE_THEME_KEY) {
+    const fallbackKey = normalizeRoleThemeKey(fallback, DEFAULT_ROLE_THEME_KEY);
+    return ROLE_THEME_PRESETS[fallbackKey];
+  }
+  return ROLE_THEME_PRESETS[normalized];
+}
+
+export function getRoleThemeColorPatch(themeKey, fallback = DEFAULT_ROLE_THEME_KEY) {
+  const preset = getRoleThemePreset(themeKey, fallback);
+  return {
+    userColorDark: preset.userColorDark,
+    assistantColorDark: preset.assistantColorDark,
+    userColorLight: preset.userColorLight,
+    assistantColorLight: preset.assistantColorLight
+  };
+}
+
+const DEFAULT_ROLE_THEME_COLORS = getRoleThemeColorPatch(DEFAULT_ROLE_THEME_KEY);
+
 export const DEFAULT_EXTENSION_SETTINGS = {
   enabled: true,
   debug: false,
@@ -20,10 +86,11 @@ export const DEFAULT_EXTENSION_SETTINGS = {
   composerWidthPx: 768,
   scrollThrottleMs: 50,
   mutationDebounceMs: 50,
-  userColorDark: "#303030",
-  assistantColorDark: "#202020",
-  userColorLight: "#F4F4F4",
-  assistantColorLight: "#FFFFFF"
+  roleThemeKey: DEFAULT_ROLE_THEME_KEY,
+  userColorDark: DEFAULT_ROLE_THEME_COLORS.userColorDark,
+  assistantColorDark: DEFAULT_ROLE_THEME_COLORS.assistantColorDark,
+  userColorLight: DEFAULT_ROLE_THEME_COLORS.userColorLight,
+  assistantColorLight: DEFAULT_ROLE_THEME_COLORS.assistantColorLight
 };
 
 export const SETTINGS_STORAGE_KEYS = Object.keys(DEFAULT_EXTENSION_SETTINGS);
@@ -180,6 +247,33 @@ export function normalizeExtensionSettings(input, options = {}) {
   const defaultMarginPx = Number.isFinite(options.defaultMarginPx)
     ? Number(options.defaultMarginPx)
     : DEFAULT_EXTENSION_SETTINGS.marginPx;
+  const roleThemeKey = normalizeRoleThemeKey(
+    source.roleThemeKey,
+    DEFAULT_EXTENSION_SETTINGS.roleThemeKey
+  );
+  const userColorDark = normalizeColorHex(source.userColorDark, DEFAULT_EXTENSION_SETTINGS.userColorDark);
+  const assistantColorDark = normalizeColorHex(
+    source.assistantColorDark,
+    DEFAULT_EXTENSION_SETTINGS.assistantColorDark
+  );
+  const userColorLight = normalizeColorHex(
+    source.userColorLight,
+    DEFAULT_EXTENSION_SETTINGS.userColorLight
+  );
+  const assistantColorLight = normalizeColorHex(
+    source.assistantColorLight,
+    DEFAULT_EXTENSION_SETTINGS.assistantColorLight
+  );
+  const activePreset =
+    roleThemeKey === CUSTOM_ROLE_THEME_KEY
+      ? null
+      : getRoleThemePreset(roleThemeKey, DEFAULT_EXTENSION_SETTINGS.roleThemeKey);
+  const matchesPreset =
+    !!activePreset &&
+    activePreset.userColorDark === userColorDark &&
+    activePreset.assistantColorDark === assistantColorDark &&
+    activePreset.userColorLight === userColorLight &&
+    activePreset.assistantColorLight === assistantColorLight;
 
   return {
     enabled: typeof source.enabled === "boolean" ? source.enabled : DEFAULT_EXTENSION_SETTINGS.enabled,
@@ -195,10 +289,11 @@ export function normalizeExtensionSettings(input, options = {}) {
     composerWidthPx: normalizeComposerWidthPx(source.composerWidthPx),
     scrollThrottleMs: normalizeScrollThrottleMs(source.scrollThrottleMs),
     mutationDebounceMs: normalizeMutationDebounceMs(source.mutationDebounceMs),
-    userColorDark: normalizeColorHex(source.userColorDark, DEFAULT_EXTENSION_SETTINGS.userColorDark),
-    assistantColorDark: normalizeColorHex(source.assistantColorDark, DEFAULT_EXTENSION_SETTINGS.assistantColorDark),
-    userColorLight: normalizeColorHex(source.userColorLight, DEFAULT_EXTENSION_SETTINGS.userColorLight),
-    assistantColorLight: normalizeColorHex(source.assistantColorLight, DEFAULT_EXTENSION_SETTINGS.assistantColorLight)
+    roleThemeKey: matchesPreset ? roleThemeKey : CUSTOM_ROLE_THEME_KEY,
+    userColorDark,
+    assistantColorDark,
+    userColorLight,
+    assistantColorLight
   };
 }
 

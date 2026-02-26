@@ -8,13 +8,17 @@ import { createVirtualizationEngine } from './core/runtime/virtualizationEngine.
 import { createLifecycleManager } from './core/runtime/lifecycleManager.ts';
 import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
 import { styleFloatingRoundControl } from './ui/shell/floatingControls.js';
+import { createLayoutSettingsManager } from './ui/shell/layoutSettings.js';
+import { createThemeApplier } from './ui/shell/themeApplier.js';
 import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
-import { renderSidebarSettingsTab } from './ui/features/sidebar/settingsTab.js';
 import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
+import { createSidebarSettingsFeature } from './ui/features/sidebar/settingsFeature.js';
 import { createSidebarShellFeature } from './ui/features/sidebar/shellFeature.js';
 import { createBookmarksFeature } from './ui/features/bookmarks/bookmarksFeature.js';
 import { createOutlineFeature } from './ui/features/outline/outlineFeature.js';
 import { createArticleActionsFeature } from './ui/features/articleActions/articleActionsFeature.js';
+import { createPinnedBarFeature } from './ui/features/pinned/pinnedBarFeature.js';
+import { createScrollUiFeature } from './ui/features/scroll/scrollUiFeature.js';
 import { createMarkdownExportFeature } from './ui/features/snippets/markdownExport.js';
 import { createDownloadFeature } from './ui/features/download/downloadFeature.js';
 import { createTokenGaugeFeature } from './ui/features/tokenGauge/tokenGaugeFeature.js';
@@ -23,8 +27,12 @@ import { createMinimapFeature } from './ui/features/minimap/minimapFeature.js';
 import { createMapFeature } from './ui/features/map/mapFeature.js';
 import {
   DEFAULT_EXTENSION_SETTINGS,
+  ROLE_THEME_PRESETS,
+  DEFAULT_ROLE_THEME_KEY,
+  CUSTOM_ROLE_THEME_KEY,
   normalizeExtensionSettings,
   normalizeColorHex,
+  normalizeRoleThemeKey,
   normalizeSidebarHotkey,
   hotkeyMatchesKeyboardEvent,
   getSettingsStorageArea,
@@ -78,7 +86,7 @@ import {
   let sidebarBodyTransitionOriginal = "";
   let sidebarBodyFallbackUsed = false;
   let activeSidebarTab = "search";
-  let conversationLayoutStyleElement = null;
+  let themeApplier = null;
   const searchState = {
     query: "",
     results: [],
@@ -172,6 +180,7 @@ import {
     sidebarHotkey: DEFAULT_SIDEBAR_HOTKEY,
     conversationPaddingPx: DEFAULT_CONVERSATION_PADDING_PX,
     composerWidthPx: DEFAULT_COMPOSER_WIDTH_PX,
+    roleThemeKey: DEFAULT_ROLE_THEME_KEY,
     userColorDark: DEFAULT_ROLE_COLORS.userDark,
     assistantColorDark: DEFAULT_ROLE_COLORS.assistantDark,
     userColorLight: DEFAULT_ROLE_COLORS.userLight,
@@ -259,6 +268,28 @@ import {
       set: (value) => { tokenGaugeElement = value; }
     }
   });
+  const scrollUiRefs = {};
+  Object.defineProperties(scrollUiRefs, {
+    indicatorElement: {
+      get: () => indicatorElement,
+      set: (value) => { indicatorElement = value; }
+    },
+    scrollToTopButton: {
+      get: () => scrollToTopButton,
+      set: (value) => { scrollToTopButton = value; }
+    },
+    scrollToBottomButton: {
+      get: () => scrollToBottomButton,
+      set: (value) => { scrollToBottomButton = value; }
+    }
+  });
+  const pinnedRefs = {};
+  Object.defineProperties(pinnedRefs, {
+    pinnedBarElement: {
+      get: () => pinnedBarElement,
+      set: (value) => { pinnedBarElement = value; }
+    }
+  });
   const runtimeRefs = {};
   Object.defineProperties(runtimeRefs, {
     activeSidebarTab: { get: () => activeSidebarTab },
@@ -267,6 +298,24 @@ import {
     searchPanel: { get: () => searchPanel },
     minimapPanel: { get: () => minimapPanel },
     indicatorElement: { get: () => indicatorElement }
+  });
+  const themeRefs = {};
+  Object.defineProperties(themeRefs, {
+    searchButton: { get: () => searchButton },
+    minimapButton: { get: () => minimapButton },
+    codePanelButton: { get: () => codePanelButton },
+    downloadButton: { get: () => downloadButton },
+    sidebarToggleButton: { get: () => sidebarToggleButton },
+    searchPrevButton: { get: () => searchPrevButton },
+    searchNextButton: { get: () => searchNextButton },
+    searchCloseButton: { get: () => searchCloseButton },
+    searchPanel: { get: () => searchPanel },
+    searchInput: { get: () => searchInput },
+    searchCountPrimaryLabel: { get: () => searchCountPrimaryLabel },
+    searchCountSecondaryLabel: { get: () => searchCountSecondaryLabel },
+    minimapPanel: { get: () => minimapPanel },
+    codePanelPanel: { get: () => codePanelPanel },
+    sidebarPanel: { get: () => sidebarPanel }
   });
 
   const serviceContainer = createServiceContainer();
@@ -493,6 +542,107 @@ import {
       togglePin,
       toggleBookmark,
       refreshSidebarTab
+    }
+  });
+  const layoutSettingsManager = createLayoutSettingsManager({
+    config,
+    defaultRoleColors: DEFAULT_ROLE_COLORS,
+    getUiSettings: () => uiSettings
+  });
+  const sidebarSettingsFeature = createSidebarSettingsFeature({
+    deps: {
+      getSettingsStorageArea,
+      getThemeTokens,
+      state,
+      config,
+      getUiSettings: () => uiSettings,
+      defaults: {
+        sidebarHotkey: DEFAULT_SIDEBAR_HOTKEY,
+        conversationPaddingPx: DEFAULT_CONVERSATION_PADDING_PX,
+        composerWidthPx: DEFAULT_COMPOSER_WIDTH_PX,
+        sidebarPanelWidthPx: SIDEBAR_PANEL_WIDTH_PX,
+        roleThemeKey: DEFAULT_ROLE_THEME_KEY,
+        roleThemePresets: ROLE_THEME_PRESETS,
+        roleColors: DEFAULT_ROLE_COLORS
+      },
+      constants: {
+        sidebarWidthMinPx: SIDEBAR_WIDTH_MIN_PX,
+        sidebarWidthMaxPx: SIDEBAR_WIDTH_MAX_PX,
+        conversationPaddingMinPx: CONVERSATION_PADDING_MIN_PX,
+        conversationPaddingMaxPx: CONVERSATION_PADDING_MAX_PX,
+        composerWidthMinPx: COMPOSER_WIDTH_MIN_PX,
+        composerWidthMaxPx: COMPOSER_WIDTH_MAX_PX,
+        scrollThrottleMinMs: SCROLL_THROTTLE_MIN_MS,
+        scrollThrottleMaxMs: SCROLL_THROTTLE_MAX_MS,
+        mutationDebounceMinMs: MUTATION_DEBOUNCE_MIN_MS,
+        mutationDebounceMaxMs: MUTATION_DEBOUNCE_MAX_MS,
+        customRoleThemeKey: CUSTOM_ROLE_THEME_KEY
+      },
+      helpers: {
+        normalizeMargin,
+        normalizeSidebarWidthPx,
+        normalizeConversationPaddingPx,
+        normalizeComposerWidthPx,
+        normalizeScrollThrottleMs,
+        normalizeMutationDebounceMs,
+        normalizeSidebarHotkey,
+        normalizeRoleThemeKey,
+        normalizeColorHex
+      },
+      callbacks: {
+        applyUiSettings,
+        scheduleVirtualization,
+        updateSearchVisibility,
+        updateSidebarVisibility,
+        getStatsSnapshot,
+        loadFlagsStore,
+        loadKnownConversationsStore,
+        summarizeConversationCaches,
+        currentConversationKey,
+        rerenderSettings: () => renderSidebarTab("settings")
+      }
+    }
+  });
+  const scrollUiFeature = createScrollUiFeature({
+    refs: scrollUiRefs,
+    state,
+    constants: {
+      scrollButtonOffsetPx: SCROLL_BUTTON_OFFSET_PX,
+      scrollButtonSizePx: SCROLL_BUTTON_SIZE_PX,
+      scrollButtonTopOffsetPx: SCROLL_BUTTON_TOP_OFFSET_PX,
+      scrollBufferPx: SCROLL_BUFFER_PX,
+      maxScrollAttempts: MAX_SCROLL_ATTEMPTS,
+      scrollRetryDelayMs: SCROLL_RETRY_DELAY_MS,
+      indicatorRightOffsetPx: INDICATOR_RIGHT_OFFSET_PX,
+      indicatorBaseMinHeightPx: INDICATOR_BASE_MIN_HEIGHT_PX,
+      indicatorMinOpacity: INDICATOR_MIN_OPACITY
+    },
+    deps: {
+      getThemeTokens,
+      getRoleSurfaceStyle,
+      applyFloatingUiOffsets,
+      applyThemeToUi,
+      styleSearchButton
+    }
+  });
+  const pinnedBarFeature = createPinnedBarFeature({
+    refs: pinnedRefs,
+    state,
+    deps: {
+      getThemeTokens,
+      applyThemeToUi,
+      togglePin,
+      scrollToVirtualId
+    }
+  });
+  themeApplier = createThemeApplier({
+    refs: themeRefs,
+    deps: {
+      getThemeTokens,
+      applyScrollTheme: (theme) => scrollUiFeature.applyTheme(theme),
+      applyMinimapTheme: (theme) => minimapFeature.applyTheme(theme),
+      applyPinnedTheme: (theme) => pinnedBarFeature.applyTheme(theme),
+      dispatchThemeChanged: () => featureRegistry.dispatchThemeChanged(getRuntimeContext())
     }
   });
 
@@ -962,65 +1112,23 @@ import {
   }
 
   function getScrollTarget() {
-    const scrollElement = state.scrollElement;
-
-    if (
-      scrollElement === window ||
-      scrollElement === document.body ||
-      scrollElement === document.documentElement
-    ) {
-      return document.scrollingElement || document.documentElement;
-    }
-
-    return scrollElement instanceof HTMLElement ? scrollElement : null;
+    return scrollUiFeature.getScrollTarget();
   }
 
   function getMaxScrollTop(scrollTarget) {
-    if (!scrollTarget) return 0;
-    return Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight);
+    return scrollUiFeature.getMaxScrollTop(scrollTarget);
   }
 
   function isScrollable(scrollTarget) {
-    if (!scrollTarget) return false;
-    return getMaxScrollTop(scrollTarget) >= SCROLL_BUFFER_PX;
+    return scrollUiFeature.isScrollable(scrollTarget);
   }
 
   function ensureIndicatorElement() {
-    if (indicatorElement && indicatorElement.isConnected) {
-      return indicatorElement;
-    }
-
-    const element = document.createElement("div");
-    const theme = getThemeTokens();
-    const userRoleStyle = getRoleSurfaceStyle("user", theme);
-    element.setAttribute("data-chatgpt-virtual-indicator", "1");
-    element.style.position = "fixed";
-    element.style.right = `${INDICATOR_RIGHT_OFFSET_PX}px`;
-    element.style.top = "50%";
-    element.style.transform = "translateY(-50%)";
-    element.style.zIndex = "10003";
-    element.style.display = "none";
-    element.style.width = "4px";
-    element.style.height = `${INDICATOR_BASE_MIN_HEIGHT_PX}px`;
-    element.style.borderRadius = "999px";
-    element.style.background = userRoleStyle.accentColor;
-    element.style.border = `1px solid ${userRoleStyle.borderColor}`;
-    element.style.boxShadow = "0 4px 10px rgba(15, 23, 42, 0.18)";
-    element.style.opacity = String(INDICATOR_MIN_OPACITY);
-    element.style.pointerEvents = "none";
-    element.style.userSelect = "none";
-    element.setAttribute("aria-label", "Virtualizing messages");
-    document.body.appendChild(element);
-    indicatorElement = element;
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return element;
+    return scrollUiFeature.ensureIndicatorElement();
   }
 
   function hideIndicator() {
-    if (indicatorElement) {
-      indicatorElement.style.display = "none";
-    }
+    scrollUiFeature.hideIndicator();
   }
 
   function hideAllUiElements() {
@@ -1034,100 +1142,12 @@ import {
     if (downloadButton) downloadButton.style.display = "none";
   }
 
-  function setButtonVisibility(button, shouldShow) {
-    if (!button) return;
-    button.style.display = shouldShow ? "flex" : "none";
-  }
-
-  function scrollToEdge(position) {
-    const attemptScroll = (attempt) => {
-      const scrollTarget = getScrollTarget();
-      if (!scrollTarget) return;
-
-      const maxScrollTop = getMaxScrollTop(scrollTarget);
-      const targetTop = position === "top" ? 0 : maxScrollTop;
-      scrollTarget.scrollTo({ top: targetTop, behavior: "smooth" });
-
-      if (attempt < MAX_SCROLL_ATTEMPTS) {
-        setTimeout(() => {
-          const updatedTarget = getScrollTarget();
-          if (!updatedTarget) return;
-          const updatedMax = getMaxScrollTop(updatedTarget);
-          const atEdge =
-            position === "top"
-              ? updatedTarget.scrollTop <= SCROLL_BUFFER_PX
-              : updatedTarget.scrollTop >= updatedMax - SCROLL_BUFFER_PX;
-
-          if (!atEdge) attemptScroll(attempt + 1);
-        }, SCROLL_RETRY_DELAY_MS);
-      }
-    };
-
-    attemptScroll(0);
-  }
-
   function ensureScrollButton(position) {
-    const existingButton = position === "top" ? scrollToTopButton : scrollToBottomButton;
-    if (existingButton && existingButton.isConnected) {
-      return existingButton;
-    }
-
-    if (!document.body) {
-      return null;
-    }
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("data-chatgpt-virtual-scroll", position);
-    button.style.position = "fixed";
-    button.style.right = `${SCROLL_BUTTON_OFFSET_PX}px`;
-    button.style.zIndex = "10002";
-    button.style.width = `${SCROLL_BUTTON_SIZE_PX}px`;
-    button.style.height = `${SCROLL_BUTTON_SIZE_PX}px`;
-    button.style.borderRadius = "999px";
-    button.style.border = "none";
-    button.style.cursor = "pointer";
-    button.style.background = "rgba(17, 24, 39, 0.7)";
-    button.style.color = "#f9fafb";
-    button.style.fontSize = "16px";
-    button.style.fontWeight = "600";
-    button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
-    button.style.display = "none";
-    button.style.alignItems = "center";
-    button.style.justifyContent = "center";
-    button.style.padding = "0";
-
-    if (position === "top") {
-      button.style.top = `${SCROLL_BUTTON_TOP_OFFSET_PX}px`;
-      button.textContent = "↑";
-      button.setAttribute("aria-label", "Scroll to top");
-    } else {
-      button.style.bottom = `${SCROLL_BUTTON_OFFSET_PX}px`;
-      button.textContent = "↓";
-      button.setAttribute("aria-label", "Scroll to bottom");
-    }
-
-    button.addEventListener("click", () => {
-      // Use latest scroll target in case the container changes.
-      scrollToEdge(position);
-    });
-
-    document.body.appendChild(button);
-
-    if (position === "top") {
-      scrollToTopButton = button;
-    } else {
-      scrollToBottomButton = button;
-    }
-
-    applyFloatingUiOffsets();
-    applyThemeToUi();
-    return button;
+    return scrollUiFeature.ensureScrollButton(position);
   }
 
   function hideScrollButtons() {
-    if (scrollToTopButton) scrollToTopButton.style.display = "none";
-    if (scrollToBottomButton) scrollToBottomButton.style.display = "none";
+    scrollUiFeature.hideScrollButtons();
   }
 
   function hideSearchUi() {
@@ -1135,125 +1155,13 @@ import {
   }
 
   function updateScrollButtons(totalMessages) {
-    if (!state.enabled) {
-      hideScrollButtons();
-      return;
-    }
-
-    // Prefer the established scroll element; fall back to candidates only
-    // when it isn't set (e.g., early in page load before messages are found).
-    let scrollTarget = getScrollTarget();
-
-    if (!scrollTarget) {
-      const candidates = [];
-      if (state.scrollElement instanceof HTMLElement) candidates.push(state.scrollElement);
-      const docFallback = document.scrollingElement || document.documentElement || document.body;
-      if (docFallback) candidates.push(docFallback);
-
-      let maxScrollable = 0;
-      candidates.forEach((candidate) => {
-        if (!candidate) return;
-        const max = getMaxScrollTop(candidate);
-        if (max > maxScrollable) {
-          maxScrollable = max;
-          scrollTarget = candidate;
-        }
-      });
-
-      if (!scrollTarget || maxScrollable < SCROLL_BUFFER_PX) {
-        hideScrollButtons();
-        return;
-      }
-    } else {
-      if (!isScrollable(scrollTarget)) {
-        hideScrollButtons();
-        return;
-      }
-    }
-
-    const topButton = ensureScrollButton("top");
-    const bottomButton = ensureScrollButton("bottom");
-
-    const maxScrollTop = getMaxScrollTop(scrollTarget);
-    setButtonVisibility(topButton, scrollTarget.scrollTop > SCROLL_BUFFER_PX);
-    setButtonVisibility(
-      bottomButton,
-      scrollTarget.scrollTop < maxScrollTop - SCROLL_BUFFER_PX
-    );
+    void totalMessages;
+    scrollUiFeature.updateScrollButtons();
   }
 
   function applyThemeToUi() {
-    const theme = getThemeTokens();
-
-    if (indicatorElement) {
-      const userRoleStyle = getRoleSurfaceStyle("user", theme);
-      indicatorElement.style.background = userRoleStyle.accentColor;
-      indicatorElement.style.boxShadow = theme.indicatorShadow;
-      indicatorElement.style.border = `1px solid ${userRoleStyle.borderColor}`;
-    }
-
-    const buttons = [scrollToTopButton, scrollToBottomButton, searchButton, minimapButton,
-      codePanelButton, downloadButton, sidebarToggleButton];
-    buttons.forEach((button) => {
-      if (!button) return;
-      button.style.background = theme.buttonBg;
-      button.style.color = theme.buttonText;
-      button.style.boxShadow = theme.buttonShadow;
-    });
-
-    const minorButtons = [searchPrevButton, searchNextButton, searchCloseButton];
-    minorButtons.forEach((button) => {
-      if (!button) return;
-      button.style.background = theme.buttonMutedBg;
-      button.style.color = theme.buttonMutedText;
-      button.style.border = `1px solid ${theme.panelBorder}`;
-    });
-
-    if (searchPanel) {
-      searchPanel.style.background = theme.panelBg;
-      searchPanel.style.boxShadow = theme.panelShadow;
-      searchPanel.style.border = `1px solid ${theme.panelBorder}`;
-      searchPanel.style.color = theme.text;
-    }
-
-    if (searchInput) {
-      searchInput.style.background = theme.inputBg;
-      searchInput.style.border = `1px solid ${theme.inputBorder}`;
-      searchInput.style.color = theme.text;
-      searchInput.style.caretColor = theme.text;
-    }
-
-    if (searchCountPrimaryLabel) {
-      searchCountPrimaryLabel.style.color = theme.text;
-    }
-    if (searchCountSecondaryLabel) {
-      searchCountSecondaryLabel.style.color = theme.mutedText;
-    }
-
-    if (minimapPanel) {
-      minimapFeature.applyTheme(theme);
-    }
-
-    if (codePanelPanel) {
-      codePanelPanel.style.background = theme.panelBg;
-      codePanelPanel.style.boxShadow = theme.panelShadow;
-      codePanelPanel.style.border = `1px solid ${theme.panelBorder}`;
-      codePanelPanel.style.color = theme.text;
-    }
-
-    if (sidebarPanel) {
-      sidebarPanel.style.background = theme.panelBg;
-      sidebarPanel.style.boxShadow = theme.panelShadow;
-      sidebarPanel.style.border = `1px solid ${theme.panelBorder}`;
-      sidebarPanel.style.color = theme.text;
-    }
-
-    if (pinnedBarElement) {
-      pinnedBarElement.style.background = theme.panelBg;
-      pinnedBarElement.style.borderBottom = `1px solid ${theme.panelBorder}`;
-      pinnedBarElement.style.boxShadow = theme.panelShadow;
-    }
-    featureRegistry.dispatchThemeChanged(getRuntimeContext());
+    if (!themeApplier) return;
+    themeApplier.applyThemeToUi();
   }
 
   function escapeSelectorValue(value) {
@@ -1360,61 +1268,15 @@ import {
   }
 
   function normalizeMargin(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return config.DEFAULT_MARGIN_PX;
-    return Math.min(config.MAX_MARGIN_PX, Math.max(config.MIN_MARGIN_PX, Math.round(parsed)));
-  }
-
-  function ensureConversationLayoutStyleElement() {
-    if (conversationLayoutStyleElement && conversationLayoutStyleElement.isConnected) {
-      return conversationLayoutStyleElement;
-    }
-    const style = document.createElement("style");
-    style.id = "gpt-boost-layout-settings";
-    document.head.appendChild(style);
-    conversationLayoutStyleElement = style;
-    return style;
+    return layoutSettingsManager.normalizeMargin(value);
   }
 
   function applyRoleColorSettings() {
-    const rootStyle = document.documentElement && document.documentElement.style;
-    if (!rootStyle) return;
-    rootStyle.setProperty("--gpt-boost-user-dark", uiSettings.userColorDark || DEFAULT_ROLE_COLORS.userDark);
-    rootStyle.setProperty("--gpt-boost-assistant-dark", uiSettings.assistantColorDark || DEFAULT_ROLE_COLORS.assistantDark);
-    rootStyle.setProperty("--gpt-boost-user-light", uiSettings.userColorLight || DEFAULT_ROLE_COLORS.userLight);
-    rootStyle.setProperty("--gpt-boost-assistant-light", uiSettings.assistantColorLight || DEFAULT_ROLE_COLORS.assistantLight);
+    layoutSettingsManager.applyRoleColorSettings();
   }
 
   function applyConversationLayoutSettings() {
-    const styleEl = ensureConversationLayoutStyleElement();
-    styleEl.textContent = `
-      .composer-parent {
-        --composer-bar_current-width: ${uiSettings.composerWidthPx}px !important;
-        --composer-bar_width: ${uiSettings.composerWidthPx}px !important;
-      }
-      [class*="thread-content-margin"] {
-        --thread-content-margin: ${uiSettings.conversationPaddingPx}px !important;
-      }
-      [class*="thread-content-max-width"] {
-        --thread-content-max-width: ${uiSettings.composerWidthPx}px !important;
-      }
-    `;
-
-    const composerWidthValue = `${uiSettings.composerWidthPx}px`;
-    const conversationPaddingValue = `${uiSettings.conversationPaddingPx}px`;
-    document.querySelectorAll(".composer-parent").forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      node.style.setProperty("--composer-bar_current-width", composerWidthValue, "important");
-      node.style.setProperty("--composer-bar_width", composerWidthValue, "important");
-    });
-    document.querySelectorAll('[class*="thread-content-margin"]').forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      node.style.setProperty("--thread-content-margin", conversationPaddingValue, "important");
-    });
-    document.querySelectorAll('[class*="thread-content-max-width"]').forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      node.style.setProperty("--thread-content-max-width", composerWidthValue, "important");
-    });
+    layoutSettingsManager.applyConversationLayoutSettings();
   }
 
   function applyUiSettings(nextSettings = {}) {
@@ -1489,55 +1351,7 @@ import {
   }
 
   function renderSettingsTabContent(container) {
-    renderSidebarSettingsTab({
-      container,
-      storage: getSettingsStorageArea(),
-      theme: getThemeTokens(),
-      state,
-      config,
-      uiSettings,
-      defaults: {
-        sidebarHotkey: DEFAULT_SIDEBAR_HOTKEY,
-        conversationPaddingPx: DEFAULT_CONVERSATION_PADDING_PX,
-        composerWidthPx: DEFAULT_COMPOSER_WIDTH_PX,
-        sidebarPanelWidthPx: SIDEBAR_PANEL_WIDTH_PX,
-        roleColors: DEFAULT_ROLE_COLORS
-      },
-      constants: {
-        sidebarWidthMinPx: SIDEBAR_WIDTH_MIN_PX,
-        sidebarWidthMaxPx: SIDEBAR_WIDTH_MAX_PX,
-        conversationPaddingMinPx: CONVERSATION_PADDING_MIN_PX,
-        conversationPaddingMaxPx: CONVERSATION_PADDING_MAX_PX,
-        composerWidthMinPx: COMPOSER_WIDTH_MIN_PX,
-        composerWidthMaxPx: COMPOSER_WIDTH_MAX_PX,
-        scrollThrottleMinMs: SCROLL_THROTTLE_MIN_MS,
-        scrollThrottleMaxMs: SCROLL_THROTTLE_MAX_MS,
-        mutationDebounceMinMs: MUTATION_DEBOUNCE_MIN_MS,
-        mutationDebounceMaxMs: MUTATION_DEBOUNCE_MAX_MS
-      },
-      helpers: {
-        normalizeMargin,
-        normalizeSidebarWidthPx,
-        normalizeConversationPaddingPx,
-        normalizeComposerWidthPx,
-        normalizeScrollThrottleMs,
-        normalizeMutationDebounceMs,
-        normalizeSidebarHotkey,
-        normalizeColorHex
-      },
-      callbacks: {
-        applyUiSettings,
-        scheduleVirtualization,
-        updateSearchVisibility,
-        updateSidebarVisibility,
-        getStatsSnapshot,
-        loadFlagsStore,
-        loadKnownConversationsStore,
-        summarizeConversationCaches,
-        currentConversationKey,
-        rerenderSettings: () => renderSidebarTab("settings")
-      }
-    });
+    sidebarSettingsFeature.render(container);
   }
 
   function renderSidebarTab(tabId) {
@@ -1731,107 +1545,11 @@ import {
   }
 
   function ensurePinnedBar() {
-    if (pinnedBarElement && pinnedBarElement.isConnected) return pinnedBarElement;
-
-    const bar = document.createElement("div");
-    bar.setAttribute("data-chatgpt-pinned-bar", "1");
-    bar.style.position = "fixed";
-    bar.style.top = "0";
-    bar.style.left = "50%";
-    bar.style.transform = "translateX(-50%)";
-    bar.style.zIndex = "10000";
-    bar.style.display = "none";
-    bar.style.flexDirection = "row";
-    bar.style.flexWrap = "wrap";
-    bar.style.gap = "4px";
-    bar.style.padding = "4px 10px";
-    bar.style.maxWidth = "700px";
-    bar.style.borderRadius = "0 0 12px 12px";
-    bar.style.backdropFilter = "blur(8px)";
-    bar.style.pointerEvents = "auto";
-
-    const items = document.createElement("div");
-    items.setAttribute("data-gpt-boost-pinned-items", "1");
-    items.style.display = "flex";
-    items.style.flexDirection = "row";
-    items.style.flexWrap = "wrap";
-    items.style.gap = "4px";
-    items.style.alignItems = "center";
-    bar.appendChild(items);
-
-    document.body.appendChild(bar);
-    pinnedBarElement = bar;
-    applyThemeToUi();
-    return bar;
+    return pinnedBarFeature.ensurePinnedBar();
   }
 
   function updatePinnedBar() {
-    if (state.pinnedMessages.size === 0) {
-      if (pinnedBarElement) pinnedBarElement.style.display = "none";
-      return;
-    }
-
-    const bar = ensurePinnedBar();
-    if (!bar) return;
-
-    const itemsContainer = bar.querySelector("[data-gpt-boost-pinned-items]");
-    if (!itemsContainer) return;
-
-    itemsContainer.innerHTML = "";
-    const theme = getThemeTokens();
-
-    state.pinnedMessages.forEach((id) => {
-      const article = state.articleMap.get(id);
-      if (!article) return;
-
-      const textSource = article.querySelector("[data-message-author-role]") || article;
-      const rawText = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-      const snippet = rawText.length > 80 ? rawText.slice(0, 80) + "…" : rawText;
-
-      const item = document.createElement("div");
-      item.style.display = "flex";
-      item.style.alignItems = "center";
-      item.style.gap = "4px";
-      item.style.padding = "2px 6px";
-      item.style.borderRadius = "6px";
-      item.style.background = theme.buttonMutedBg;
-      item.style.color = theme.text;
-      item.style.fontSize = "11px";
-      item.style.cursor = "pointer";
-      item.style.border = `1px solid ${theme.panelBorder}`;
-
-      const textEl = document.createElement("span");
-      textEl.textContent = "📌 " + snippet;
-      textEl.style.overflow = "hidden";
-      textEl.style.whiteSpace = "nowrap";
-      textEl.style.textOverflow = "ellipsis";
-      textEl.style.maxWidth = "220px";
-
-      const unpinBtn = document.createElement("button");
-      unpinBtn.type = "button";
-      unpinBtn.textContent = "×";
-      unpinBtn.setAttribute("aria-label", "Unpin message");
-      unpinBtn.style.background = "none";
-      unpinBtn.style.border = "none";
-      unpinBtn.style.cursor = "pointer";
-      unpinBtn.style.fontSize = "13px";
-      unpinBtn.style.color = theme.mutedText;
-      unpinBtn.style.padding = "0";
-      unpinBtn.style.lineHeight = "1";
-      unpinBtn.style.flexShrink = "0";
-      unpinBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        togglePin(id);
-      });
-
-      item.appendChild(textEl);
-      item.appendChild(unpinBtn);
-      item.addEventListener("click", () => scrollToVirtualId(id));
-
-      itemsContainer.appendChild(item);
-    });
-
-    bar.style.display = "flex";
+    pinnedBarFeature.updatePinnedBar();
   }
 
   function togglePin(virtualId) {
@@ -2037,19 +1755,7 @@ import {
     state.nextVirtualId = 1;
     state.emptyVirtualizationRetryCount = 0;
 
-    if (indicatorElement && indicatorElement.isConnected) {
-      indicatorElement.remove();
-    }
-    indicatorElement = null;
-
-    if (scrollToTopButton && scrollToTopButton.isConnected) {
-      scrollToTopButton.remove();
-    }
-    if (scrollToBottomButton && scrollToBottomButton.isConnected) {
-      scrollToBottomButton.remove();
-    }
-    scrollToTopButton = null;
-    scrollToBottomButton = null;
+    scrollUiFeature.teardown();
 
     if (searchButton && searchButton.isConnected) {
       searchButton.remove();
