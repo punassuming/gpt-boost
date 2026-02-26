@@ -6,6 +6,7 @@ import { createFeatureRegistry } from './core/runtime/featureRegistry.ts';
 import { createServiceContainer } from './core/services/container.ts';
 import { createVirtualizationEngine } from './core/runtime/virtualizationEngine.ts';
 import { createLifecycleManager } from './core/runtime/lifecycleManager.ts';
+import { createArticleRegistry } from './core/runtime/articleRegistry.js';
 import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
 import { styleFloatingRoundControl } from './ui/shell/floatingControls.js';
 import { createLayoutSettingsManager } from './ui/shell/layoutSettings.js';
@@ -85,6 +86,7 @@ import {
   let activeSidebarTab = "search";
   let themeApplier = null;
   let layoutOffsetsManager = null;
+  let articleRegistry = null;
   const searchState = {
     query: "",
     results: [],
@@ -872,6 +874,15 @@ import {
       openSidebar
     }
   });
+  articleRegistry = createArticleRegistry({
+    state,
+    deps: {
+      getActiveConversationNodes,
+      getArticleMessageKey,
+      injectArticleUi,
+      syncFlagsFromPersistedKeys
+    }
+  });
 
   function syncFlagsFromPersistedKeys() {
     const nextPinned = new Set();
@@ -930,51 +941,16 @@ import {
    * Assign virtual IDs to visible <article> messages.
    */
   function ensureVirtualIds() {
-    const articleList = getActiveConversationNodes();
-
-    articleList.forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-
-      if (!node.dataset.virtualId) {
-        const newId = String(state.nextVirtualId++);
-        node.dataset.virtualId = newId;
-        state.articleMap.set(newId, node);
-        getArticleMessageKey(node, newId);
-        injectArticleUi(node, newId);
-      } else {
-        const id = node.dataset.virtualId;
-        if (id && !state.articleMap.has(id)) {
-          state.articleMap.set(id, node);
-          getArticleMessageKey(node, id);
-          injectArticleUi(node, id);
-        }
-      }
-    });
-    syncFlagsFromPersistedKeys();
+    if (!articleRegistry) return;
+    articleRegistry.ensureVirtualIds();
   }
 
   /**
    * Get viewport position/height for the scroll container.
    */
   function getViewportMetrics() {
-    const scrollElement = state.scrollElement;
-
-    if (
-      scrollElement &&
-      scrollElement !== document.body &&
-      scrollElement !== document.documentElement &&
-      scrollElement !== window &&
-      scrollElement instanceof HTMLElement
-    ) {
-      const rect = scrollElement.getBoundingClientRect();
-      const containerHeight = scrollElement.clientHeight;
-
-      if (containerHeight > 0) {
-        return { top: rect.top, height: containerHeight };
-      }
-    }
-
-    return { top: 0, height: window.innerHeight };
+    if (!articleRegistry) return { top: 0, height: window.innerHeight };
+    return articleRegistry.getViewportMetrics();
   }
 
   function scheduleDeferredVirtualization() {

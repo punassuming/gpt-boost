@@ -113,7 +113,7 @@ It makes massive message lists behave like small ones.
 ├── src/core/settings.js              # Settings defaults/normalizers/storage helpers
 ├── src/core/storage.js               # Conversation cache + pin/bookmark persistence
 ├── src/core/virtualizer/             # Core store/observer/types
-├── src/core/runtime/                 # Feature registry + lifecycle + runtime engine modules
+├── src/core/runtime/                 # Feature registry + lifecycle + article registry + runtime engine modules
 ├── src/core/services/                # Typed shared service container
 ├── src/ui/shell/theme.ts             # Theme mode/tokens
 ├── src/ui/shell/layoutSettings.js    # Conversation/composer layout style application
