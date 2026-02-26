@@ -117,6 +117,7 @@ It makes massive message lists behave like small ones.
 ├── src/core/services/                # Typed shared service container
 ├── src/ui/shell/theme.ts             # Theme mode/tokens
 ├── src/ui/shell/layoutSettings.js    # Conversation/composer layout style application
+├── src/ui/shell/layoutOffsets.js     # Floating controls + side-layout offset coordination
 ├── src/ui/shell/themeApplier.js      # Centralized runtime UI theme application
 ├── src/ui/shell/floatingControls.js  # Shared floating round-control styling helper
 ├── src/ui/features/roleStyles.ts     # Role chip/surface styling rules

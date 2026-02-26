@@ -12,6 +12,7 @@
   - `src/core/virtualizer/` contains virtualizer-domain modules (`store.ts`, `observer.ts`, `types.ts`).
   - `src/ui/shell/theme.ts` contains theme token logic.
   - `src/ui/shell/layoutSettings.js` contains conversation/composer layout CSS application helpers.
+  - `src/ui/shell/layoutOffsets.js` contains floating-controls/side-layout offset coordination logic.
   - `src/ui/shell/themeApplier.js` contains centralized runtime theme application across floating/sidebar surfaces.
   - `src/ui/shell/floatingControls.js` contains shared floating circular control styling helpers.
   - `src/ui/features/roleStyles.ts` contains user/agent role presentation rules.

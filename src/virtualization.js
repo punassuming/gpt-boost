@@ -10,6 +10,7 @@ import { getThemeMode, getThemeTokens } from './ui/shell/theme.ts';
 import { styleFloatingRoundControl } from './ui/shell/floatingControls.js';
 import { createLayoutSettingsManager } from './ui/shell/layoutSettings.js';
 import { createThemeApplier } from './ui/shell/themeApplier.js';
+import { createLayoutOffsetsManager } from './ui/shell/layoutOffsets.js';
 import { getRoleDisplayLabel, getRoleSurfaceStyle, createRoleChip } from './ui/features/roleStyles.ts';
 import { renderSidebarSnippetsTab } from './ui/features/sidebar/snippetsTab.js';
 import { createSidebarSettingsFeature } from './ui/features/sidebar/settingsFeature.js';
@@ -81,12 +82,9 @@ import {
   let sidebarContentContainer = null;
   let activeMapVirtualId = null;
   let activeStandaloneMinimapVirtualId = null;
-  const sidebarLayoutOriginalStyles = new Map();
-  let sidebarBodyMarginOriginal = "";
-  let sidebarBodyTransitionOriginal = "";
-  let sidebarBodyFallbackUsed = false;
   let activeSidebarTab = "search";
   let themeApplier = null;
+  let layoutOffsetsManager = null;
   const searchState = {
     query: "",
     results: [],
@@ -290,6 +288,19 @@ import {
       set: (value) => { pinnedBarElement = value; }
     }
   });
+  const layoutOffsetRefs = {};
+  Object.defineProperties(layoutOffsetRefs, {
+    sidebarPanel: { get: () => sidebarPanel },
+    currentSidebarWidthPx: { get: () => currentSidebarWidthPx },
+    indicatorElement: { get: () => indicatorElement },
+    sidebarToggleButton: { get: () => sidebarToggleButton },
+    searchButton: { get: () => searchButton },
+    searchPanel: { get: () => searchPanel },
+    downloadButton: { get: () => downloadButton },
+    scrollToTopButton: { get: () => scrollToTopButton },
+    scrollToBottomButton: { get: () => scrollToBottomButton },
+    minimapPanel: { get: () => minimapPanel }
+  });
   const runtimeRefs = {};
   Object.defineProperties(runtimeRefs, {
     activeSidebarTab: { get: () => activeSidebarTab },
@@ -431,6 +442,32 @@ import {
       scrollToVirtualId,
       applyFloatingUiOffsets,
       applyThemeToUi
+    }
+  });
+  layoutOffsetsManager = createLayoutOffsetsManager({
+    state,
+    refs: layoutOffsetRefs,
+    constants: {
+      indicatorRightOffsetPx: INDICATOR_RIGHT_OFFSET_PX,
+      sidebarToggleTopOffsetPx: SIDEBAR_TOGGLE_TOP_OFFSET_PX,
+      sidebarToggleRightOffsetPx: SIDEBAR_TOGGLE_RIGHT_OFFSET_PX,
+      sidebarToggleSizePx: SIDEBAR_TOGGLE_SIZE_PX,
+      searchButtonGapPx: SEARCH_BUTTON_GAP_PX,
+      searchButtonRightOffsetPx: SEARCH_BUTTON_RIGHT_OFFSET_PX,
+      searchButtonSizePx: SEARCH_BUTTON_SIZE_PX,
+      searchPanelRightOffsetPx: SEARCH_PANEL_RIGHT_OFFSET_PX,
+      downloadButtonRightOffsetPx: DOWNLOAD_BUTTON_RIGHT_OFFSET_PX,
+      downloadButtonSizePx: DOWNLOAD_BUTTON_SIZE_PX,
+      downloadButtonGapPx: DOWNLOAD_BUTTON_GAP_PX,
+      scrollButtonOffsetPx: SCROLL_BUTTON_OFFSET_PX,
+      scrollButtonTopOffsetPx: SCROLL_BUTTON_TOP_OFFSET_PX,
+      scrollButtonSizePx: SCROLL_BUTTON_SIZE_PX,
+      sidebarTransitionMs: SIDEBAR_TRANSITION_MS
+    },
+    deps: {
+      isSidebarOpen,
+      applyMinimapFloatingLayout: (offset, topButtonTop, bottomButtonTop) =>
+        minimapFeature.applyFloatingLayout(offset, topButtonTop, bottomButtonTop)
     }
   });
 
@@ -869,167 +906,18 @@ import {
   // Selectors
   // ---------------------------------------------------------------------------
 
-  function collectSidebarLayoutTargets() {
-    const targets = [];
-
-    // Primary layout owner in ChatGPT is usually the detected scroll container.
-    const scrollOwner = state.scrollElement instanceof HTMLElement ? state.scrollElement : null;
-    if (scrollOwner) {
-      targets.push(scrollOwner);
-    } else {
-      const mainRoot =
-        document.querySelector('[role="main"]') ||
-        document.querySelector("main") ||
-        (state.conversationRoot instanceof HTMLElement ? state.conversationRoot : null);
-      if (mainRoot instanceof HTMLElement) {
-        targets.push(mainRoot);
-      }
-    }
-
-    const composer = document.querySelector("textarea");
-    if (composer instanceof HTMLTextAreaElement) {
-      let fixedAncestor = null;
-      let ancestor = composer.closest("form") || composer.parentElement;
-      while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
-        if (ancestor instanceof HTMLElement) {
-          const pos = getComputedStyle(ancestor).position;
-          if (pos === "fixed" || pos === "sticky") {
-            fixedAncestor = ancestor;
-            break;
-          }
-        }
-        ancestor = ancestor.parentElement;
-      }
-      if (fixedAncestor && !targets.includes(fixedAncestor)) {
-        targets.push(fixedAncestor);
-      }
-    }
-
-    const filtered = targets.filter((el) => {
-      if (!(el instanceof HTMLElement) || !el.isConnected) return false;
-      if (sidebarPanel && sidebarPanel.contains(el)) return false;
-      return !targets.some((other) => other !== el && other instanceof HTMLElement && other.contains(el));
-    });
-    return filtered;
-  }
-
   function isSidebarOpen() {
     return !!(sidebarPanel && sidebarPanel.getAttribute("data-open") === "true");
   }
 
-  function getSidebarUiOffsetPx() {
-    return isSidebarOpen() ? currentSidebarWidthPx : 0;
-  }
-
   function applyFloatingUiOffsets() {
-    const offset = getSidebarUiOffsetPx();
-
-    if (indicatorElement) indicatorElement.style.right = `${INDICATOR_RIGHT_OFFSET_PX + offset}px`;
-
-    // Dynamically stack the right-side floating buttons so there are no empty gaps
-    // if conditional buttons (like bookmarks) are hidden.
-    let currentTop = SIDEBAR_TOGGLE_TOP_OFFSET_PX;
-
-    if (sidebarToggleButton && sidebarToggleButton.style.display !== "none") {
-      sidebarToggleButton.style.top = `${currentTop}px`;
-      sidebarToggleButton.style.right = `${SIDEBAR_TOGGLE_RIGHT_OFFSET_PX + offset}px`;
-      currentTop += SIDEBAR_TOGGLE_SIZE_PX + SEARCH_BUTTON_GAP_PX;
-    }
-
-    if (searchButton && searchButton.style.display !== "none") {
-      searchButton.style.top = `${currentTop}px`;
-      searchButton.style.right = `${SEARCH_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-      if (searchPanel) searchPanel.style.top = `${currentTop}px`;
-      if (searchPanel) searchPanel.style.right = `${SEARCH_PANEL_RIGHT_OFFSET_PX + offset}px`;
-      currentTop += SEARCH_BUTTON_SIZE_PX + SEARCH_BUTTON_GAP_PX;
-    }
-
-    if (downloadButton && downloadButton.style.display !== "none") {
-      downloadButton.style.top = `${currentTop}px`;
-      downloadButton.style.right = `${DOWNLOAD_BUTTON_RIGHT_OFFSET_PX + offset}px`;
-      currentTop += DOWNLOAD_BUTTON_SIZE_PX + DOWNLOAD_BUTTON_GAP_PX;
-    }
-
-    if (scrollToTopButton && scrollToTopButton.style.display !== "none") {
-      scrollToTopButton.style.top = `${currentTop}px`;
-      scrollToTopButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
-    }
-
-    // Scroll to bottom stays anchored to the bottom
-    if (scrollToBottomButton) scrollToBottomButton.style.right = `${SCROLL_BUTTON_OFFSET_PX + offset}px`;
-
-    if (minimapPanel) {
-      const topButtonTop = scrollToTopButton && scrollToTopButton.style.top
-        ? parseFloat(scrollToTopButton.style.top) || SCROLL_BUTTON_TOP_OFFSET_PX
-        : SCROLL_BUTTON_TOP_OFFSET_PX;
-      const bottomButtonTop = window.innerHeight - SCROLL_BUTTON_OFFSET_PX - SCROLL_BUTTON_SIZE_PX;
-      minimapFeature.applyFloatingLayout(offset, topButtonTop, bottomButtonTop);
-    }
-  }
-
-  function clearSidebarLayoutOffset() {
-    sidebarLayoutOriginalStyles.forEach((original, el) => {
-      if (!(el instanceof HTMLElement) || !el.isConnected) return;
-      el.style.marginRight = original.marginRight;
-      el.style.right = original.right;
-      el.style.boxSizing = original.boxSizing;
-      el.style.transition = original.transition;
-    });
-    sidebarLayoutOriginalStyles.clear();
-
-    if (sidebarBodyFallbackUsed) {
-      document.body.style.marginRight = sidebarBodyMarginOriginal;
-      document.body.style.transition = sidebarBodyTransitionOriginal;
-    }
-    sidebarBodyFallbackUsed = false;
-    sidebarBodyMarginOriginal = "";
-    sidebarBodyTransitionOriginal = "";
+    if (!layoutOffsetsManager) return;
+    layoutOffsetsManager.applyFloatingUiOffsets();
   }
 
   function applySidebarLayoutOffset(offsetPx, transitionMs = SIDEBAR_TRANSITION_MS) {
-    clearSidebarLayoutOffset();
-    if (!offsetPx) return;
-
-    const targets = collectSidebarLayoutTargets();
-    if (!targets.length) {
-      sidebarBodyFallbackUsed = true;
-      sidebarBodyMarginOriginal = document.body.style.marginRight;
-      sidebarBodyTransitionOriginal = document.body.style.transition;
-      document.body.style.marginRight = `${offsetPx}px`;
-      document.body.style.transition = `margin-right ${transitionMs}ms ease`;
-      return;
-    }
-
-    targets.forEach((el) => {
-      const computed = getComputedStyle(el);
-      sidebarLayoutOriginalStyles.set(el, {
-        paddingRight: el.style.paddingRight,
-        marginRight: el.style.marginRight,
-        right: el.style.right,
-        boxSizing: el.style.boxSizing,
-        transition: el.style.transition
-      });
-
-      const hasTextarea = !!el.querySelector("textarea");
-      const isFixedLike = computed.position === "fixed" || computed.position === "sticky";
-      if (hasTextarea && isFixedLike) {
-        const baseRight = computed.right && computed.right !== "auto" ? computed.right : "0px";
-        el.style.right = `calc(${baseRight} + ${offsetPx}px)`;
-      } else {
-        const isRootContainer = el === document.documentElement || el === document.body || el.tagName.toLowerCase() === "main";
-        const isScrollOwner = el === state.scrollElement;
-        if (isRootContainer || isScrollOwner) {
-          // Push native scrollbar inwards instead of burying it under padding
-          const baseMarginRight = computed.marginRight || "0px";
-          el.style.marginRight = `calc(${baseMarginRight} + ${offsetPx}px)`;
-        } else {
-          const basePaddingRight = computed.paddingRight || "0px";
-          el.style.paddingRight = `calc(${basePaddingRight} + ${offsetPx}px)`;
-          el.style.boxSizing = "border-box";
-        }
-      }
-      el.style.transition = `margin-right ${transitionMs}ms ease, padding-right ${transitionMs}ms ease, right ${transitionMs}ms ease`;
-    });
+    if (!layoutOffsetsManager) return;
+    layoutOffsetsManager.applySidebarLayoutOffset(offsetPx, transitionMs);
   }
 
 
