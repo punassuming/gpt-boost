@@ -22,20 +22,14 @@ import {
   SCROLL_THROTTLE_MAX_MS,
   MUTATION_DEBOUNCE_MIN_MS,
   MUTATION_DEBOUNCE_MAX_MS,
-  getSettingsStorageArea,
-  readStorageArea
+  getSettingsStorageArea
 } from "./core/settings.js";
 import {
-  MESSAGE_FLAGS_STORAGE_KEY,
-  KNOWN_CONVERSATIONS_STORAGE_KEY,
-  summarizeConversationCaches
-} from "./core/storage.js";
-import {
-  buildCachedConversationPayload,
   buildCustomRoleColorPatch,
   buildRoleThemePresetPatch,
   getRoleThemeOptions
 } from "./ui/features/settings/settingsData.js";
+import { startPopupTelemetry } from "./ui/features/settings/popupTelemetry.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   const totalMessagesElement = document.getElementById("statTotalMessages");
@@ -159,24 +153,6 @@ document.addEventListener("DOMContentLoaded", () => {
     settingsState = { ...settingsState, ...patch };
     applySettingsToInputs();
     persistSettingsPatch(patch);
-  }
-
-  function refreshCacheDetails() {
-    if (!cacheDetailsElement) return;
-    readStorageArea(chrome.storage?.local).then((store) => {
-      const flagsStore = store[MESSAGE_FLAGS_STORAGE_KEY] || {};
-      const knownStore = store[KNOWN_CONVERSATIONS_STORAGE_KEY] || {};
-      const summary = summarizeConversationCaches(flagsStore, knownStore);
-      const payload = buildCachedConversationPayload({
-        flagsStore,
-        knownStore,
-        summary,
-        currentConversationKey: "(popup)"
-      });
-      cacheDetailsElement.textContent = JSON.stringify(payload, null, 2);
-    }).catch(() => {
-      cacheDetailsElement.textContent = "Cached conversation stats unavailable.";
-    });
   }
 
   if (storageArea) {
@@ -375,40 +351,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function updateStatsUI() {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const activeTab = tabs[0];
-      if (!activeTab || activeTab.id == null) return;
-
-      const url = activeTab.url || "";
-      const isChatGPTTab =
-        url.startsWith("https://chat.openai.com/") ||
-        url.startsWith("https://chatgpt.com/");
-
-      if (!isChatGPTTab) {
-        totalMessagesElement.textContent = "N/A";
-        renderedMessagesElement.textContent = "N/A";
-        memorySavedElement.textContent = "N/A";
-        updateStatusText(settingsState.enabled);
-        return;
-      }
-
-      chrome.tabs.sendMessage(activeTab.id, { type: "getStats" }, (response) => {
-        if (chrome.runtime.lastError || !response) return;
-        totalMessagesElement.textContent = String(response.totalMessages);
-        renderedMessagesElement.textContent = String(response.renderedMessages);
-        memorySavedElement.textContent = `${response.memorySavedPercent}%`;
-        settingsState.enabled = !!response.enabled;
-        updateStatusText(settingsState.enabled);
-      });
-    });
-  }
-
-  refreshCacheDetails();
-  updateStatsUI();
-  const statsIntervalId = setInterval(() => {
-    updateStatsUI();
-    refreshCacheDetails();
-  }, 1000);
-  window.addEventListener("beforeunload", () => clearInterval(statsIntervalId));
+  const stopPopupTelemetry = startPopupTelemetry({
+    totalMessagesElement,
+    renderedMessagesElement,
+    memorySavedElement,
+    cacheDetailsElement,
+    getSettingsState: () => settingsState,
+    setEnabled: (enabled) => {
+      settingsState.enabled = !!enabled;
+    },
+    updateStatusText
+  });
+  window.addEventListener("beforeunload", stopPopupTelemetry);
 });

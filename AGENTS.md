@@ -28,6 +28,7 @@
   - `src/ui/features/scroll/scrollUiFeature.js` contains virtualization indicator + scroll controls lifecycle behavior.
   - `src/ui/features/sidebar/` contains sidebar shell lifecycle (`shellFeature.js`) and tab renderers (`settingsTab.js`, `snippetsTab.js`, `settingsFeature.js`).
   - `src/ui/features/settings/settingsData.js` contains shared settings-tab/popup data shaping helpers (theme options + cached conversation payload formatting).
+  - `src/ui/features/settings/popupTelemetry.js` contains popup stats + cached-conversation polling/update helpers.
   - `src/ui/features/snippets/codeSnippets.js` contains snippet parsing and language normalization.
   - `src/ui/features/snippets/markdownExport.js` contains markdown export conversion logic.
   - `src/adapters/chromeApi.ts` contains extension API wrappers/fallback behavior.

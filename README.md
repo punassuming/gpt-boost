@@ -131,7 +131,7 @@ It makes massive message lists behave like small ones.
 ├── src/ui/features/articleActions/   # Per-message collapse/pin/bookmark side-rail UI
 ├── src/ui/features/pinned/           # Pinned-message top bar feature
 ├── src/ui/features/scroll/           # Virtualization indicator + scroll controls feature
-├── src/ui/features/settings/         # Shared settings data-shaping utilities
+├── src/ui/features/settings/         # Shared settings data shaping + popup telemetry helpers
 ├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
 ├── src/ui/features/snippets/         # Snippet extraction + markdown export
 ├── src/popup.html/css/js             # Popup + options UI (shared page)
