@@ -1,8 +1,22 @@
-# ChatGPT Lag Fixer (Virtual Scroller)
+# GPT Boost
 
-**The ultimate performance booster for long ChatGPT conversations**
+**A fully reworked performance toolkit for long ChatGPT conversations**
 
-ChatGPT Lag Fixer is a **Chrome and Firefox** extension that uses intelligent virtual scrolling to keep your ChatGPT tabs lightning-fast, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
+GPT Boost is a **Chrome and Firefox** extension that uses intelligent virtual scrolling to keep your ChatGPT tabs lightning-fast, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
+
+## Migration from ChatGPT Lag Fixer
+
+GPT Boost is now the canonical name and branding for this project.
+
+### What changed
+- **Branding and naming**: References to the legacy "ChatGPT Lag Fixer" identity are replaced with **GPT Boost**.
+- **Codebase structure**: The project has been refactored into clearer runtime/core/ui modules (see `src/core`, `src/ui`, and `src/adapters`) to make features easier to evolve.
+- **Product scope**: GPT Boost now emphasizes a broader productivity surface (virtualization, navigation, sidebar tools, snippets, minimap, bookmarks, and layout controls), not just lag reduction.
+
+### Compatibility and migration notes
+- Existing extension behavior for virtualization remains focused on ChatGPT thread performance.
+- Existing local settings continue to be stored in extension storage; users can update in place without data migration steps.
+- Browser targets remain Chrome- and Firefox-compatible Manifest V3 builds.
 
 **🔐 Remain full privacy**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
 
@@ -50,7 +64,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 📦 For Google Chrome (and Edge/Brave)
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
+   git clone https://github.com/punassuming/gpt-boost.git
    ```
 2. Open Chrome and navigate to:
     ```bash
@@ -65,7 +79,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 🦊 For Mozilla Firefox
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
+   git clone https://github.com/punassuming/gpt-boost.git
    ```
 2. Open Firefox and navigate to:
     ```bash
@@ -74,7 +88,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 3. Click Load Temporary Add-on...
 4. Navigate to your project folder and select the manifest.json file
 
-You're now running ChatGPT Lag Fixer locally, and you can make changes in the code!
+You're now running GPT Boost locally, and you can make changes in the code!
 
 
 ## Technical Architecture
