@@ -49,7 +49,7 @@ There are **no** external APIs, remote code, or cloud services.
 
 ## 🧱 Open Source
 The full source code is available on GitHub:  
-https://github.com/YOUR_USERNAME/gpt-boost
+https://github.com/punassuming/gpt-boost
 
 Anyone may review, audit, or fork the code.
 
