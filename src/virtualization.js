@@ -35,9 +35,10 @@
     return document.body;
   }
 
-  /** @returns {boolean} */
-  function hasAnyMessages() {
-    return !!document.querySelector(config.ARTICLE_SELECTOR);
+  function getTrackableNodes() {
+    return document.querySelectorAll(
+      `${config.ARTICLE_SELECTOR}, div[data-chatgpt-virtual-spacer="1"]`
+    );
   }
 
   /**
@@ -165,9 +166,7 @@
   }
 
   function updateStats() {
-    const nodes = document.querySelectorAll(
-      `${config.ARTICLE_SELECTOR}, div[data-chatgpt-virtual-spacer="1"]`
-    );
+    const nodes = getTrackableNodes();
 
     let total = 0;
     let rendered = 0;
@@ -189,9 +188,7 @@
 
     ensureVirtualIds();
 
-    const nodes = document.querySelectorAll(
-      `${config.ARTICLE_SELECTOR}, div[data-chatgpt-virtual-spacer="1"]`
-    );
+    const nodes = getTrackableNodes();
     if (!nodes.length) {
       log("virtualize: no messages yet");
       return;
@@ -301,7 +298,7 @@
   // ---------------------------------------------------------------------------
 
   function attachOrUpdateScrollListener() {
-    if (!hasAnyMessages()) return;
+    if (!document.querySelector(config.ARTICLE_SELECTOR)) return;
 
     const container = findScrollContainer();
     if (!container) return;
@@ -316,9 +313,10 @@
     }
 
     state.scrollElement = container;
-    state.cleanupScrollListener = setupScrollTracking(container, () => {
-      scheduleVirtualization();
-    });
+    state.cleanupScrollListener = setupScrollTracking(
+      container,
+      scheduleVirtualization
+    );
 
     log(
       "Scroll listener attached to:",
@@ -395,6 +393,7 @@
     teardownVirtualizer,
     startUrlWatcher,
     handleResize,
+    forceVirtualize: virtualizeNow,
     getStatsSnapshot
   };
 })();
