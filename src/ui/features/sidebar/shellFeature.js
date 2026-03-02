@@ -11,36 +11,15 @@ export function createSidebarShellFeature({
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = `${icon} ${label}`;
-    btn.style.border = "1px solid transparent";
-    btn.style.borderRadius = "999px";
-    btn.style.padding = "7px 10px";
+    btn.style.border = "none";
+    btn.style.borderRadius = "8px";
+    btn.style.padding = "6px 8px";
     btn.style.fontSize = "11px";
     btn.style.cursor = "pointer";
     btn.style.fontFamily = "inherit";
-    btn.style.fontWeight = "600";
-    btn.style.display = "inline-flex";
-    btn.style.alignItems = "center";
-    btn.style.justifyContent = "center";
-    btn.style.lineHeight = "1";
     btn.style.background = "transparent";
     btn.style.color = "inherit";
-    btn.style.transition = "background 0.18s ease, border-color 0.18s ease, color 0.18s ease";
     btn.dataset.gptBoostSidebarTab = tabId;
-    btn.dataset.gptBoostSidebarActive = "0";
-    btn.addEventListener("mouseenter", () => {
-      if (btn.dataset.gptBoostSidebarActive === "1") return;
-      const theme = deps.getThemeTokens();
-      btn.style.background = theme.buttonMutedBg;
-      btn.style.color = theme.text;
-      btn.style.borderColor = "transparent";
-    });
-    btn.addEventListener("mouseleave", () => {
-      if (btn.dataset.gptBoostSidebarActive === "1") return;
-      const theme = deps.getThemeTokens();
-      btn.style.background = "transparent";
-      btn.style.color = theme.mutedText;
-      btn.style.borderColor = "transparent";
-    });
     btn.addEventListener("click", () => {
       if (isSidebarOpen()) {
         renderSidebarTab(tabId);
@@ -55,18 +34,18 @@ export function createSidebarShellFeature({
     if (!refs.sidebarContentContainer) return;
     refs.activeSidebarTab = tabId;
     refs.sidebarContentContainer.innerHTML = "";
-    const theme = deps.getThemeTokens();
 
     const tabs = refs.sidebarPanel ? refs.sidebarPanel.querySelectorAll("[data-gpt-boost-sidebar-tab]") : [];
     tabs.forEach((tab) => {
       if (!(tab instanceof HTMLElement)) return;
       const isActive = tab.dataset.gptBoostSidebarTab === tabId;
-      tab.dataset.gptBoostSidebarActive = isActive ? "1" : "0";
-      tab.style.opacity = "1";
-      tab.style.background = isActive ? theme.buttonBg : "transparent";
-      tab.style.color = isActive ? theme.buttonText : theme.mutedText;
-      tab.style.borderColor = isActive ? theme.inputBorder : "transparent";
-      tab.style.boxShadow = isActive ? "inset 0 0 0 1px rgba(0,0,0,0.03)" : "none";
+      tab.style.opacity = isActive ? "1" : "0.72";
+      tab.style.background = "transparent";
+      tab.style.borderRadius = "0";
+      tab.style.padding = "4px 0";
+      tab.style.borderBottom = isActive
+        ? `2px solid ${deps.getThemeTokens().text}`
+        : "2px solid transparent";
     });
 
     deps.renderSidebarTabContent(tabId, refs.sidebarContentContainer);
@@ -95,18 +74,7 @@ export function createSidebarShellFeature({
       deps.applySidebarLayoutOffset(refs.currentSidebarWidthPx);
     }
     panel.setAttribute("data-open", "true");
-    if (!wasOpen) {
-      panel.style.transition = "none";
-      panel.style.transform = "translateX(100%)";
-      void panel.offsetWidth;
-      panel.style.transition = `transform ${constants.sidebarTransitionMs}ms ease`;
-      requestAnimationFrame(() => {
-        if (!panel.isConnected) return;
-        panel.style.transform = "translateX(0px)";
-      });
-    } else {
-      panel.style.transform = "translateX(0px)";
-    }
+    panel.style.transform = "translateX(0px)";
     deps.applyFloatingUiOffsets();
     if (!wasOpen) deps.refreshArticleSideRailLayout();
     renderSidebarTab(tabId || refs.activeSidebarTab);
@@ -235,12 +203,7 @@ export function createSidebarShellFeature({
     header.style.display = "flex";
     header.style.flexDirection = "column";
     header.style.gap = "6px";
-    header.style.marginBottom = "10px";
-    header.style.padding = "10px";
-    header.style.borderRadius = "12px";
-    header.style.border = `1px solid ${theme.panelBorder}`;
-    header.style.background = theme.inputBg;
-    header.style.boxShadow = "inset 0 -1px 0 rgba(255,255,255,0.04)";
+    header.style.marginBottom = "16px";
 
     const headingRow = document.createElement("div");
     headingRow.style.display = "flex";
@@ -276,9 +239,7 @@ export function createSidebarShellFeature({
     settingsBtn.setAttribute("aria-label", "Open sidebar settings");
     deps.styleSearchButton(settingsBtn, 24);
     settingsBtn.style.display = "flex";
-    settingsBtn.style.background = theme.buttonMutedBg;
-    settingsBtn.style.color = theme.buttonMutedText;
-    settingsBtn.style.border = `1px solid ${theme.panelBorder}`;
+    settingsBtn.style.background = "rgba(148, 163, 184, 0.2)";
     settingsBtn.addEventListener("click", () => {
       if (isSidebarOpen()) {
         renderSidebarTab("settings");
@@ -293,9 +254,7 @@ export function createSidebarShellFeature({
     closeBtn.setAttribute("aria-label", "Close sidebar");
     deps.styleSearchButton(closeBtn, 24);
     closeBtn.style.display = "flex";
-    closeBtn.style.background = theme.buttonMutedBg;
-    closeBtn.style.color = theme.buttonMutedText;
-    closeBtn.style.border = `1px solid ${theme.panelBorder}`;
+    closeBtn.style.background = "rgba(148, 163, 184, 0.2)";
     closeBtn.addEventListener("click", hideSidebar);
 
     headerActions.appendChild(settingsBtn);
@@ -316,13 +275,10 @@ export function createSidebarShellFeature({
 
     const tabs = document.createElement("div");
     tabs.style.display = "flex";
-    tabs.style.flexWrap = "wrap";
-    tabs.style.gap = "6px";
-    tabs.style.marginBottom = "10px";
-    tabs.style.padding = "6px";
-    tabs.style.borderRadius = "12px";
-    tabs.style.background = theme.inputBg;
-    tabs.style.border = `1px solid ${theme.panelBorder}`;
+    tabs.style.gap = "8px";
+    tabs.style.marginBottom = "12px";
+    tabs.style.paddingBottom = "6px";
+    tabs.style.borderBottom = `1px solid ${theme.panelBorder}`;
 
     tabs.appendChild(createSidebarTabButton("search", "Search", "🔎"));
     tabs.appendChild(createSidebarTabButton("bookmarks", "Marks", "🔖"));

@@ -1,94 +1,111 @@
 // constants.js
 
 /**
- * Global namespace for the ChatGPT Virtual Scroller extension.
+ * Static configuration for the virtual scroller.
  */
-/** @type {any} */
-window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
+export const config = {
+  /** CSS selector for conversation messages */
+  ARTICLE_SELECTOR: 'article, [data-testid^="conversation-turn-"]',
 
-(function initializeConstants() {
-  const scroller = window.ChatGPTVirtualScroller;
+  /** Default virtualization buffer (px) */
+  DEFAULT_MARGIN_PX: 2000,
+  /** Minimum allowed virtualization buffer (px) */
+  MIN_MARGIN_PX: 500,
+  /** Maximum allowed virtualization buffer (px) */
+  MAX_MARGIN_PX: 5000,
 
-  /**
-   * Static configuration for the virtual scroller.
-   */
-  scroller.config = {
-    /** CSS selector for conversation messages */
-    ARTICLE_SELECTOR: 'article[data-testid^="conversation-turn-"]',
+  /** Extra area above/below the viewport where messages stay mounted */
+  MARGIN_PX: 2000,
 
-    /** Extra area above/below the viewport where messages stay mounted */
-    MARGIN_PX: 2000,
+  /** How often we poll for URL (chat) changes, in ms */
+  URL_CHECK_INTERVAL: 1000,
 
-    /** How often we poll for URL (chat) changes, in ms */
-    URL_CHECK_INTERVAL: 1000,
+  /** Minimum time between scroll-driven updates, in ms */
+  SCROLL_THROTTLE_MS: 50,
 
-    /** Minimum time between scroll-driven updates, in ms */
-    SCROLL_THROTTLE_MS: 50,
+  /** Debounce time for DOM mutation bursts, in ms */
+  MUTATION_DEBOUNCE_MS: 50
+};
 
-    /** Debounce time for DOM mutation bursts, in ms */
-    MUTATION_DEBOUNCE_MS: 50
-  };
+/**
+ * Shared runtime state.
+ */
+export const state = {
+  lastUrl: window.location.href,
+  nextVirtualId: 1,
+  /** @type {Map<string, HTMLElement>} */
+  articleMap: new Map(),
+  enabled: true,
+  debug: false,
+  requestAnimationScheduled: false,
+  emptyVirtualizationRetryCount: 0,
 
-  /**
-   * Shared runtime state.
-   */
-  scroller.state = {
-    lastUrl: window.location.href,
-    nextVirtualId: 1,
-    /** @type {Map<string, HTMLElement>} */
-    articleMap: new Map(),
-    enabled: true,
-    debug: false,
-    requestAnimationScheduled: false,
+  /** @type {HTMLElement | Window | null} */
+  scrollElement: null,
+  /** @type {(() => void) | null} */
+  cleanupScrollListener: null,
 
-    /** @type {HTMLElement | Window | null} */
-    scrollElement: null,
-    /** @type {(() => void) | null} */
-    cleanupScrollListener: null,
+  /** @type {MutationObserver | null} */
+  observer: null,
+  /** @type {HTMLElement | null} */
+  conversationRoot: null,
 
-    /** @type {MutationObserver | null} */
-    observer: null,
-    /** @type {HTMLElement | null} */
-    conversationRoot: null,
+  stats: {
+    totalMessages: 0,
+    renderedMessages: 0
+  },
 
-    stats: {
-      totalMessages: 0,
-      renderedMessages: 0
-    },
+  /** Virtual IDs of messages the user has collapsed */
+  /** @type {Set<string>} */
+  collapsedMessages: new Set(),
 
-    /** "IDLE" | "OBSERVING" */
-    lifecycleStatus: /** @type {"IDLE" | "OBSERVING"} */ ("IDLE")
-  };
+  /** Virtual IDs of messages pinned to the top bar */
+  /** @type {Set<string>} */
+  pinnedMessages: new Set(),
 
-  /**
-   * Conditional debug logger used across all modules.
-   * @param  {...any} logArguments
-   */
-  scroller.log = function logMessage(...logArguments) {
-    if (!scroller.state.debug) return;
-    console.log("[ChatGPT Virtual Scroller]", ...logArguments);
-  };
+  /** Virtual IDs of messages the user has bookmarked */
+  /** @type {Set<string>} */
+  bookmarkedMessages: new Set(),
 
-  scroller.logPromoMessage = function logPromoMessage() {
-    if (!scroller.state.debug) return;
-    console.log(
-      `%c
-┌─────────────────────────────────────────┐
-│  ChatGPT Lag Fixer (debug mode enabled) │
-└─────────────────────────────────────────┘
-Made by Bram van der Giessen
+  /** "IDLE" | "OBSERVING" */
+  lifecycleStatus: /** @type {"IDLE" | "OBSERVING"} */ ("IDLE")
+};
 
-You are seeing this message because debug mode is enabled for the chrome extension.
+/**
+ * Conditional debug logger used across all modules.
+ * @param  {...any} logArguments
+ */
+export function log(...logArguments) {
+  if (!state.debug) return;
+  console.log("[GPT Boost]", ...logArguments);
+}
+
+export function logPromoMessage() {
+  if (!state.debug) return;
+  console.log(
+    `%c
+┌───────────────────────────────────┐
+│  GPT Boost (debug mode enabled)  │
+└───────────────────────────────────┘
+Made by Bram van der Giessen and Rich Alesi
+
+You are seeing this message because debug mode is enabled for the extension.
 To disable debug mode, open the extension popup and uncheck "Enable debug mode".
 
 If you enjoy this project, please consider giving it a ⭐ on GitHub:
 https://github.com/bramgiessen
+https://github.com/punassuming
 
 🧑‍💻 If you need a skilled developer, feel free to reach out to me on:
 https://bramgiessen.com
 `,
-      "color:#4c8bf5; font-size:15px; font-weight:bold;"
-    );
-  };
+    "color:#4c8bf5; font-size:15px; font-weight:bold;"
+  );
+}
 
-})();
+// Ensure backward compatibility during transition
+window.ChatGPTVirtualScroller = window.ChatGPTVirtualScroller || {};
+window.ChatGPTVirtualScroller.config = config;
+window.ChatGPTVirtualScroller.state = state;
+window.ChatGPTVirtualScroller.log = log;
+window.ChatGPTVirtualScroller.logPromoMessage = logPromoMessage;
