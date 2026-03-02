@@ -281,18 +281,6 @@ import {
     };
   }
 
-  function dispatchSidebarTabContent(tabId, container) {
-    return featureRegistry.dispatchSidebarTabRender(tabId, container, getRuntimeContext());
-  }
-
-  function dispatchVisibilityUpdate(totalMessages, renderedMessages) {
-    featureRegistry.dispatchVisibilityUpdate(
-      totalMessages,
-      renderedMessages,
-      getRuntimeContext()
-    );
-  }
-
   const searchFeature = createSearchFeature({
     refs: searchRefs,
     searchState,
@@ -407,7 +395,7 @@ import {
       hotkeyMatchesKeyboardEvent,
       getSidebarHotkey: () => uiSettings.sidebarHotkey,
       renderSidebarTabContent: (tabId, container) => {
-        if (!dispatchSidebarTabContent(tabId, container)) {
+        if (!featureRegistry.dispatchSidebarTabRender(tabId, container, getRuntimeContext())) {
           renderSettingsTabContent(container);
         }
       },
@@ -1943,7 +1931,7 @@ import {
       return;
     }
 
-    dispatchVisibilityUpdate(totalMessages, renderedMessages);
+    featureRegistry.dispatchVisibilityUpdate(totalMessages, renderedMessages, getRuntimeContext());
     applyFloatingUiOffsets();
 
     const hidden = totalMessages - renderedMessages;
