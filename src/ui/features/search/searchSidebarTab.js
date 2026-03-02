@@ -13,6 +13,24 @@ export function renderSearchSidebarTab({
   renderSidebarTab,
   getSidebarContentContainer
 }) {
+  const ns = "http://www.w3.org/2000/svg";
+  function makeChevron(direction) {
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("width", "12");
+    svg.setAttribute("height", "12");
+    svg.style.fill = "none";
+    svg.style.stroke = "currentColor";
+    svg.style.strokeWidth = "2.5";
+    svg.style.strokeLinecap = "round";
+    svg.style.strokeLinejoin = "round";
+    svg.style.display = "block";
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", direction === "up" ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6");
+    svg.appendChild(path);
+    return svg;
+  }
   const row = document.createElement("div");
   row.style.display = "flex";
   row.style.gap = "6px";
@@ -43,20 +61,24 @@ export function renderSearchSidebarTab({
 
   const prevBtn = document.createElement("button");
   prevBtn.type = "button";
-  prevBtn.textContent = "↑";
-  styleSearchButton(prevBtn, 24);
+  prevBtn.setAttribute("aria-label", "Previous result");
+  styleSearchButton(prevBtn, 28);
   prevBtn.style.display = "flex";
   prevBtn.style.background = theme.buttonMutedBg;
   prevBtn.style.color = theme.buttonMutedText;
+  prevBtn.style.flexShrink = "0";
+  prevBtn.appendChild(makeChevron("up"));
   prevBtn.addEventListener("click", () => navigateSearch(-1));
 
   const nextBtn = document.createElement("button");
   nextBtn.type = "button";
-  nextBtn.textContent = "↓";
-  styleSearchButton(nextBtn, 24);
+  nextBtn.setAttribute("aria-label", "Next result");
+  styleSearchButton(nextBtn, 28);
   nextBtn.style.display = "flex";
   nextBtn.style.background = theme.buttonMutedBg;
   nextBtn.style.color = theme.buttonMutedText;
+  nextBtn.style.flexShrink = "0";
+  nextBtn.appendChild(makeChevron("down"));
   nextBtn.addEventListener("click", () => navigateSearch(1));
 
   row.appendChild(input);
