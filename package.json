@@ -1,6 +1,6 @@
 {
   "name": "gpt-boost",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Productivity-focused virtualization for faster, lighter ChatGPT conversations.",
   "scripts": {
     "build": "esbuild src/boot.js --bundle --outfile=build/content.js && esbuild src/background.js --bundle --outfile=build/background.js && esbuild src/popup.js --bundle --outfile=build/popup.js",
