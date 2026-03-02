@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPT Boost - Faster ChatGPT Scrolling",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Boost productivity in long ChatGPT threads with smart message virtualization for faster scrolling and lower memory use.",
   "permissions": [
     "storage",
@@ -13,7 +13,7 @@
   ],
   "background": {
     "scripts": [
-      "src/background.js"
+      "build/background.js"
     ]
   },
   "content_scripts": [
@@ -23,9 +23,7 @@
         "https://chatgpt.com/*"
       ],
       "js": [
-        "src/constants.js",
-        "src/virtualization.js",
-        "src/boot.js"
+        "build/content.js"
       ],
       "run_at": "document_idle"
     }

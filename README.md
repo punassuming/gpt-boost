@@ -1,10 +1,10 @@
-# GPT Boost (Message Virtualization)
+# ChatGPT Lag Fixer (Virtual Scroller)
 
-**Productivity-first speed for long ChatGPT conversations**
+**The ultimate performance booster for long ChatGPT conversations**
 
-GPT Boost is a **Chrome and Firefox** extension that uses intelligent message virtualization to keep your ChatGPT tabs fast and responsive, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
+ChatGPT Lag Fixer is a **Chrome and Firefox** extension that uses intelligent virtual scrolling to keep your ChatGPT tabs lightning-fast, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
 
-**🔐 Remain fully private**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
+**🔐 Remain full privacy**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
 
 ## 📥 Download
 
@@ -50,7 +50,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 📦 For Google Chrome (and Edge/Brave)
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/yourusername/gpt-boost.git
+   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
    ```
 2. Open Chrome and navigate to:
     ```bash
@@ -65,7 +65,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 🦊 For Mozilla Firefox
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/yourusername/gpt-boost.git
+   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
    ```
 2. Open Firefox and navigate to:
     ```bash
@@ -74,7 +74,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 3. Click Load Temporary Add-on...
 4. Navigate to your project folder and select the manifest.json file
 
-You're now running GPT Boost locally, and you can make changes in the code!
+You're now running ChatGPT Lag Fixer locally, and you can make changes in the code!
 
 
 ## Technical Architecture
@@ -119,41 +119,6 @@ It makes massive message lists behave like small ones.
 - Open the browser console on ChatGPT and look for debug logs (if enabled)
 - Use the popup toggle to enable/disable virtualization
 - When making changes, hit **Reload** on the extension page (for Chrome)
-
-### Firefox signing (unlisted/private)
-- Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).
-- The script will save credentials to `.env` (gitignored), or you can set `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` manually.
-- Ensure dependencies are installed with `npm install` (this provides the local `web-ext` binary).
-
-### Automated Firefox release signing (GitHub Actions)
-- Workflow: `.github/workflows/release-firefox.yml`
-- Trigger: push a tag like `v1.0.4` (also supports manual `workflow_dispatch`).
-- Required repository secrets:
-  - `AMO_JWT_ISSUER`
-  - `AMO_JWT_SECRET`
-- Output: signs via AMO and uploads the signed `.xpi` from `web-ext-artifacts/` to the GitHub Release for that tag.
-
-### Merge-to-main automated release pipeline
-- Workflow: `.github/workflows/bump-manifest-version.yml`
-- Trigger: when a PR targeting `main` is closed and merged.
-- Version bump behavior on merge:
-  - default: patch bump (e.g. `1.2.3` -> `1.2.4`)
-  - optional label `semver:minor`: minor bump (e.g. `1.2.3` -> `1.3.0`)
-  - optional label `semver:major`: major bump (e.g. `1.2.3` -> `2.0.0`)
-- It performs this chain automatically after merge:
-  - bumps `package.json`, `manifest.json`, and `manifest_firefox.json`
-  - commits the bump to `main`
-  - creates and pushes tag `v<new-version>`
-  - builds/signs the Firefox extension
-  - creates/updates the GitHub Release and uploads the signed `.xpi`
-
-### PR CI checks on `main`
-- Workflow: `.github/workflows/pr-ci.yml` (`PR Build Checks`)
-- Trigger: PR opened/updated/reopened against `main`.
-- Checks:
-  - validates version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`
-  - installs dependencies
-  - runs `npm run build:firefox`
 
 ### Debug mode
 The popup includes an optional "Debug mode" that logs internal states such as:
@@ -264,6 +229,6 @@ MIT License - feel free to use, modify, and distribute!
 
 ---
 
-**Made with ❤️ by [Bram van der Giessen](https://bramgiessen.com) and [Rich Alesi](https://github.com/punassuming)**
+**Made with ❤️ by [Bram van der Giessen](https://bramgiessen.com)**
 
 ⭐ **If you find this useful, please star the repository!**

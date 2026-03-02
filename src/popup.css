@@ -154,20 +154,6 @@ body {
   box-shadow: var(--md-shadow-sm);
 }
 
-.advanced-panel {
-  margin-top: 8px;
-}
-
-.advanced-panel summary {
-  font-size: 11px;
-  color: var(--md-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
-}
-
 .advanced-section-title {
   margin-top: 10px;
 }
@@ -208,7 +194,8 @@ body {
   gap: 4px;
 }
 
-.buffer-control input {
+.buffer-control input,
+.buffer-control select {
   width: 70px;
   padding: 5px 7px;
   border: 1px solid var(--md-outline);
@@ -220,7 +207,83 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.buffer-control input:focus {
+#roleThemeKey {
+  width: 118px;
+  text-align: left;
+}
+
+#sidebarHotkey {
+  width: 110px;
+  text-align: left;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.color-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.color-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--md-text);
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--md-outline);
+  background: #f8faff;
+}
+
+.color-item input[type="color"] {
+  width: 28px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cache-view {
+  margin: 0;
+  max-height: 140px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--md-outline);
+  background: #f8faff;
+  padding: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--md-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.inline-button {
+  border: 1px solid var(--md-outline);
+  background: #f8faff;
+  color: var(--md-text);
+  border-radius: 10px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.inline-button:hover {
+  border-color: var(--md-primary);
+}
+
+.buffer-control input:focus,
+.buffer-control select:focus {
   outline: none;
   border-color: var(--md-primary);
   box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);

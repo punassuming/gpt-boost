@@ -10,6 +10,10 @@ function createBuildId() {
   return new Date().toISOString().replace(/[-:.TZ]/g, '');
 }
 
+function shouldUseStableNames() {
+  return process.argv.includes('--stable') || process.env.FIREFOX_BUILD_STABLE === '1';
+}
+
 async function copyDir(src, dest) {
   await fsp.mkdir(dest, { recursive: true });
   const entries = await fsp.readdir(src, { withFileTypes: true });
@@ -25,10 +29,16 @@ async function copyDir(src, dest) {
 }
 
 async function buildFirefox() {
-  const buildId = createBuildId();
-  const outDir = path.join(DIST_DIR, `firefox-build-${buildId}`);
-  const xpiPath = path.join(DIST_DIR, `gpt-boost-firefox-build-${buildId}.xpi`);
+  const stable = shouldUseStableNames();
+  const buildId = stable ? 'stable' : createBuildId();
+  const outDir = stable
+    ? path.join(DIST_DIR, 'firefox-build')
+    : path.join(DIST_DIR, `firefox-build-${buildId}`);
+  const xpiPath = stable
+    ? path.join(DIST_DIR, 'gpt-boost-firefox-build.xpi')
+    : path.join(DIST_DIR, `gpt-boost-firefox-build-${buildId}.xpi`);
 
+  await fsp.mkdir(DIST_DIR, { recursive: true });
   await fsp.mkdir(outDir, { recursive: true });
 
   await fsp.copyFile(
@@ -36,6 +46,7 @@ async function buildFirefox() {
     path.join(outDir, 'manifest.json')
   );
   await copyDir(path.join(ROOT, 'src'), path.join(outDir, 'src'));
+  await copyDir(path.join(ROOT, 'build'), path.join(outDir, 'build'));
   await copyDir(path.join(ROOT, 'icons'), path.join(outDir, 'icons'));
 
   await new Promise((resolve, reject) => {

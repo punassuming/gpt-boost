@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPT Boost - Productivity, Speed & Virtualization",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Boost productivity in long ChatGPT threads with smart message virtualization for faster scrolling and lower memory use.",
   "permissions": [
     "storage",
@@ -12,9 +12,9 @@
     "https://chatgpt.com/*"
   ],
   "background": {
-    "service_worker": "src/background.js",
+    "service_worker": "build/background.js",
     "scripts": [
-      "src/background.js"
+      "build/background.js"
     ]
   },
   "content_scripts": [
@@ -24,9 +24,7 @@
         "https://chatgpt.com/*"
       ],
       "js": [
-        "src/constants.js",
-        "src/virtualization.js",
-        "src/boot.js"
+        "build/content.js"
       ],
       "run_at": "document_idle"
     }
