@@ -7,7 +7,7 @@
     "dev": "npm run build && node -e \"require('child_process').execSync('npx esbuild src/boot.js --bundle --outfile=build/content.js --watch & npx esbuild src/background.js --bundle --outfile=build/background.js --watch & npx esbuild src/popup.js --bundle --outfile=build/popup.js --watch', {stdio: 'inherit'})\"",
     "build:firefox": "npm run build && node scripts/build-firefox.js",
     "amo:login": "node scripts/open-amo-credentials.js",
-    "sign:firefox": "node scripts/sign-firefox.js",
+    "sign:firefox": "npm run build && node scripts/sign-firefox.js",
     "version:patch": "node scripts/bump-version.js patch",
     "version:minor": "node scripts/bump-version.js minor",
     "version:major": "node scripts/bump-version.js major",
