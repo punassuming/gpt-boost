@@ -6,7 +6,7 @@
   - `src/boot.js` is the entry point that initializes the virtualizer and UI.
   - `src/constants.js` defines shared config and state.
   - `src/utils/`, `src/core/`, `src/ui/`, and `src/adapters/` contain extracted sub-modules.
-  - `src/core/runtime/` contains runtime orchestration modules (feature registry, lifecycle manager, article registry, virtualization engine helpers).
+  - `src/core/runtime/` contains runtime orchestration modules (feature registry, lifecycle manager, article registry, flag sync, virtualization engine helpers).
   - `src/core/services/` contains the typed service container used by runtime features.
   - `src/core/settings.js` is the shared settings source of truth (defaults, normalization, hotkey parsing, storage helpers).
   - `src/core/virtualizer/` contains virtualizer-domain modules (`store.ts`, `observer.ts`, `types.ts`).

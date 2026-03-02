@@ -1,10 +1,10 @@
-# GPT Boost (Message Virtualization)
+# ChatGPT Lag Fixer (Virtual Scroller)
 
-**Productivity-first speed for long ChatGPT conversations**
+**The ultimate performance booster for long ChatGPT conversations**
 
-GPT Boost is a **Chrome and Firefox** extension that uses intelligent message virtualization to keep your ChatGPT tabs fast and responsive, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
+ChatGPT Lag Fixer is a **Chrome and Firefox** extension that uses intelligent virtual scrolling to keep your ChatGPT tabs lightning-fast, even during long conversations. Unlike simple DOM trimming solutions, this extension dynamically virtualizes messages outside your viewport while seamlessly restoring them as you scroll.
 
-**🔐 Remain fully private**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
+**🔐 Remain full privacy**: All processing happens **fully locally** in your browser. **Nothing** is sent to any server.
 
 ## 📥 Download
 
@@ -17,29 +17,25 @@ GPT Boost is a **Chrome and Firefox** extension that uses intelligent message vi
 
 ## Features
 
-### Virtualization Core
-- **Viewport-aware rendering**: Keeps only nearby messages mounted.
-- **Seamless restoration**: Restores unmounted messages as you scroll.
-- **Low-overhead scheduling**: Throttled scroll handling + debounced mutation handling.
+### Smart Virtual Scrolling
+- **Viewport-aware rendering**: Only renders messages visible in your viewport
+- **Seamless restoration**: Scroll up to see older messages instantly restored
+- **Zero context loss**: Full conversation history always accessible
 
-### Conversation Tools
-- **Search**: Floating search and sidebar search views with navigation/highlighting.
-- **Marks**: Unified pinned + bookmarked thread management.
-- **Outline**: Fast navigation and collapse controls.
-- **Map + Minimap**: Position-aware conversation navigation with viewport indicator.
-- **Snippets**: Extract and copy code snippets from the conversation.
+### Performance Optimizations
+- **Memory efficiency**: Reduces DOM nodes by 70-90% in long conversations
+- **Smooth scrolling**: Maintains scroll position perfectly when virtualizing/restoring
+- **Lightweight caching**: Smart message caching for instant restoration
 
-### Layout & Styling Controls
-- **Sidebar width and hotkey** configuration.
-- **Conversation padding and composer width** controls.
-- **Boost theme presets** mapped to ChatGPT light/dark mode.
-- **Manual role color customization** (User/Agent for dark and light themes, with defaults reset).
-- **Minimap visibility** toggle.
+### User Experience
+- **Completely transparent**: Works silently in the background
+- **No interruptions**: Doesn't interfere with ChatGPT's functionality
+- **Real-time stats**: See performance improvements live
+- **All optimization runs locally in your browser**: Full privacy - no data is ever sent to an external server
 
-### Observability & Privacy
-- **Live stats** in popup/settings surfaces.
-- **Cached conversation diagnostics** (counts and approximate storage size).
-- **Fully local processing**: no remote data collection or external API calls.
+### Advanced Features
+- **MutationObserver integration**: Automatically detects new messages
+- **Debug mode**: Developer-friendly logging for troubleshooting
 
 
 ## Installation
@@ -54,7 +50,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 📦 For Google Chrome (and Edge/Brave)
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/yourusername/gpt-boost.git
+   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
    ```
 2. Open Chrome and navigate to:
     ```bash
@@ -69,7 +65,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 #### 🦊 For Mozilla Firefox
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/yourusername/gpt-boost.git
+   git clone https://github.com/bramgiessen/chatgpt-lag-fixer.git
    ```
 2. Open Firefox and navigate to:
     ```bash
@@ -78,7 +74,7 @@ If you want to run the extension locally or modify the code, follow the instruct
 3. Click Load Temporary Add-on...
 4. Navigate to your project folder and select the manifest.json file
 
-You're now running GPT Boost locally, and you can make changes in the code!
+You're now running ChatGPT Lag Fixer locally, and you can make changes in the code!
 
 
 ## Technical Architecture
@@ -106,110 +102,23 @@ It makes massive message lists behave like small ones.
 ### Key Components
 
 ```
-├── manifest*.json                    # Browser manifests (Chromium + Firefox)
-├── src/boot.js                       # Content-script bootstrap + storage listeners
-├── src/virtualization.js             # Main orchestrator (still being modularized)
-├── src/constants.js                  # Global runtime config + state bootstrap
-├── src/core/settings.js              # Settings defaults/normalizers/storage helpers
-├── src/core/storage.js               # Conversation cache + pin/bookmark persistence
-├── src/core/virtualizer/             # Core store/observer/types
-├── src/core/runtime/                 # Feature registry + lifecycle + article registry + runtime engine modules
-├── src/core/services/                # Typed shared service container
-├── src/ui/shell/theme.ts             # Theme mode/tokens
-├── src/ui/shell/layoutSettings.js    # Conversation/composer layout style application
-├── src/ui/shell/layoutOffsets.js     # Floating controls + side-layout offset coordination
-├── src/ui/shell/themeApplier.js      # Centralized runtime UI theme application
-├── src/ui/shell/floatingControls.js  # Shared floating round-control styling helper
-├── src/ui/features/roleStyles.ts     # Role chip/surface styling rules
-├── src/ui/features/search/           # Search feature + indexing/highlighting + floating/sidebar UI
-├── src/ui/features/minimap/          # Minimap UI + geometry/model helpers
-├── src/ui/features/map/              # Sidebar map tab feature
-├── src/ui/features/bookmarks/        # Sidebar-only marks/bookmarks feature
-├── src/ui/features/outline/          # Outline tab render + collapse controls
-├── src/ui/features/download/         # Markdown download button lifecycle
-├── src/ui/features/tokenGauge/       # Token pressure gauge lifecycle
-├── src/ui/features/articleActions/   # Per-message collapse/pin/bookmark side-rail UI
-├── src/ui/features/pinned/           # Pinned-message top bar feature
-├── src/ui/features/scroll/           # Virtualization indicator + scroll controls feature
-├── src/ui/features/settings/         # Shared settings data shaping + popup telemetry helpers
-├── src/ui/features/sidebar/          # Sidebar shell + settings/snippets tab renderers
-├── src/ui/features/snippets/         # Snippet extraction + markdown export
-├── src/popup.html/css/js             # Popup + options UI (shared page)
-├── src/background.js                 # Service worker
-└── src/adapters/chromeApi.ts         # Extension API wrappers/fallbacks
+├── manifest.json            # Extension manifest (Manifest V3)
+├── src/boot.js              # Initialization logic (entry point)
+├── src/virtualization.js    # Core virtual scrolling logic
+├── src/constants.js         # Config values
+├── src/background.js        # Service worker for settings & lifecycle
+├── src/popup.html/css/js    # Extension UI and settings
+└── icons/                   # Extension icons
 ```
 
 
 ## Development Notes
 
 ### Running the extension during development:
-- Install dependencies: `npm install`
-- Build once: `npm run build`
-- Build in watch mode: `npm run dev`
-- Build Firefox package: `npm run build:firefox`
-- Regenerate extension icons from `icons/gpt-boost.png`: `npm run icons:generate`
-- Load unpacked extension and reload after changes.
-
-### Testing
-- Run test suite: `npm test`
-- In restricted/sandboxed environments where process spawning is blocked, run:
-  - `npx jest --runInBand`
-
-### Settings Architecture (Developer Notes)
-- Shared settings defaults and normalization live in `src/core/settings.js`.
-- `boot.js` is responsible for loading persisted settings from extension storage and applying runtime updates on storage changes.
-- In-chat sidebar settings and toolbar popup/options settings should remain parity UI: when adding a new setting, update both surfaces in the same change.
-- Shared settings data-shaping helpers for both surfaces live in `src/ui/features/settings/settingsData.js`.
-- Persisted message-level state (pins/bookmarks by conversation) is separate from global UI settings and lives in `src/core/storage.js`.
-- If you add a new persisted setting:
-  - Add default + normalization in `src/core/settings.js`
-  - Apply runtime behavior in `src/boot.js` and `src/virtualization.js`
-  - Expose controls in both sidebar settings and popup/options UI
-  - Validate with `npm run build` and `npm run build:firefox`
-
-### Modularization Status and Next Targets
-- Recent extractions moved search/minimap/map/outline/bookmarks/download/token-gauge/article-actions into `src/ui/features/*`.
-- Runtime UI concerns were further extracted into `src/ui/shell/layoutSettings.js`, `src/ui/shell/themeApplier.js`, `src/ui/features/scroll/scrollUiFeature.js`, and `src/ui/features/pinned/pinnedBarFeature.js`.
-- Runtime orchestration now includes a feature registry, lifecycle manager, and typed service container in `src/core/runtime` and `src/core/services`.
-- `src/virtualization.js` remains the primary compatibility wrapper and is still being reduced.
-- Next high-value extraction targets:
-  - Additional shared UI factory/service consolidation for control/button creation and tab rendering
-  - Settings schema unification between popup/options and sidebar settings tab
-
-### Firefox signing (unlisted/private)
-- Run `npm run amo:login` to open the AMO API keys page (use your Developer Hub login).
-- The script will save credentials to `.env` (gitignored), or you can set `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` manually.
-- Ensure dependencies are installed with `npm install` (this provides the local `web-ext` binary).
-
-### Automated Firefox release signing (GitHub Actions)
-- Workflow: `.github/workflows/release-firefox.yml`
-- Trigger: push a tag like `v1.0.4` (also supports manual `workflow_dispatch`).
-- Required repository secrets:
-  - `AMO_JWT_ISSUER`
-  - `AMO_JWT_SECRET`
-- Output: signs via AMO and uploads the signed `.xpi` from `web-ext-artifacts/` to the GitHub Release for that tag.
-
-### Merge-to-main automated release pipeline
-- Workflow: `.github/workflows/bump-manifest-version.yml`
-- Trigger: when a PR targeting `main` is closed and merged.
-- Version bump behavior on merge:
-  - default: patch bump (e.g. `1.2.3` -> `1.2.4`)
-  - optional label `semver:minor`: minor bump (e.g. `1.2.3` -> `1.3.0`)
-  - optional label `semver:major`: major bump (e.g. `1.2.3` -> `2.0.0`)
-- It performs this chain automatically after merge:
-  - bumps `package.json`, `manifest.json`, and `manifest_firefox.json`
-  - commits the bump to `main`
-  - creates and pushes tag `v<new-version>`
-  - builds/signs the Firefox extension
-  - creates/updates the GitHub Release and uploads the signed `.xpi`
-
-### PR CI checks on `main`
-- Workflow: `.github/workflows/pr-ci.yml` (`PR Build Checks`)
-- Trigger: PR opened/updated/reopened against `main`.
-- Checks:
-  - validates version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`
-  - installs dependencies
-  - runs `npm run build:firefox`
+- Load the extension locally in your browser
+- Open the browser console on ChatGPT and look for debug logs (if enabled)
+- Use the popup toggle to enable/disable virtualization
+- When making changes, hit **Reload** on the extension page (for Chrome)
 
 ### Debug mode
 The popup includes an optional "Debug mode" that logs internal states such as:
@@ -239,8 +148,9 @@ All processing happens **fully locally** in your browser.
 4. The extension works automatically! 🎉
 
 ### Accessing Settings
-- Toolbar popup/options page: global controls, stats, cached conversation diagnostics.
-- In-chat sidebar `Settings` tab: same core controls without leaving the chat context.
+- Click the extension icon in your Chrome/Firefox toolbar
+- See stats like nodes rendered, memory saved and more
+- Enable debug mode to see what's happening behind the scenes
 
 ### Settings Explained
 
@@ -248,19 +158,10 @@ All processing happens **fully locally** in your browser.
 |---------|-------------|---------|
 | **Enable Virtual Scrolling** | Toggle virtualization on/off | ON |
 | **Debug Mode** | Show console logs for debugging | OFF |
-| **Buffer Size (marginPx)** | Virtualization buffer around viewport | 2000 |
-| **Scroll Throttle** | Min ms between scroll virtualization updates | 50 |
-| **Mutation Debounce** | Debounce for mutation-driven refreshes | 50 |
-| **Sidebar Width** | Default tools sidebar width (px) | 320 |
-| **Show Minimap** | Show/hide standalone minimap | ON |
-| **Sidebar Hotkey** | Keyboard shortcut to toggle sidebar | `Alt+Shift+B` |
-| **Conversation Padding** | Horizontal thread content padding (px) | 16 |
-| **Composer Width** | Target composer/content width (px) | 768 |
-| **Role Colors** | User/Agent colors for dark/light themes | Theme defaults |
 
 ### Performance Stats
 
-The popup and sidebar settings display real-time statistics:
+The popup displays real-time statistics:
 - **Total Messages**: Number of messages in conversation
 - **Rendered**: Currently rendered messages
 - **Memory Saved**: Percentage of messages virtualized
@@ -279,7 +180,7 @@ The popup and sidebar settings display real-time statistics:
 ## Compatibility
 - Browser: Chrome, Firefox (Manifest V3 with background scripts)
 - OS: Windows, macOS, Linux
-- ChatGPT: Optimized for current UI (as of 2026), resilient to minor changes
+- ChatGPT: Optimized for current UI (as of 2025), resilient to minor changes
 
 
 ## Contributing
@@ -328,6 +229,6 @@ MIT License - feel free to use, modify, and distribute!
 
 ---
 
-**Made with ❤️ by [Bram van der Giessen](https://bramgiessen.com) and [Rich Alesi](https://github.com/punassuming)**
+**Made with ❤️ by [Bram van der Giessen](https://bramgiessen.com)**
 
 ⭐ **If you find this useful, please star the repository!**
