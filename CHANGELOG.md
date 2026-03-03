@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.18] - 2026-03-03
+### Changed
+- See PR for details.
+
 ## [1.0.17] - 2026-03-03
 ### Changed
 - See PR for details.
@@ -15,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Initial tracked release; changelog introduced from this version onward.
 
-[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.17...HEAD
+[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.18...HEAD
 [1.0.16]: https://github.com/punassuming/gpt-boost/releases/tag/v1.0.16
 [1.0.17]: https://github.com/punassuming/gpt-boost/compare/v1.0.16...v1.0.17
+[1.0.18]: https://github.com/punassuming/gpt-boost/compare/v1.0.17...v1.0.18
