@@ -10,6 +10,18 @@ let saveFlagsTimer = null;
 let flagsStoreCache = null;
 let knownConversationsCache = null;
 
+// Track last persisted message count to avoid redundant storage writes
+let _lastCountKey = "";
+let _lastCount = 0;
+
+/** Reset module-level caches (used in tests only). */
+export function _resetStorageCacheForTesting() {
+  flagsStoreCache = null;
+  knownConversationsCache = null;
+  _lastCountKey = "";
+  _lastCount = 0;
+}
+
 export function getExtensionStorageArea() {
   if (typeof chrome !== "undefined" && chrome.storage) {
     return chrome.storage.local || chrome.storage.sync || null;
@@ -74,7 +86,49 @@ export function scheduleKnownConversationSave(key) {
 
 export function setCurrentConversationKey(key) {
   currentConversationKey = key;
+  // Reset count tracking so the new conversation persists its count promptly
+  _lastCountKey = "";
+  _lastCount = 0;
   scheduleKnownConversationSave(key);
+}
+
+/**
+ * Persist the total message count for a known conversation.
+ * Skips the write if the count has not changed since last call.
+ */
+export async function updateConversationMessageCount(key, messageCount) {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey || !(messageCount > 0)) return;
+  if (normalizedKey === _lastCountKey && messageCount === _lastCount) return;
+  _lastCountKey = normalizedKey;
+  _lastCount = messageCount;
+  const store = await loadKnownConversationsStore();
+  const existing = store[normalizedKey];
+  if (!existing) return; // Only update entries already tracked by saveKnownConversationKey
+  store[normalizedKey] = { ...existing, messageCount };
+  await extensionStorageSet({ [KNOWN_CONVERSATIONS_STORAGE_KEY]: store });
+}
+
+/**
+ * Save a freeform note for a known conversation.
+ */
+export async function saveConversationNote(key, note) {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey) return;
+  const store = await loadKnownConversationsStore();
+  const existing = store[normalizedKey];
+  const trimmedNote = String(note || "").trim();
+  if (existing) {
+    store[normalizedKey] = { ...existing, note: trimmedNote };
+  } else {
+    store[normalizedKey] = {
+      firstSeenAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      visits: 0,
+      note: trimmedNote
+    };
+  }
+  await extensionStorageSet({ [KNOWN_CONVERSATIONS_STORAGE_KEY]: store });
 }
 
 export function getArticleMessageKey(article, virtualId) {

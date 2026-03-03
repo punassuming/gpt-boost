@@ -1,5 +1,5 @@
 import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
-import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey, loadFlagsStore, loadKnownConversationsStore, summarizeConversationCaches } from './core/storage.js';
+import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey, loadFlagsStore, loadKnownConversationsStore, summarizeConversationCaches, updateConversationMessageCount } from './core/storage.js';
 import { createVirtualizerStore } from './core/virtualizer/store.ts';
 import { setupScrollTracking, createDebouncedObserver } from './core/virtualizer/observer.ts';
 import { createFeatureRegistry } from './core/runtime/featureRegistry.ts';
@@ -846,7 +846,12 @@ import {
       refreshSidebarTab,
       populateMinimapPanel,
       getMinimapPanel: () => minimapPanel,
-      dispatchStatsUpdated: () => featureRegistry.dispatchStatsUpdated(getRuntimeContext()),
+      dispatchStatsUpdated: () => {
+        if (currentConversationKey && state.stats.totalMessages > 0) {
+          updateConversationMessageCount(currentConversationKey, state.stats.totalMessages).catch(() => {});
+        }
+        featureRegistry.dispatchStatsUpdated(getRuntimeContext());
+      },
       dispatchVirtualizeTick: () => featureRegistry.dispatchVirtualizeTick(getRuntimeContext())
     }
   });

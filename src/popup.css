@@ -254,7 +254,7 @@ body {
 
 .cache-view {
   margin: 0;
-  max-height: 140px;
+  max-height: 200px;
   overflow: auto;
   border-radius: 10px;
   border: 1px solid var(--md-outline);
@@ -263,8 +263,77 @@ body {
   font-size: 10px;
   line-height: 1.35;
   color: var(--md-text);
-  white-space: pre-wrap;
-  word-break: break-word;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conv-summary {
+  font-size: 10px;
+  color: var(--md-muted);
+  padding: 2px 0 4px;
+  border-bottom: 1px solid var(--md-outline);
+  margin-bottom: 2px;
+}
+
+.conv-card {
+  border: 1px solid var(--md-outline);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conv-card-active {
+  border-color: var(--md-primary);
+  background: #eef3fd;
+}
+
+.conv-card-key {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--md-text);
+  word-break: break-all;
+}
+
+.conv-card-stats {
+  font-size: 9px;
+  color: var(--md-muted);
+}
+
+.conv-card-note {
+  font-size: 9px;
+  color: var(--md-primary);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.note-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.note-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--md-outline);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--md-text);
+  background: #f8faff;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.note-textarea:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
 }
 
 .inline-button {

@@ -25,6 +25,12 @@ import {
   getSettingsStorageArea
 } from "./core/settings.js";
 import {
+  KNOWN_CONVERSATIONS_STORAGE_KEY,
+  extensionStorageGet,
+  extensionStorageSet,
+  saveConversationNote
+} from "./core/storage.js";
+import {
   buildCustomRoleColorPatch,
   buildRoleThemePresetPatch,
   getRoleThemeOptions
@@ -54,6 +60,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const assistantColorLightElement = document.getElementById("assistantColorLight");
   const resetColorsElement = document.getElementById("resetColors");
   const cacheDetailsElement = document.getElementById("cacheDetails");
+  const conversationNoteElement = document.getElementById("conversationNote");
+  const saveConversationNoteElement = document.getElementById("saveConversationNote");
+  const exportBookmarksElement = document.getElementById("exportBookmarks");
 
   const storageArea = getSettingsStorageArea();
   const FALLBACK_MIN_PX = 500;
@@ -348,6 +357,79 @@ document.addEventListener("DOMContentLoaded", () => {
       settingsState = { ...settingsState, ...patch };
       applySettingsToInputs();
       persistSettingsPatch(patch);
+    });
+  }
+
+  // ---- Conversation key helper -------------------------------------------
+
+  function getActiveTabConversationKey(callback) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const url = (tabs[0] && tabs[0].url) || "";
+      const match = url.match(/\/c\/([^/?#]+)/);
+      callback(match ? `chat:${match[1]}` : "");
+    });
+  }
+
+  // ---- Conversation note --------------------------------------------------
+
+  getActiveTabConversationKey((convKey) => {
+    if (!convKey || !conversationNoteElement) return;
+    extensionStorageGet(KNOWN_CONVERSATIONS_STORAGE_KEY).then((result) => {
+      const knownStore = result[KNOWN_CONVERSATIONS_STORAGE_KEY] || {};
+      const entry = knownStore[convKey];
+      if (entry && entry.note) {
+        conversationNoteElement.value = entry.note;
+      }
+    }).catch(() => {});
+  });
+
+  if (saveConversationNoteElement && conversationNoteElement) {
+    saveConversationNoteElement.addEventListener("click", () => {
+      getActiveTabConversationKey((convKey) => {
+        if (!convKey) {
+          saveConversationNoteElement.textContent = "No active chat";
+          setTimeout(() => { saveConversationNoteElement.textContent = "Save"; }, 1500);
+          return;
+        }
+        saveConversationNote(convKey, conversationNoteElement.value).then(() => {
+          saveConversationNoteElement.textContent = "Saved ✓";
+          setTimeout(() => { saveConversationNoteElement.textContent = "Save"; }, 1500);
+        }).catch(() => {
+          saveConversationNoteElement.textContent = "Error";
+          setTimeout(() => { saveConversationNoteElement.textContent = "Save"; }, 1500);
+        });
+      });
+    });
+  }
+
+  // ---- Export bookmarks --------------------------------------------------
+
+  if (exportBookmarksElement) {
+    exportBookmarksElement.addEventListener("click", () => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tab = tabs[0];
+        if (!tab || tab.id == null) return;
+        chrome.tabs.sendMessage(tab.id, { type: "getBookmarkedMessages" }, (response) => {
+          if (chrome.runtime.lastError || !response || !response.bookmarks || !response.bookmarks.length) {
+            exportBookmarksElement.textContent = "No bookmarks found";
+            setTimeout(() => { exportBookmarksElement.textContent = "Export Bookmarks as Markdown"; }, 2000);
+            return;
+          }
+          const lines = response.bookmarks.map((b, i) =>
+            `## Bookmark ${i + 1} (${b.role})\n\n${b.text}`
+          );
+          const md = `# Bookmarked Messages\n\n${lines.join("\n\n---\n\n")}\n`;
+          const blob = new Blob([md], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "bookmarks.md";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      });
     });
   }
 
