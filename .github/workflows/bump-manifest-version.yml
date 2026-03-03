@@ -97,6 +97,71 @@ jobs:
           console.log(`Bumped manifest versions to ${nextText} (${process.env.BUMP_TYPE})`);
           NODE
 
+      - name: Update CHANGELOG.md
+        id: changelog
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.NEW_VERSION;
+          const today = new Date().toISOString().slice(0, 10);
+          const repo = process.env.GITHUB_REPOSITORY;
+
+          function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          }
+
+          const raw = fs.readFileSync('CHANGELOG.md', 'utf8');
+
+          // Extract the content between [Unreleased] and the next ## heading (or EOF).
+          const unreleasedMatch = raw.match(/^## \[Unreleased\]([\s\S]*?)(?=^## \[|\Z)/m);
+          const unreleasedBody = unreleasedMatch ? unreleasedMatch[1].trim() : '';
+
+          // Build the new versioned section.
+          const versionedSection = `## [${version}] - ${today}` +
+            (unreleasedBody ? `\n${unreleasedBody}` : '\n### Changed\n- See PR for details.');
+
+          // Replace [Unreleased] block with a fresh one + new versioned section.
+          let updated = raw.replace(
+            /^## \[Unreleased\][\s\S]*?(?=^## \[|\Z)/m,
+            `## [Unreleased]\n\n${versionedSection}\n\n`
+          );
+
+          // Update or insert the comparison links at the bottom.
+          const prevVersionMatch = raw.match(
+            new RegExp(`^\\[Unreleased\\]:\\s*https://github\\.com/[^\\n]+/compare/v([\\d]+\\.[\\d]+\\.[\\d]+)\\.\\.\\.HEAD`, 'm')
+          );
+          const prevVersion = prevVersionMatch ? prevVersionMatch[1] : null;
+
+          const unreleasedLink = `[Unreleased]: https://github.com/${repo}/compare/v${version}...HEAD`;
+          const versionLink = prevVersion
+            ? `[${version}]: https://github.com/${repo}/compare/v${prevVersion}...v${version}`
+            : `[${version}]: https://github.com/${repo}/releases/tag/v${version}`;
+
+          if (updated.includes('[Unreleased]:')) {
+            updated = updated.replace(/^\[Unreleased\]:[^\n]*/m, unreleasedLink);
+          } else {
+            updated = updated.trimEnd() + `\n\n${unreleasedLink}\n`;
+          }
+
+          if (updated.includes(`[${version}]:`)) {
+            updated = updated.replace(new RegExp(`^\\[${escapeRegex(version)}\\]:[^\\n]*`, 'm'), versionLink);
+          } else {
+            updated = updated.trimEnd() + `\n${versionLink}\n`;
+          }
+
+          fs.writeFileSync('CHANGELOG.md', updated, 'utf8');
+
+          // Write the release notes body to GITHUB_OUTPUT (multiline safe).
+          const delimiter = 'CHANGELOG_EOF';
+          const notes = unreleasedBody || 'No changelog entry for this release.';
+          const output = `changelog_notes<<${delimiter}\n${notes}\n${delimiter}\n`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, output);
+
+          console.log(`CHANGELOG.md updated for v${version}`);
+          NODE
+
       - name: Commit bump and create tag
         env:
           NEW_VERSION: ${{ steps.bump.outputs.version }}
@@ -112,7 +177,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json manifest.json manifest_firefox.json
+          git add package.json manifest.json manifest_firefox.json CHANGELOG.md
           git commit -m "chore: bump manifest version to ${NEW_VERSION} after #${PR_NUMBER}"
           git push origin main
 
@@ -162,10 +227,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEW_VERSION: ${{ steps.bump.outputs.version }}
+          CHANGELOG_NOTES: ${{ steps.changelog.outputs.changelog_notes }}
         shell: bash
         run: |
           tag="v${NEW_VERSION}"
-          notes="Automated signed Firefox extension build for ${tag}"
+          notes="${CHANGELOG_NOTES:-No changelog entry for this release.}"
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${{ steps.artifact.outputs.signed_xpi }}" --clobber
