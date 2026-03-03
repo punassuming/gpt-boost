@@ -112,10 +112,18 @@ export function createSidebarShellFeature({
 
   function refreshSidebarMeta() {
     if (headerDetailsLabel) {
-      headerDetailsLabel.textContent = deps.getSidebarStatsSummary();
+      if (!headerDetailsLabel.isConnected) {
+        headerDetailsLabel = null;
+      } else {
+        headerDetailsLabel.textContent = deps.getSidebarStatsSummary();
+      }
     }
     if (footerVersionLabel) {
-      footerVersionLabel.textContent = deps.getSidebarVersionLabel();
+      if (!footerVersionLabel.isConnected) {
+        footerVersionLabel = null;
+      } else {
+        footerVersionLabel.textContent = deps.getSidebarVersionLabel();
+      }
     }
   }
 
