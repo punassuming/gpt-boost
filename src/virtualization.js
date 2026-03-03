@@ -1230,16 +1230,33 @@ import {
     return `${renderedMessages}/${totalMessages} rendered • ${hiddenMessages} hidden`;
   }
 
+  let sidebarVersionLabelCache = null;
+
   function getSidebarVersionLabel() {
-    try {
-      const manifest = chrome && chrome.runtime && typeof chrome.runtime.getManifest === "function"
-        ? chrome.runtime.getManifest()
-        : null;
-      const version = manifest && typeof manifest.version === "string" ? manifest.version : "";
-      return version ? `Build v${version}` : "Build unknown";
-    } catch (_error) {
-      return "Build unknown";
+    if (sidebarVersionLabelCache !== null) {
+      return sidebarVersionLabelCache;
     }
+
+    let versionLabel = "Build unknown";
+
+    try {
+      const chromeObj =
+        (typeof globalThis !== "undefined" && globalThis.chrome)
+          ? globalThis.chrome
+          : (typeof chrome !== "undefined" ? chrome : null);
+
+      const manifest = chromeObj && chromeObj.runtime && typeof chromeObj.runtime.getManifest === "function"
+        ? chromeObj.runtime.getManifest()
+        : null;
+
+      const version = manifest && typeof manifest.version === "string" ? manifest.version : "";
+      versionLabel = version ? `Build v${version}` : "Build unknown";
+    } catch (_error) {
+      // Fall back to default "Build unknown" on any unexpected error.
+    }
+
+    sidebarVersionLabelCache = versionLabel;
+    return sidebarVersionLabelCache;
   }
 
   function ensureSearchButton() {
