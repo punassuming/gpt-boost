@@ -1245,15 +1245,23 @@ import {
           ? globalThis.chrome
           : (typeof chrome !== "undefined" ? chrome : null);
 
-      const manifest = chromeObj && chromeObj.runtime && typeof chromeObj.runtime.getManifest === "function"
-        ? chromeObj.runtime.getManifest()
-        : null;
-
-      const version = manifest && typeof manifest.version === "string" ? manifest.version : "";
-      versionLabel = version ? `Build v${version}` : "Build unknown";
+    let version = "";
+    try {
+      if (
+        typeof chrome !== "undefined" &&
+        chrome &&
+        chrome.runtime &&
+        typeof chrome.runtime.getManifest === "function"
+      ) {
+        const manifest = chrome.runtime.getManifest();
+        if (manifest && typeof manifest.version === "string") {
+          version = manifest.version;
+        }
+      }
     } catch (_error) {
-      // Fall back to default "Build unknown" on any unexpected error.
+      // Ignore errors and fall back to "Build unknown"
     }
+    return version ? `Build v${version}` : "Build unknown";
 
     sidebarVersionLabelCache = versionLabel;
     return sidebarVersionLabelCache;
