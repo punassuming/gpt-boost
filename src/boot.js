@@ -147,17 +147,32 @@ import { DEFAULT_EXTENSION_SETTINGS, normalizeExtensionSettings } from './core/s
   // ---- Popup stats API ---------------------------------------------------
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (!message || message.type !== "getStats") return;
+    if (!message) return;
 
-    const statsSnapshot = virtualizer.getStatsSnapshot();
+    if (message.type === "getStats") {
+      const statsSnapshot = virtualizer.getStatsSnapshot();
+      sendResponse({
+        totalMessages: statsSnapshot.totalMessages,
+        renderedMessages: statsSnapshot.renderedMessages,
+        memorySavedPercent: statsSnapshot.memorySavedPercent,
+        enabled: state.enabled,
+      });
+      return true;
+    }
 
-    sendResponse({
-      totalMessages: statsSnapshot.totalMessages,
-      renderedMessages: statsSnapshot.renderedMessages,
-      memorySavedPercent: statsSnapshot.memorySavedPercent,
-      enabled: state.enabled,
-    });
-    return true;
+    if (message.type === "getBookmarkedMessages") {
+      const bookmarks = [];
+      scroller.state.bookmarkedMessages.forEach((virtualId) => {
+        const article = scroller.state.articleMap.get(virtualId);
+        if (!(article instanceof HTMLElement)) return;
+        const textSource = article.querySelector("[data-message-author-role]") || article;
+        const role = textSource.getAttribute("data-message-author-role") || "unknown";
+        const text = (textSource.textContent || "").trim();
+        if (text) bookmarks.push({ role, text });
+      });
+      sendResponse({ bookmarks });
+      return true;
+    }
   });
 
   // ---- Entry point -------------------------------------------------------
