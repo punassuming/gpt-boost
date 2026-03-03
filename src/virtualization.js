@@ -129,7 +129,7 @@ import {
   const MINIMAP_BUTTON_TOP_OFFSET_PX = TOP_BUTTON_STACK_OFFSET_PX;
   const MINIMAP_PANEL_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const MINIMAP_PANEL_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
-  const MINIMAP_PANEL_WIDTH_PX = SCROLL_BUTTON_SIZE_PX;
+  const MINIMAP_PANEL_WIDTH_PX = 22;
   const MINIMAP_TRACK_HEIGHT_PX = 420;
   const MINIMAP_PROMPT_SNIPPET_LENGTH = 60;
   const SEARCH_BUTTON_SIZE_PX = 30;
@@ -159,9 +159,10 @@ import {
   const SEARCH_PANEL_TOP_OFFSET_PX = SEARCH_BUTTON_TOP_OFFSET_PX;
   const SEARCH_PANEL_WIDTH_PX = 280;
   const SEARCH_DEBOUNCE_MS = 200;
-  const MESSAGE_RAIL_OUTSIDE_LEFT_PX = -32;
+  const MESSAGE_RAIL_OUTSIDE_LEFT_PX = -36;
   const MESSAGE_RAIL_INSIDE_LEFT_PX = 6;
   const MESSAGE_RAIL_INSIDE_PADDING_PX = 34;
+  const MESSAGE_HOVER_EXTRA_PADDING_PX = 14;
   const MESSAGE_RAIL_LEFT_GUTTER_THRESHOLD_PX = 72;
   const SIDEBAR_TOGGLE_SIZE_PX = 30;
   const SIDEBAR_TOGGLE_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
@@ -196,7 +197,7 @@ import {
   const SIDEBAR_SNIPPET_MAX_HEIGHT_PX = 420;
 
 
-  const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "0 0 0 1px rgba(59,130,246,0.32)";
+  const ARTICLE_HOVER_HIGHLIGHT_SHADOW = "0 0 0 1px rgba(59,130,246,0.18)";
 
   const searchRefs = {};
   Object.defineProperties(searchRefs, {
@@ -496,6 +497,8 @@ import {
       applyThemeToUi,
       hotkeyMatchesKeyboardEvent,
       getSidebarHotkey: () => uiSettings.sidebarHotkey,
+      getSidebarStatsSummary,
+      getSidebarVersionLabel,
       renderSidebarTabContent: (tabId, container) => {
         if (!dispatchSidebarTabContent(tabId, container)) {
           renderSettingsTabContent(container);
@@ -576,8 +579,10 @@ import {
     constants: {
       articleSnippetLength: ARTICLE_SNIPPET_LENGTH,
       articleHoverHighlightShadow: ARTICLE_HOVER_HIGHLIGHT_SHADOW,
+      messageRailOutsideLeftPx: MESSAGE_RAIL_OUTSIDE_LEFT_PX,
       messageRailInsideLeftPx: MESSAGE_RAIL_INSIDE_LEFT_PX,
-      messageRailInsidePaddingPx: MESSAGE_RAIL_INSIDE_PADDING_PX
+      messageRailInsidePaddingPx: MESSAGE_RAIL_INSIDE_PADDING_PX,
+      messageHoverExtraPaddingPx: MESSAGE_HOVER_EXTRA_PADDING_PX
     },
     deps: {
       togglePin,
@@ -742,15 +747,6 @@ import {
       onSidebarTabRender: (tabId, container) => {
         if (tabId !== "map") return false;
         renderMapTabContent(container);
-        return true;
-      }
-    });
-    featureRegistry.register({
-      id: "sidebar-tab-outline",
-      priority: 40,
-      onSidebarTabRender: (tabId, container) => {
-        if (tabId !== "outline") return false;
-        renderOutlineTabContent(container);
         return true;
       }
     });
@@ -1176,32 +1172,11 @@ import {
   }
 
   function renderBookmarksTabContent(container) {
-    const list = document.createElement("div");
-    list.style.display = "flex";
-    list.style.flexDirection = "column";
-    list.style.gap = "2px";
-    list.style.overflowY = "auto";
-    list.style.minHeight = "0";
-    list.style.flex = "1";
-    list.setAttribute("data-chatgpt-bookmarks", "list");
-    container.appendChild(list);
-    populateBookmarksPanel(container);
+    outlineFeature.renderMarksTabContent(container);
   }
 
   function renderMapTabContent(container) {
     mapFeature.renderMapTabContent(container);
-  }
-
-  function collapseAllMessages() {
-    outlineFeature.collapseAllMessages();
-  }
-
-  function expandAllMessages() {
-    outlineFeature.expandAllMessages();
-  }
-
-  function renderOutlineTabContent(container) {
-    outlineFeature.renderOutlineTabContent(container);
   }
 
   function renderSettingsTabContent(container) {
@@ -1238,6 +1213,32 @@ import {
 
   function updateSidebarVisibility(totalMessages) {
     sidebarShellFeature.updateSidebarVisibility(totalMessages);
+  }
+
+  function refreshSidebarMeta() {
+    sidebarShellFeature.refreshSidebarMeta();
+  }
+
+  function getSidebarStatsSummary() {
+    const totalMessages = Math.max(0, Number(state.stats.totalMessages) || 0);
+    const renderedMessages = Math.max(0, Number(state.stats.renderedMessages) || 0);
+    const hiddenMessages = Math.max(0, totalMessages - renderedMessages);
+    if (totalMessages <= 0) {
+      return "No conversation messages detected";
+    }
+    return `${renderedMessages}/${totalMessages} rendered • ${hiddenMessages} hidden`;
+  }
+
+  function getSidebarVersionLabel() {
+    try {
+      const manifest = chrome && chrome.runtime && typeof chrome.runtime.getManifest === "function"
+        ? chrome.runtime.getManifest()
+        : null;
+      const version = manifest && typeof manifest.version === "string" ? manifest.version : "";
+      return version ? `Build v${version}` : "Build unknown";
+    } catch (_error) {
+      return "Build unknown";
+    }
   }
 
   function ensureSearchButton() {
@@ -1516,6 +1517,7 @@ import {
     }
 
     dispatchVisibilityUpdate(totalMessages, renderedMessages);
+    refreshSidebarMeta();
     applyFloatingUiOffsets();
 
     const hidden = totalMessages - renderedMessages;

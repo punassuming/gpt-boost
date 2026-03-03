@@ -267,7 +267,7 @@ export function createMinimapFeature({
     panel.style.display = "none";
     panel.style.padding = "0";
     panel.style.borderRadius = "4px";
-    panel.style.background = "rgba(15, 23, 42, 0.5)";
+    panel.style.background = "rgba(15, 23, 42, 0.28)";
     panel.style.backdropFilter = "blur(2px)";
     panel.style.overflow = "hidden";
     panel.style.boxSizing = "border-box";
@@ -277,9 +277,9 @@ export function createMinimapFeature({
     track.style.position = "relative";
     track.style.height = "100%";
     track.style.width = "100%";
-    track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.2), rgba(148,163,184,0.08))";
-    track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)";
-    track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)";
+    track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))";
+    track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
+    track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
 
     const viewportThumb = document.createElement("div");
     viewportThumb.setAttribute("data-chatgpt-minimap", "viewport");
@@ -372,8 +372,8 @@ export function createMinimapFeature({
     if (!refs.minimapPanel) return;
     refs.minimapPanel.style.background =
       deps.getThemeMode() === "dark"
-        ? "rgba(15, 23, 42, 0.5)"
-        : "rgba(255, 255, 255, 0.5)";
+        ? "rgba(15, 23, 42, 0.28)"
+        : "rgba(255, 255, 255, 0.22)";
     refs.minimapPanel.style.boxShadow = "none";
     refs.minimapPanel.style.border = `1px solid ${theme.panelBorder}`;
     refs.minimapPanel.style.color = theme.text;
@@ -382,8 +382,10 @@ export function createMinimapFeature({
     if (track instanceof HTMLElement) {
       track.style.background =
         deps.getThemeMode() === "dark"
-          ? "linear-gradient(to bottom, rgba(148,163,184,0.2), rgba(148,163,184,0.08))"
-          : "linear-gradient(to bottom, rgba(32,33,35,0.2), rgba(32,33,35,0.08))";
+          ? "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))"
+          : "linear-gradient(to bottom, rgba(32,33,35,0.12), rgba(32,33,35,0.03))";
+      track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
+      track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
       const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
       applyStandaloneMinimapViewportThumbTheme(viewportThumb);
     }

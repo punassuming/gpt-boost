@@ -3,6 +3,20 @@ export function createArticleActionsFeature({
   constants,
   deps
 }) {
+  function parsePx(value, fallback = 0) {
+    const parsed = Number.parseFloat(String(value || "").trim().replace("px", ""));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function getExpandedPaddingPx(target) {
+    if (!(target instanceof HTMLElement)) return constants.messageHoverExtraPaddingPx;
+    const baseline =
+      target.dataset.gptBoostOrigComputedPaddingLeft ||
+      getComputedStyle(target).paddingLeft ||
+      "0px";
+    return Math.max(0, parsePx(baseline, 0)) + constants.messageHoverExtraPaddingPx;
+  }
+
   function setArticleActionIcon(btn, iconName) {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
@@ -130,7 +144,7 @@ export function createArticleActionsFeature({
 
     sideRail.style.position = "absolute";
     sideRail.style.top = "8px";
-    sideRail.style.left = `${constants.messageRailInsideLeftPx}px`;
+    sideRail.style.left = `${constants.messageRailOutsideLeftPx}px`;
     sideRail.style.transform = "none";
     sideRail.style.marginTop = "";
     sideRail.style.alignSelf = "";
@@ -139,16 +153,13 @@ export function createArticleActionsFeature({
     sideRail.style.padding = "2px";
     sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
     sideRail.style.background = "rgba(15,23,42,0.35)";
+    if (sideRail.parentElement !== article) {
+      article.appendChild(sideRail);
+    }
     if (hoverTarget instanceof HTMLElement) {
-      if (sideRail.parentElement !== hoverTarget) {
-        hoverTarget.appendChild(sideRail);
-      }
-      hoverTarget.style.paddingLeft = `${constants.messageRailInsidePaddingPx}px`;
+      hoverTarget.style.paddingLeft = `${getExpandedPaddingPx(hoverTarget)}px`;
     } else {
-      if (sideRail.parentElement !== article) {
-        article.appendChild(sideRail);
-      }
-      article.style.paddingLeft = `${constants.messageRailInsidePaddingPx}px`;
+      article.style.paddingLeft = `${getExpandedPaddingPx(article)}px`;
     }
   }
 
@@ -249,11 +260,17 @@ export function createArticleActionsFeature({
     if (hoverTarget instanceof HTMLElement && !hoverTarget.dataset.gptBoostOrigPaddingLeft) {
       hoverTarget.dataset.gptBoostOrigPaddingLeft = hoverTarget.style.paddingLeft || "";
     }
+    if (hoverTarget instanceof HTMLElement && !hoverTarget.dataset.gptBoostOrigComputedPaddingLeft) {
+      hoverTarget.dataset.gptBoostOrigComputedPaddingLeft = getComputedStyle(hoverTarget).paddingLeft || "0px";
+    }
+    if (!article.dataset.gptBoostOrigComputedPaddingLeft) {
+      article.dataset.gptBoostOrigComputedPaddingLeft = getComputedStyle(article).paddingLeft || "0px";
+    }
 
     const sideRail = document.createElement("div");
     sideRail.setAttribute("data-gpt-boost-side-rail", "1");
     sideRail.style.position = "absolute";
-    sideRail.style.left = `${constants.messageRailInsideLeftPx}px`;
+    sideRail.style.left = `${constants.messageRailOutsideLeftPx}px`;
     sideRail.style.top = "8px";
     sideRail.style.transform = "none";
     sideRail.style.display = "flex";
@@ -293,7 +310,7 @@ export function createArticleActionsFeature({
     sideRail.appendChild(collapseBtn);
     sideRail.appendChild(pinBtn);
     sideRail.appendChild(bookmarkBtn);
-    (hoverTarget instanceof HTMLElement ? hoverTarget : article).appendChild(sideRail);
+    article.appendChild(sideRail);
     updateArticleSideRailLayout(article, sideRail);
 
     article.addEventListener("mouseenter", () => {
@@ -301,8 +318,8 @@ export function createArticleActionsFeature({
       if (hoverTarget instanceof HTMLElement) {
         hoverTarget.style.boxShadow = constants.articleHoverHighlightShadow;
         hoverTarget.style.borderRadius = "12px";
-        hoverTarget.style.outline = "1px solid rgba(59,130,246,0.18)";
-        hoverTarget.style.outlineOffset = "4px";
+        hoverTarget.style.outline = "1px solid rgba(59,130,246,0.1)";
+        hoverTarget.style.outlineOffset = "3px";
       }
       if (!isCollapsed) {
         sideRail.style.background = "rgba(59,130,246,0.2)";
@@ -375,12 +392,14 @@ export function createArticleActionsFeature({
           const hoverOriginalPaddingLeft = hoverTarget.dataset.gptBoostOrigPaddingLeft || "";
           hoverTarget.style.paddingLeft = hoverOriginalPaddingLeft;
           delete hoverTarget.dataset.gptBoostOrigPaddingLeft;
+          delete hoverTarget.dataset.gptBoostOrigComputedPaddingLeft;
           const hoverOverlay = hoverTarget.querySelector("[data-gpt-boost-overlay]");
           if (hoverOverlay) hoverOverlay.remove();
         }
         const originalPaddingLeft = el.dataset.gptBoostOrigPaddingLeft || "";
         el.style.paddingLeft = originalPaddingLeft;
         delete el.dataset.gptBoostOrigPaddingLeft;
+        delete el.dataset.gptBoostOrigComputedPaddingLeft;
       }
     });
   }
