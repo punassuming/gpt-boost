@@ -60,16 +60,26 @@
 - Test suite: `npm test` (Jest).
   - In restricted environments where worker process spawning is blocked, run `npx jest --runInBand`.
 
+## Changelog Guidelines
+- `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+- Every PR targeting `main` **must** add an entry under `## [Unreleased]` describing the user-facing change.
+  - Use sub-headings: `### Added`, `### Changed`, `### Fixed`, `### Removed` as appropriate.
+  - If the PR has no user-facing changes (e.g. CI-only), add the `skip-changelog` label to bypass the check.
+- On merge to `main`, the release pipeline automatically stamps the `[Unreleased]` section with the new version and date, adds a fresh `[Unreleased]` header, and uses the extracted content as the GitHub Release notes.
+
 ## CI/CD Automation
 - PR CI workflow: `.github/workflows/pr-ci.yml`
   - Runs on PRs targeting `main`.
   - Workflow name in GitHub Actions UI: `PR Build Checks`.
   - Enforces version lock-step across `package.json`, `manifest.json`, and `manifest_firefox.json`.
+  - Validates that `CHANGELOG.md` was updated in the PR (bypassed with `skip-changelog` label).
   - Runs Firefox build validation with `npm run build:firefox`.
 - Merge-to-main release pipeline: `.github/workflows/bump-manifest-version.yml`
   - Runs when PRs to `main` are merged.
   - Auto-bumps on merge: default is patch; optional labels at merge-time can set `semver:minor` or `semver:major`.
-  - Bumps `package.json`, `manifest.json`, and `manifest_firefox.json` in lock-step, commits to `main`, creates tag `v<version>`, builds/signs Firefox extension, and publishes a GitHub Release with signed XPI.
+  - Bumps `package.json`, `manifest.json`, and `manifest_firefox.json` in lock-step.
+  - Stamps `CHANGELOG.md`: moves `[Unreleased]` content to the new versioned section and updates comparison links.
+  - Commits version bump + `CHANGELOG.md` to `main`, creates tag `v<version>`, builds/signs Firefox extension, and publishes a GitHub Release using the changelog entry as release notes.
 - Tag/manual release workflow: `.github/workflows/release-firefox.yml`
   - Runs on tag push `v*` or manual dispatch.
   - Builds/signs and publishes signed XPI on the corresponding GitHub Release.
