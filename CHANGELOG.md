@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Release pipeline now correctly extracts `[Unreleased]` changelog content even when it is the last section in the file (replaced invalid `\Z` JavaScript regex anchor with a string-based approach).
+- PR CI check now validates that the `[Unreleased]` section contains actual content, not just that `CHANGELOG.md` was modified — preventing releases from showing "No changelog entry."
+
 ## [1.0.18] - 2026-03-03
 ### Changed
 - See PR for details.

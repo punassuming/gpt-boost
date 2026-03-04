@@ -113,20 +113,27 @@ jobs:
           }
 
           const raw = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const UNRELEASED_HEADER = '## [Unreleased]';
 
           // Extract the content between [Unreleased] and the next ## heading (or EOF).
-          const unreleasedMatch = raw.match(/^## \[Unreleased\]([\s\S]*?)(?=^## \[|\Z)/m);
-          const unreleasedBody = unreleasedMatch ? unreleasedMatch[1].trim() : '';
+          // Note: \Z is not a valid JS regex anchor, so we use a string-based approach.
+          const unrIdx = raw.search(/^## \[Unreleased\]/m);
+          let unreleasedBody = '';
+          let updated = raw;
 
-          // Build the new versioned section.
-          const versionedSection = `## [${version}] - ${today}` +
-            (unreleasedBody ? `\n${unreleasedBody}` : '\n### Changed\n- See PR for details.');
+          if (unrIdx >= 0) {
+            const afterHeader = raw.slice(unrIdx + UNRELEASED_HEADER.length);
+            const nextSecIdx = afterHeader.search(/^## \[/m);
+            unreleasedBody = (nextSecIdx >= 0 ? afterHeader.slice(0, nextSecIdx) : afterHeader).trim();
+            const trailing = nextSecIdx >= 0 ? afterHeader.slice(nextSecIdx) : '';
 
-          // Replace [Unreleased] block with a fresh one + new versioned section.
-          let updated = raw.replace(
-            /^## \[Unreleased\][\s\S]*?(?=^## \[|\Z)/m,
-            `## [Unreleased]\n\n${versionedSection}\n\n`
-          );
+            // Build the new versioned section.
+            const versionedSection = `## [${version}] - ${today}` +
+              (unreleasedBody ? `\n${unreleasedBody}` : '\n### Changed\n- See PR for details.');
+
+            // Replace [Unreleased] block with a fresh one + new versioned section.
+            updated = raw.slice(0, unrIdx) + `${UNRELEASED_HEADER}\n\n${versionedSection}\n\n` + trailing;
+          }
 
           // Update or insert the comparison links at the bottom.
           const prevVersionMatch = raw.match(
