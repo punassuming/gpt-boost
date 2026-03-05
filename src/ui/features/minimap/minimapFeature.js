@@ -15,6 +15,15 @@ export function createMinimapFeature({
   getUiSettings,
   deps
 }) {
+  const EDGE_FEATHER_MASK = "radial-gradient(130% 112% at 50% 50%, black 58%, rgba(0,0,0,0.88) 72%, transparent 100%)";
+  const TRACK_FEATHER_MASK = "radial-gradient(130% 112% at 50% 50%, black 60%, rgba(0,0,0,0.9) 74%, transparent 100%)";
+
+  function applyEdgeFeatherMask(el, maskValue) {
+    if (!(el instanceof HTMLElement)) return;
+    el.style.maskImage = maskValue;
+    el.style.WebkitMaskImage = maskValue;
+  }
+
   function hideMinimapPanel() {
     if (refs.minimapPanel) refs.minimapPanel.style.display = "none";
     refs.activeStandaloneMinimapVirtualId = null;
@@ -266,11 +275,12 @@ export function createMinimapFeature({
     panel.style.height = `${constants.minimapTrackHeightPx}px`;
     panel.style.display = "none";
     panel.style.padding = "0";
-    panel.style.borderRadius = "4px";
+    panel.style.borderRadius = "10px";
     panel.style.background = "rgba(15, 23, 42, 0.28)";
-    panel.style.backdropFilter = "blur(2px)";
+    panel.style.backdropFilter = "blur(12px)";
     panel.style.overflow = "hidden";
     panel.style.boxSizing = "border-box";
+    applyEdgeFeatherMask(panel, EDGE_FEATHER_MASK);
 
     const track = document.createElement("div");
     track.setAttribute("data-chatgpt-minimap", "track");
@@ -278,8 +288,7 @@ export function createMinimapFeature({
     track.style.height = "100%";
     track.style.width = "100%";
     track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))";
-    track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
-    track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
+    applyEdgeFeatherMask(track, TRACK_FEATHER_MASK);
 
     const viewportThumb = document.createElement("div");
     viewportThumb.setAttribute("data-chatgpt-minimap", "viewport");
@@ -375,8 +384,9 @@ export function createMinimapFeature({
         ? "rgba(15, 23, 42, 0.28)"
         : "rgba(255, 255, 255, 0.22)";
     refs.minimapPanel.style.boxShadow = "none";
-    refs.minimapPanel.style.border = `1px solid ${theme.panelBorder}`;
+    refs.minimapPanel.style.border = "none";
     refs.minimapPanel.style.color = theme.text;
+    applyEdgeFeatherMask(refs.minimapPanel, EDGE_FEATHER_MASK);
 
     const track = refs.minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
     if (track instanceof HTMLElement) {
@@ -384,8 +394,7 @@ export function createMinimapFeature({
         deps.getThemeMode() === "dark"
           ? "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))"
           : "linear-gradient(to bottom, rgba(32,33,35,0.12), rgba(32,33,35,0.03))";
-      track.style.maskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
-      track.style.WebkitMaskImage = "linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)";
+      applyEdgeFeatherMask(track, TRACK_FEATHER_MASK);
       const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
       applyStandaloneMinimapViewportThumbTheme(viewportThumb);
     }

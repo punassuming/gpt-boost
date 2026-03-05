@@ -40,6 +40,7 @@ export function createSidebarShellFeature({
       { tag: "path", d: "m6 8-4 4 4 4" },
       { tag: "path", d: "m14.5 4-5 16" }
     ],
+    map: { tag: "path", d: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
     outline: { tag: "path", d: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
     settings: [
       { tag: "path", d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" },
@@ -68,8 +69,10 @@ export function createSidebarShellFeature({
     btn.setAttribute("aria-label", label);
     btn.style.border = "none";
     btn.style.borderRadius = "8px";
-    btn.style.padding = "6px";
-    btn.style.width = "30px";
+    btn.style.padding = "6px 0";
+    btn.style.width = "auto";
+    btn.style.flex = "1 1 0";
+    btn.style.minWidth = "0";
     btn.style.height = "30px";
     btn.style.fontSize = "11px";
     btn.style.cursor = "pointer";
@@ -388,19 +391,19 @@ export function createSidebarShellFeature({
     const tabs = document.createElement("div");
     tabs.style.display = "flex";
     tabs.style.flexWrap = "nowrap";
-    tabs.style.gap = "2px";
+    tabs.style.gap = "4px";
     tabs.style.marginBottom = "8px";
     tabs.style.padding = "3px";
     tabs.style.borderRadius = "10px";
     tabs.style.background = theme.inputBg;
     tabs.style.border = `1px solid ${theme.panelBorder}`;
-    tabs.style.overflowX = "auto";
+    tabs.style.overflowX = "hidden";
     tabs.style.alignItems = "center";
 
     tabs.appendChild(createSidebarTabButton("search", "Search"));
     tabs.appendChild(createSidebarTabButton("bookmarks", "Marks"));
     tabs.appendChild(createSidebarTabButton("snippets", "Code"));
-    tabs.appendChild(createSidebarTabButton("settings", "Settings"));
+    tabs.appendChild(createSidebarTabButton("map", "Outline"));
 
     const content = document.createElement("div");
     content.style.display = "flex";
