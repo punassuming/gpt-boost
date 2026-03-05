@@ -17,6 +17,7 @@ export function createMinimapFeature({
 }) {
   const EDGE_FEATHER_MASK = "radial-gradient(130% 112% at 50% 50%, black 58%, rgba(0,0,0,0.88) 72%, transparent 100%)";
   const TRACK_FEATHER_MASK = "radial-gradient(130% 112% at 50% 50%, black 60%, rgba(0,0,0,0.9) 74%, transparent 100%)";
+  const MIN_VIEWPORT_HEIGHT_PX = 24;
 
   function applyEdgeFeatherMask(el, maskValue) {
     if (!(el instanceof HTMLElement)) return;
@@ -104,7 +105,7 @@ export function createMinimapFeature({
       contentHeight: scrollTarget.scrollHeight || scrollTarget.clientHeight || 1,
       scrollTop: scrollTarget.scrollTop,
       maxScrollTop: deps.getMaxScrollTop(scrollTarget),
-      minViewportHeight: 24
+      minViewportHeight: MIN_VIEWPORT_HEIGHT_PX
     });
 
     viewportThumb.style.height = `${viewportHeight}px`;
@@ -311,7 +312,7 @@ export function createMinimapFeature({
 
     const pointerToRatio = (clientY, centerOnPointer = false) => {
       const rect = track.getBoundingClientRect();
-      const thumbHeight = viewportThumb.getBoundingClientRect().height || 24;
+      const thumbHeight = viewportThumb.getBoundingClientRect().height || MIN_VIEWPORT_HEIGHT_PX;
       const rawTop = centerOnPointer
         ? (clientY - rect.top - thumbHeight / 2)
         : (clientY - rect.top - dragOffsetY);
@@ -334,12 +335,12 @@ export function createMinimapFeature({
       if (!(event.target instanceof HTMLElement)) return;
       if (event.button !== 0) return;
       if (event.target.closest('[data-chatgpt-minimap="viewport"]')) return;
-      if (event.target.closest('[data-gpt-boost-minimap-marker="1"]')) return;
+      if (event.target.closest('[data-gpt-boost-minimap-marker]')) return;
       event.preventDefault();
       const ratio = pointerToRatio(event.clientY, true);
       scrollToMinimapRatio(ratio, "auto");
       isDraggingViewport = true;
-      dragOffsetY = (viewportThumb.getBoundingClientRect().height || 24) / 2;
+      dragOffsetY = (viewportThumb.getBoundingClientRect().height || MIN_VIEWPORT_HEIGHT_PX) / 2;
       viewportThumb.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
     });
