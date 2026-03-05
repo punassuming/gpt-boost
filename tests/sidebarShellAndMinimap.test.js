@@ -110,3 +110,68 @@ describe('minimap edge feathering', () => {
     expect(track.style.maskImage).toContain('radial-gradient');
   });
 });
+
+describe('minimap viewport drag behavior', () => {
+  it('allows click-on-track and continued drag in one gesture', () => {
+    document.body.innerHTML = '';
+    const scrollTarget = {
+      clientHeight: 200,
+      scrollHeight: 1200,
+      scrollTop: 0,
+      scrollTo: jest.fn()
+    };
+    const refs = {
+      minimapPanel: null,
+      minimapButton: null,
+      activeStandaloneMinimapVirtualId: null
+    };
+    const feature = createMinimapFeature({
+      refs,
+      state: { articleMap: new Map() },
+      constants: {
+        minimapPanelTopOffsetPx: 100,
+        minimapPanelRightOffsetPx: 20,
+        minimapPanelWidthPx: 18,
+        minimapTrackHeightPx: 200,
+        scrollButtonSizePx: 32,
+        minimapButtonGapPx: 10
+      },
+      getUiSettings: () => ({
+        userColorDark: '#303030',
+        userColorLight: '#f4f4f4',
+        assistantColorDark: '#202020',
+        assistantColorLight: '#ffffff',
+        minimapVisible: true
+      }),
+      deps: {
+        ensureVirtualIds: () => {},
+        getMessageRole: () => 'assistant',
+        getThemeTokens: () => ({ panelBorder: '#444', text: '#fff' }),
+        getThemeMode: () => 'dark',
+        getScrollTarget: () => scrollTarget,
+        getMaxScrollTop: () => 1000,
+        getViewportAnchorVirtualId: () => null,
+        escapeSelectorValue: (value) => value,
+        scrollToVirtualId: () => {},
+        applyFloatingUiOffsets: () => {},
+        applyThemeToUi: () => {}
+      }
+    });
+
+    const panel = feature.ensureMinimapPanel();
+    const track = panel.querySelector('[data-chatgpt-minimap="track"]');
+    const viewport = panel.querySelector('[data-chatgpt-minimap="viewport"]');
+
+    track.getBoundingClientRect = () => ({ top: 100, height: 200 });
+    viewport.getBoundingClientRect = () => ({ top: 160, height: 24 });
+
+    track.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientY: 180 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientY: 250 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+    expect(scrollTarget.scrollTo).toHaveBeenCalledTimes(2);
+    const firstTop = scrollTarget.scrollTo.mock.calls[0][0].top;
+    const secondTop = scrollTarget.scrollTo.mock.calls[1][0].top;
+    expect(secondTop).toBeGreaterThan(firstTop);
+  });
+});

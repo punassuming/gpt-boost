@@ -321,6 +321,7 @@ export function createMinimapFeature({
     };
 
     viewportThumb.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       isDraggingViewport = true;
@@ -331,10 +332,16 @@ export function createMinimapFeature({
 
     track.addEventListener("mousedown", (event) => {
       if (!(event.target instanceof HTMLElement)) return;
+      if (event.button !== 0) return;
       if (event.target.closest('[data-chatgpt-minimap="viewport"]')) return;
+      if (event.target.closest('[data-gpt-boost-minimap-marker="1"]')) return;
       event.preventDefault();
       const ratio = pointerToRatio(event.clientY, true);
       scrollToMinimapRatio(ratio, "auto");
+      isDraggingViewport = true;
+      dragOffsetY = (viewportThumb.getBoundingClientRect().height || 24) / 2;
+      viewportThumb.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
     });
 
     window.addEventListener("mousemove", (event) => {
