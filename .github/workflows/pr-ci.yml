@@ -37,6 +37,28 @@ jobs:
           fi
           echo "CHANGELOG.md updated — OK"
 
+      - name: Check CHANGELOG.md has content under [Unreleased]
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const idx = raw.search(/^## \[Unreleased\]/m);
+          if (idx < 0) {
+            console.error('No [Unreleased] section found in CHANGELOG.md');
+            process.exit(1);
+          }
+          const after = raw.slice(idx + '## [Unreleased]'.length);
+          const nextSec = after.search(/^## \[/m);
+          const body = (nextSec >= 0 ? after.slice(0, nextSec) : after).trim();
+          if (body.length === 0) {
+            console.error('The [Unreleased] section in CHANGELOG.md has no content.');
+            console.error('Please add a description of your changes under ## [Unreleased].');
+            process.exit(1);
+          }
+          console.log('CHANGELOG.md [Unreleased] content present — OK');
+          NODE
+
 
   validate-version-lockstep:
     name: Validate Version Lockstep
