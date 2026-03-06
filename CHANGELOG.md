@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.20] - 2026-03-06
 ### Changed
 - Sidebar tool tabs now distribute evenly across the full tab bar width, include an Outline tab icon, and keep Settings only in the top header action row.
 - Minimap panel edges now use stronger feathered masking and blur so the minimap fades out smoothly without a hard outer border.
@@ -28,8 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Initial tracked release; changelog introduced from this version onward.
 
-[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.19...HEAD
+[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.20...HEAD
 [1.0.16]: https://github.com/punassuming/gpt-boost/releases/tag/v1.0.16
 [1.0.17]: https://github.com/punassuming/gpt-boost/compare/v1.0.16...v1.0.17
 [1.0.18]: https://github.com/punassuming/gpt-boost/compare/v1.0.17...v1.0.18
 [1.0.19]: https://github.com/punassuming/gpt-boost/compare/v1.0.18...v1.0.19
+[1.0.20]: https://github.com/punassuming/gpt-boost/compare/v1.0.19...v1.0.20
