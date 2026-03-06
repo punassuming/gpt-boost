@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Sidebar tool tabs now distribute evenly across the full tab bar width, include an Outline tab icon, and keep Settings only in the top header action row.
+- Minimap panel edges now use stronger feathered masking and blur so the minimap fades out smoothly without a hard outer border.
+
 ## [1.0.19] - 2026-03-05
 ### Fixed
 - Release pipeline now correctly extracts `[Unreleased]` changelog content even when it is the last section in the file (replaced invalid `\Z` JavaScript regex anchor with a string-based approach).
