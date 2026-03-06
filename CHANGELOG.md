@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Removed the broken Outline/Map sidebar tab button so the sidebar now shows Search, Marks, and Code tabs only.
+- Increased standalone minimap panel width, strengthened edge feather masking, and added negative right margin so the larger minimap does not consume extra horizontal space.
 
 ## [1.0.20] - 2026-03-06
 ### Changed

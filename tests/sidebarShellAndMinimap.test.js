@@ -2,7 +2,7 @@ import { createSidebarShellFeature } from '../src/ui/features/sidebar/shellFeatu
 import { createMinimapFeature } from '../src/ui/features/minimap/minimapFeature.js';
 
 describe('sidebar shell tab layout', () => {
-  it('renders full-width tabs including outline/map and keeps settings in header actions', () => {
+  it('renders full-width tabs without the broken outline/map tab and keeps settings in header actions', () => {
     document.body.innerHTML = '';
     const refs = {
       sidebarPanel: null,
@@ -49,7 +49,7 @@ describe('sidebar shell tab layout', () => {
 
     const tabButtons = Array.from(document.querySelectorAll('[data-gpt-boost-sidebar-tab]'));
     const tabIds = tabButtons.map((el) => el.dataset.gptBoostSidebarTab);
-    expect(tabIds).toEqual(['search', 'bookmarks', 'snippets', 'map']);
+    expect(tabIds).toEqual(['search', 'bookmarks', 'snippets']);
     expect(tabIds).not.toContain('settings');
     tabButtons.forEach((button) => {
       expect(button.style.flexGrow).toBe('1');
@@ -61,7 +61,7 @@ describe('sidebar shell tab layout', () => {
 });
 
 describe('minimap edge feathering', () => {
-  it('applies edge feather masks and removes hard panel border', () => {
+  it('applies stronger edge feather masks and negative right margin without hard border', () => {
     document.body.innerHTML = '';
     const refs = {
       minimapPanel: null,
@@ -74,7 +74,8 @@ describe('minimap edge feathering', () => {
       constants: {
         minimapPanelTopOffsetPx: 100,
         minimapPanelRightOffsetPx: 20,
-        minimapPanelWidthPx: 18,
+        minimapPanelWidthPx: 34,
+        minimapPanelNegativeMarginRightPx: -16,
         minimapTrackHeightPx: 200,
         scrollButtonSizePx: 32,
         minimapButtonGapPx: 10
@@ -106,7 +107,9 @@ describe('minimap edge feathering', () => {
     const track = panel.querySelector('[data-chatgpt-minimap="track"]');
 
     expect(panel.style.border).toBe('');
+    expect(panel.style.marginRight).toBe('-16px');
     expect(panel.style.maskImage).toContain('radial-gradient');
+    expect(panel.style.maskImage).toContain('160% 128%');
     expect(track.style.maskImage).toContain('radial-gradient');
   });
 });

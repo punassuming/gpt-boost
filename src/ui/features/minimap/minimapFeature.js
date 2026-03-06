@@ -15,8 +15,8 @@ export function createMinimapFeature({
   getUiSettings,
   deps
 }) {
-  const EDGE_FEATHER_MASK = "radial-gradient(130% 112% at 50% 50%, black 58%, rgba(0,0,0,0.88) 72%, transparent 100%)";
-  const TRACK_FEATHER_MASK = "radial-gradient(130% 112% at 50% 50%, black 60%, rgba(0,0,0,0.9) 74%, transparent 100%)";
+  const EDGE_FEATHER_MASK = "radial-gradient(160% 128% at 50% 50%, black 42%, rgba(0,0,0,0.95) 58%, rgba(0,0,0,0.55) 76%, transparent 100%)";
+  const TRACK_FEATHER_MASK = "radial-gradient(160% 128% at 50% 50%, black 46%, rgba(0,0,0,0.95) 62%, rgba(0,0,0,0.6) 78%, transparent 100%)";
   const MIN_VIEWPORT_HEIGHT_PX = 24;
 
   function applyEdgeFeatherMask(el, maskValue) {
@@ -274,6 +274,7 @@ export function createMinimapFeature({
     panel.style.zIndex = "10001";
     panel.style.width = `${constants.minimapPanelWidthPx}px`;
     panel.style.height = `${constants.minimapTrackHeightPx}px`;
+    panel.style.marginRight = `${constants.minimapPanelNegativeMarginRightPx || 0}px`;
     panel.style.display = "none";
     panel.style.padding = "0";
     panel.style.borderRadius = "10px";

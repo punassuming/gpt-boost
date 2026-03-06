@@ -129,8 +129,10 @@ import {
   const MINIMAP_BUTTON_TOP_OFFSET_PX = TOP_BUTTON_STACK_OFFSET_PX;
   const MINIMAP_PANEL_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const MINIMAP_PANEL_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
-  // Make minimap track slightly narrower than its button for visual padding.
-  const MINIMAP_PANEL_WIDTH_PX = MINIMAP_BUTTON_SIZE_PX - 8;
+  // Keep the minimap visually wider for stronger feathering while offsetting it
+  // with a negative right margin so it doesn't consume extra horizontal space.
+  const MINIMAP_PANEL_WIDTH_PX = MINIMAP_BUTTON_SIZE_PX + 8;
+  const MINIMAP_PANEL_NEGATIVE_MARGIN_RIGHT_PX = -16;
   const MINIMAP_TRACK_HEIGHT_PX = 420;
   const MINIMAP_PROMPT_SNIPPET_LENGTH = 60;
   const SEARCH_BUTTON_SIZE_PX = 30;
@@ -432,6 +434,7 @@ import {
       minimapPanelRightOffsetPx: MINIMAP_PANEL_RIGHT_OFFSET_PX,
       minimapPanelTopOffsetPx: MINIMAP_PANEL_TOP_OFFSET_PX,
       minimapPanelWidthPx: MINIMAP_PANEL_WIDTH_PX,
+      minimapPanelNegativeMarginRightPx: MINIMAP_PANEL_NEGATIVE_MARGIN_RIGHT_PX,
       minimapTrackHeightPx: MINIMAP_TRACK_HEIGHT_PX
     },
     getUiSettings: () => uiSettings,
