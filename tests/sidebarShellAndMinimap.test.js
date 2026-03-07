@@ -2,7 +2,7 @@ import { createSidebarShellFeature } from '../src/ui/features/sidebar/shellFeatu
 import { createMinimapFeature } from '../src/ui/features/minimap/minimapFeature.js';
 
 describe('sidebar shell tab layout', () => {
-  it('renders full-width tabs without the broken outline/map tab and keeps settings in header actions', () => {
+  it('renders equal-width labeled tabs and keeps settings in header actions', () => {
     document.body.innerHTML = '';
     const refs = {
       sidebarPanel: null,
@@ -54,6 +54,8 @@ describe('sidebar shell tab layout', () => {
     tabButtons.forEach((button) => {
       expect(button.style.flexGrow).toBe('1');
       expect(button.style.minWidth).toBe('0');
+      expect(button.textContent).not.toBe('');
+      expect(button.style.height).toBe('36px');
     });
 
     expect(document.querySelector('button[aria-label="Open sidebar settings"]')).not.toBeNull();
@@ -105,12 +107,85 @@ describe('minimap edge feathering', () => {
     const panel = feature.ensureMinimapPanel();
     feature.applyTheme({ panelBorder: '#444', text: '#fff' });
     const track = panel.querySelector('[data-chatgpt-minimap="track"]');
+    const viewport = panel.querySelector('[data-chatgpt-minimap="viewport"]');
 
     expect(panel.style.border).toBe('');
     expect(panel.style.marginRight).toBe('-16px');
     expect(panel.style.maskImage).toContain('radial-gradient');
     expect(panel.style.maskImage).toContain('160% 128%');
     expect(track.style.maskImage).toContain('radial-gradient');
+    expect(viewport.style.border).toContain('2px');
+    expect(viewport.style.boxShadow).toContain('inset');
+  });
+});
+
+describe('minimap marker readability', () => {
+  it('uses centered marker columns with role/content-aware marker styles', () => {
+    document.body.innerHTML = '';
+    const articleA = document.createElement('article');
+    const articleB = document.createElement('article');
+    const articleC = document.createElement('article');
+    const pre = document.createElement('pre');
+    pre.textContent = 'const x = 1;';
+    articleC.appendChild(pre);
+    document.body.appendChild(articleA);
+    document.body.appendChild(articleB);
+    document.body.appendChild(articleC);
+    const refs = {
+      minimapPanel: null,
+      minimapButton: null,
+      activeStandaloneMinimapVirtualId: null
+    };
+    const feature = createMinimapFeature({
+      refs,
+      state: { articleMap: new Map([['1', articleA], ['2', articleB], ['3', articleC]]) },
+      constants: {
+        minimapPanelTopOffsetPx: 100,
+        minimapPanelRightOffsetPx: 20,
+        minimapPanelWidthPx: 34,
+        minimapTrackHeightPx: 200,
+        scrollButtonSizePx: 32,
+        minimapButtonGapPx: 10
+      },
+      getUiSettings: () => ({
+        userColorDark: '#303030',
+        userColorLight: '#f4f4f4',
+        assistantColorDark: '#202020',
+        assistantColorLight: '#ffffff',
+        minimapVisible: true
+      }),
+      deps: {
+        ensureVirtualIds: () => {},
+        getMessageRole: (node) => (node === articleA ? 'user' : 'assistant'),
+        getThemeTokens: () => ({ panelBorder: '#444', text: '#fff' }),
+        getThemeMode: () => 'dark',
+        getScrollTarget: () => null,
+        getMaxScrollTop: () => 0,
+        getViewportAnchorVirtualId: () => null,
+        escapeSelectorValue: (value) => value,
+        scrollToVirtualId: () => {},
+        applyFloatingUiOffsets: () => {},
+        applyThemeToUi: () => {}
+      }
+    });
+
+    const panel = feature.ensureMinimapPanel();
+    feature.populateMinimapPanel(panel);
+    const markers = panel.querySelectorAll('[data-gpt-boost-minimap-marker="1"]');
+    expect(markers).toHaveLength(3);
+    markers.forEach((marker) => {
+      expect(marker.style.left).toBe('12%');
+      expect(marker.style.right).toBe('12%');
+    });
+    expect(markers[0].style.opacity).toBe('0.82');
+    expect(markers[1].style.opacity).toBe('0.66');
+    expect(markers[0].dataset.contentKind).toBe('user');
+    expect(markers[0].style.backgroundImage).toBe('none');
+    expect(markers[1].dataset.contentKind).toBe('text');
+    expect(markers[1].style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(markers[2].dataset.contentKind).toBe('pre');
+    expect(markers[2].style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(markers[2].style.border).toContain('1px solid');
   });
 });
 

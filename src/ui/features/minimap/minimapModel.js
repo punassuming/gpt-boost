@@ -3,6 +3,15 @@ export function buildMinimapItems({
   articleMap,
   getMessageRole
 }) {
+  function inferContentKind(node, role) {
+    if (!(node instanceof HTMLElement)) return "text";
+    if (role === "user") return "user";
+    if (node.querySelector("pre, code, .hljs, [class*='language-']")) {
+      return "pre";
+    }
+    return "text";
+  }
+
   ensureVirtualIds();
   const entries = Array.from(articleMap.entries())
     .filter(([, node]) => node instanceof HTMLElement)
@@ -16,9 +25,11 @@ export function buildMinimapItems({
     const top = Number.isFinite(rect.top) ? rect.top : 0;
     const height = Math.max(1, Number.isFinite(rect.height) ? rect.height : node.offsetHeight || 1);
     const role = getMessageRole(node);
+    const contentKind = inferContentKind(node, role);
     return {
       id,
       role,
+      contentKind,
       position: index + 1,
       total,
       topRatio: total <= 1 ? 0 : index / (total - 1),
