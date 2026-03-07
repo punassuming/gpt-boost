@@ -20,11 +20,14 @@ export function createSidebarShellFeature({
     svg.style.strokeLinejoin = "round";
     svg.style.display = "block";
     svg.style.flexShrink = "0";
-    const specList = Array.isArray(specs)
-      ? specs
-      : (typeof specs === "string"
-        ? [{ tag: "path", d: specs }]
-        : (specs && typeof specs === "object" && specs.tag ? [specs] : []));
+    let specList = [];
+    if (Array.isArray(specs)) {
+      specList = specs;
+    } else if (typeof specs === "string") {
+      specList = [{ tag: "path", d: specs }];
+    } else if (specs && typeof specs === "object" && specs.tag) {
+      specList = [specs];
+    }
     specList.forEach((spec) => {
       const el = document.createElementNS(ns, spec.tag);
       Object.entries(spec).forEach(([k, v]) => { if (k !== "tag") el.setAttribute(k, v); });

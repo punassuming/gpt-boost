@@ -2,7 +2,7 @@ import { createSidebarShellFeature } from '../src/ui/features/sidebar/shellFeatu
 import { createMinimapFeature } from '../src/ui/features/minimap/minimapFeature.js';
 
 describe('sidebar shell tab layout', () => {
-  it('renders full-width labeled tabs and keeps settings in header actions', () => {
+  it('renders equal-width labeled tabs and keeps settings in header actions', () => {
     document.body.innerHTML = '';
     const refs = {
       sidebarPanel: null,
