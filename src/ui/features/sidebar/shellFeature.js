@@ -20,7 +20,11 @@ export function createSidebarShellFeature({
     svg.style.strokeLinejoin = "round";
     svg.style.display = "block";
     svg.style.flexShrink = "0";
-    const specList = Array.isArray(specs) ? specs : [{ tag: "path", d: specs }];
+    const specList = Array.isArray(specs)
+      ? specs
+      : (typeof specs === "string"
+        ? [{ tag: "path", d: specs }]
+        : (specs && typeof specs === "object" && specs.tag ? [specs] : []));
     specList.forEach((spec) => {
       const el = document.createElementNS(ns, spec.tag);
       Object.entries(spec).forEach(([k, v]) => { if (k !== "tag") el.setAttribute(k, v); });
@@ -69,11 +73,11 @@ export function createSidebarShellFeature({
     btn.setAttribute("aria-label", label);
     btn.style.border = "none";
     btn.style.borderRadius = "8px";
-    btn.style.padding = "6px 0";
+    btn.style.padding = "6px 8px";
     btn.style.width = "auto";
     btn.style.flex = "1 1 0";
     btn.style.minWidth = "0";
-    btn.style.height = "30px";
+    btn.style.height = "36px";
     btn.style.fontSize = "11px";
     btn.style.cursor = "pointer";
     btn.style.fontFamily = "inherit";
@@ -81,7 +85,8 @@ export function createSidebarShellFeature({
     btn.style.display = "inline-flex";
     btn.style.alignItems = "center";
     btn.style.justifyContent = "center";
-    btn.style.lineHeight = "1";
+    btn.style.gap = "4px";
+    btn.style.lineHeight = "1.2";
     btn.style.background = "transparent";
     btn.style.color = "inherit";
     btn.style.transition = "background 0.15s ease, color 0.15s ease";
@@ -90,7 +95,13 @@ export function createSidebarShellFeature({
     btn.dataset.gptBoostSidebarActive = "0";
 
     const iconEl = makeSvgIcon(TAB_ICONS[tabId] || TAB_ICONS.settings, 13);
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    labelEl.style.display = "inline-block";
+    labelEl.style.fontSize = "11px";
+    labelEl.style.lineHeight = "1";
     btn.appendChild(iconEl);
+    btn.appendChild(labelEl);
     btn.addEventListener("mouseenter", () => {
       if (btn.dataset.gptBoostSidebarActive === "1") return;
       const theme = deps.getThemeTokens();
@@ -392,17 +403,19 @@ export function createSidebarShellFeature({
     tabs.style.display = "flex";
     tabs.style.flexWrap = "nowrap";
     tabs.style.gap = "4px";
-    tabs.style.marginBottom = "8px";
+    tabs.style.marginBottom = "10px";
     tabs.style.padding = "3px";
     tabs.style.borderRadius = "10px";
     tabs.style.background = theme.inputBg;
-    tabs.style.border = `1px solid ${theme.panelBorder}`;
+    tabs.style.borderTop = `1px solid ${theme.panelBorder}`;
+    tabs.style.borderBottom = `1px solid ${theme.panelBorder}`;
     tabs.style.overflowX = "hidden";
     tabs.style.alignItems = "center";
 
     tabs.appendChild(createSidebarTabButton("search", "Search"));
     tabs.appendChild(createSidebarTabButton("bookmarks", "Marks"));
     tabs.appendChild(createSidebarTabButton("snippets", "Code"));
+    tabs.appendChild(createSidebarTabButton("map", "Map"));
 
     const content = document.createElement("div");
     content.style.display = "flex";

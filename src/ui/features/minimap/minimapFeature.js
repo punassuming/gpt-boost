@@ -66,7 +66,7 @@ export function createMinimapFeature({
       : (isDark ? (getUiSettings().assistantColorDark || "#202020") : (getUiSettings().assistantColorLight || "#FFFFFF"));
     const hovered = marker.dataset.gptBoostHovered === "1";
     const baseHeight = Math.max(1, Number(marker.dataset.baseHeightPx || "2"));
-    const baseOpacity = isUser ? 0.75 : 0.55;
+    const baseOpacity = isUser ? 0.82 : 0.66;
 
     marker.style.background = baseColor;
     marker.style.opacity = isActive ? "1" : hovered ? String(Math.min(1, baseOpacity + 0.18)) : String(baseOpacity);
@@ -78,14 +78,14 @@ export function createMinimapFeature({
     if (!(viewportThumb instanceof HTMLElement)) return;
     const dark = deps.getThemeMode() === "dark";
     viewportThumb.style.background = dark
-      ? "rgba(30, 41, 59, 0.75)"
-      : "rgba(0, 0, 0, 0.28)";
+      ? "rgba(148, 163, 184, 0.32)"
+      : "rgba(15, 23, 42, 0.22)";
     viewportThumb.style.border = dark
-      ? "1px solid rgba(100, 116, 139, 0.65)"
-      : "1px solid rgba(0, 0, 0, 0.4)";
+      ? "2px solid rgba(203, 213, 225, 0.78)"
+      : "2px solid rgba(15, 23, 42, 0.42)";
     viewportThumb.style.boxShadow = dark
-      ? "0 1px 3px rgba(0,0,0,0.45)"
-      : "0 1px 2px rgba(0,0,0,0.22)";
+      ? "0 1px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18)"
+      : "0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.5)";
   }
 
   function updateStandaloneMinimapViewportRect(track) {
@@ -169,9 +169,8 @@ export function createMinimapFeature({
       });
       marker.dataset.baseHeightPx = String(baseHeightPx);
       marker.style.position = "absolute";
-      const isUser = role === "user";
-      marker.style.left = isUser ? "26%" : "6%";
-      marker.style.right = isUser ? "6%" : "6%";
+      marker.style.left = "12%";
+      marker.style.right = "12%";
       marker.style.top = `${topPx}px`;
       marker.style.transform = "none";
       marker.style.border = "none";
@@ -300,9 +299,9 @@ export function createMinimapFeature({
     viewportThumb.style.top = "0";
     viewportThumb.style.height = "24px";
     viewportThumb.style.borderRadius = "2px";
-    viewportThumb.style.background = "rgba(255,255,255,0.5)";
-    viewportThumb.style.border = "1px solid rgba(255,255,255,0.35)";
-    viewportThumb.style.boxShadow = "0 1px 2px rgba(0,0,0,0.2)";
+    viewportThumb.style.background = "rgba(255,255,255,0.6)";
+    viewportThumb.style.border = "2px solid rgba(255,255,255,0.45)";
+    viewportThumb.style.boxShadow = "0 1px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4)";
     viewportThumb.style.cursor = "grab";
     viewportThumb.style.pointerEvents = "auto";
     viewportThumb.style.zIndex = "4";

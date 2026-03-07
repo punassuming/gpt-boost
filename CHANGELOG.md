@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Refined sidebar tool visualization by adding labeled icon tabs with larger click targets and reinstating the Map tab as a first-class tool view.
+- Improved standalone minimap readability by centering marker lanes, increasing marker contrast, and strengthening viewport thumb contrast/styling.
 
 ## [1.0.21] - 2026-03-06
 ### Changed
