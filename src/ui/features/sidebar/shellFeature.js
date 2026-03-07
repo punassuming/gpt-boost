@@ -418,7 +418,6 @@ export function createSidebarShellFeature({
     tabs.appendChild(createSidebarTabButton("search", "Search"));
     tabs.appendChild(createSidebarTabButton("bookmarks", "Marks"));
     tabs.appendChild(createSidebarTabButton("snippets", "Code"));
-    tabs.appendChild(createSidebarTabButton("map", "Map"));
 
     const content = document.createElement("div");
     content.style.display = "flex";

@@ -67,8 +67,28 @@ export function createMinimapFeature({
     const hovered = marker.dataset.gptBoostHovered === "1";
     const baseHeight = Math.max(1, Number(marker.dataset.baseHeightPx || "2"));
     const baseOpacity = isUser ? 0.82 : 0.66;
+    const contentKind = marker.dataset.contentKind || (isUser ? "user" : "text");
 
     marker.style.background = baseColor;
+    marker.style.backgroundImage = "none";
+    marker.style.backgroundBlendMode = "normal";
+    marker.style.border = "none";
+    marker.style.borderRadius = contentKind === "user" ? "3px" : "1px";
+
+    if (contentKind === "text") {
+      marker.style.backgroundImage = deps.getThemeMode() === "dark"
+        ? "repeating-linear-gradient(to bottom, rgba(248,250,252,0.28) 0 1px, transparent 1px 5px)"
+        : "repeating-linear-gradient(to bottom, rgba(15,23,42,0.18) 0 1px, transparent 1px 5px)";
+      marker.style.backgroundBlendMode = "overlay";
+    } else if (contentKind === "pre") {
+      marker.style.backgroundImage = deps.getThemeMode() === "dark"
+        ? "repeating-linear-gradient(to bottom, rgba(226,232,240,0.28) 0 1px, transparent 1px 3px)"
+        : "repeating-linear-gradient(to bottom, rgba(15,23,42,0.24) 0 1px, transparent 1px 3px)";
+      marker.style.backgroundBlendMode = "overlay";
+      marker.style.border = `1px solid ${theme.panelBorder}`;
+      marker.style.borderRadius = "2px";
+    }
+
     marker.style.opacity = isActive ? "1" : hovered ? String(Math.min(1, baseOpacity + 0.18)) : String(baseOpacity);
     marker.style.height = `${isActive ? Math.max(baseHeight, 4) : baseHeight}px`;
     marker.style.boxShadow = isActive ? `0 0 0 1px ${theme.panelBorder}` : "none";
@@ -154,12 +174,13 @@ export function createMinimapFeature({
 
     const trackHeight = Math.max(1, track.clientHeight);
 
-    items.forEach(({ id, role, position, total, topRatio, heightRatio }) => {
+    items.forEach(({ id, role, contentKind, position, total, topRatio, heightRatio }) => {
       const marker = document.createElement("button");
       marker.type = "button";
       marker.setAttribute("data-gpt-boost-minimap-marker", "1");
       marker.dataset.virtualId = id;
       marker.dataset.role = role;
+      marker.dataset.contentKind = contentKind || (role === "user" ? "user" : "text");
       marker.dataset.position = String(position);
       marker.dataset.total = String(total);
       const { baseHeightPx, topPx } = computeMarkerGeometry({

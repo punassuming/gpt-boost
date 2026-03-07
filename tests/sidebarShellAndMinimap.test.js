@@ -49,7 +49,7 @@ describe('sidebar shell tab layout', () => {
 
     const tabButtons = Array.from(document.querySelectorAll('[data-gpt-boost-sidebar-tab]'));
     const tabIds = tabButtons.map((el) => el.dataset.gptBoostSidebarTab);
-    expect(tabIds).toEqual(['search', 'bookmarks', 'snippets', 'map']);
+    expect(tabIds).toEqual(['search', 'bookmarks', 'snippets']);
     expect(tabIds).not.toContain('settings');
     tabButtons.forEach((button) => {
       expect(button.style.flexGrow).toBe('1');
@@ -120,12 +120,17 @@ describe('minimap edge feathering', () => {
 });
 
 describe('minimap marker readability', () => {
-  it('uses centered marker columns with stronger default opacity', () => {
+  it('uses centered marker columns with role/content-aware marker styles', () => {
     document.body.innerHTML = '';
     const articleA = document.createElement('article');
     const articleB = document.createElement('article');
+    const articleC = document.createElement('article');
+    const pre = document.createElement('pre');
+    pre.textContent = 'const x = 1;';
+    articleC.appendChild(pre);
     document.body.appendChild(articleA);
     document.body.appendChild(articleB);
+    document.body.appendChild(articleC);
     const refs = {
       minimapPanel: null,
       minimapButton: null,
@@ -133,7 +138,7 @@ describe('minimap marker readability', () => {
     };
     const feature = createMinimapFeature({
       refs,
-      state: { articleMap: new Map([['1', articleA], ['2', articleB]]) },
+      state: { articleMap: new Map([['1', articleA], ['2', articleB], ['3', articleC]]) },
       constants: {
         minimapPanelTopOffsetPx: 100,
         minimapPanelRightOffsetPx: 20,
@@ -167,13 +172,20 @@ describe('minimap marker readability', () => {
     const panel = feature.ensureMinimapPanel();
     feature.populateMinimapPanel(panel);
     const markers = panel.querySelectorAll('[data-gpt-boost-minimap-marker="1"]');
-    expect(markers).toHaveLength(2);
+    expect(markers).toHaveLength(3);
     markers.forEach((marker) => {
       expect(marker.style.left).toBe('12%');
       expect(marker.style.right).toBe('12%');
     });
     expect(markers[0].style.opacity).toBe('0.82');
     expect(markers[1].style.opacity).toBe('0.66');
+    expect(markers[0].dataset.contentKind).toBe('user');
+    expect(markers[0].style.backgroundImage).toBe('none');
+    expect(markers[1].dataset.contentKind).toBe('text');
+    expect(markers[1].style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(markers[2].dataset.contentKind).toBe('pre');
+    expect(markers[2].style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(markers[2].style.border).toContain('1px solid');
   });
 });
 

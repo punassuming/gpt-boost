@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
-- Refined sidebar tool visualization by adding labeled icon tabs with larger click targets and reinstating the Map tab as a first-class tool view.
-- Improved standalone minimap readability by centering marker lanes, increasing marker contrast, and strengthening viewport thumb contrast/styling.
+- Refined sidebar tool visualization with labeled icon tabs and larger click targets while keeping Search/Marks/Code as the primary sidebar tool row.
+- Improved standalone minimap readability with centered marker lanes, stronger contrast, and richer content cues (user blocks, simulated text lines, and code/pre-style markers).
 
 ## [1.0.21] - 2026-03-06
 ### Changed
