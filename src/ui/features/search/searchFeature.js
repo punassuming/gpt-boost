@@ -1,6 +1,7 @@
 import {
   clearSearchTextHighlights as clearHighlightsInElement,
-  highlightMatchesInElement as highlightMatches
+  highlightMatchesInElement as highlightMatches,
+  setActiveSearchMatch
 } from './searchHighlighting.js';
 import {
   collectSearchTargets as collectTargets,
@@ -28,6 +29,7 @@ export function createSearchFeature({
       hideSearchPanel
     }
   });
+  let focusToken = 0;
 
   function clearSearchTextHighlights(element) {
     clearHighlightsInElement(element);
@@ -44,16 +46,20 @@ export function createSearchFeature({
   }
 
   function highlightMatchesInElement(element, query) {
-    highlightMatches(element, query);
+    return highlightMatches(element, query);
   }
 
-  function setSearchHighlight(element) {
+  function setSearchHighlight(element, matchIndexWithinMessage = 0) {
     if (!(element instanceof HTMLElement)) return;
     clearSearchHighlight();
     element.style.outline = "2px solid #fbbf24";
     element.style.outlineOffset = "2px";
     element.style.borderRadius = "8px";
     highlightMatchesInElement(element, searchState.query);
+    const activeMark = setActiveSearchMatch(element, matchIndexWithinMessage);
+    if (activeMark instanceof HTMLElement) {
+      activeMark.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }
     refs.highlightedSearchElement = element;
   }
 
@@ -85,29 +91,42 @@ export function createSearchFeature({
     });
   }
 
-  function getSearchResultSummary(id, index, total) {
+  function getSearchResultVirtualIds() {
+    return searchState.resultVirtualIds instanceof Set
+      ? searchState.resultVirtualIds
+      : new Set();
+  }
+
+  function getSearchResultSummary(result, index, total) {
     return summarizeSearchResult({
-      id,
+      result,
       index,
       total,
       articleMap: state.articleMap,
-      getMessageRole: deps.getMessageRole,
-      articleSnippetLength: constants.articleSnippetLength
+      getMessageRole: deps.getMessageRole
     });
   }
 
-  function focusSearchResult(id) {
-    deps.scrollToVirtualId(id);
+  function focusSearchResult(result) {
+    if (!result || !result.id) return;
+    const token = ++focusToken;
+    deps.scrollToVirtualId(result.id);
 
-    const selectorId = deps.escapeSelectorValue(id);
-    setTimeout(() => {
+    const selectorId = deps.escapeSelectorValue(result.id);
+    const applyFocusedMatch = (attempt = 0) => {
+      if (token !== focusToken) return;
       const refreshed =
         document.querySelector(`article[data-virtual-id="${selectorId}"]`) ||
-        document.querySelector(`[data-virtual-id="${selectorId}"]`);
+        document.querySelector(`[data-virtual-id="${selectorId}"]:not([data-chatgpt-virtual-spacer="1"])`);
       if (refreshed instanceof HTMLElement) {
-        setSearchHighlight(refreshed);
+        setSearchHighlight(refreshed, result.matchIndexWithinMessage || 0);
+        return;
       }
-    }, 200);
+      if (attempt >= 4) return;
+      setTimeout(() => applyFocusedMatch(attempt + 1), 180);
+    };
+
+    setTimeout(() => applyFocusedMatch(0), 220);
   }
 
   function rerenderSearchSidebarPreservingInputFocus() {
@@ -164,9 +183,11 @@ export function createSearchFeature({
       searchState.activeIndex = -1;
       searchState.indexedTotal = state.stats.totalMessages;
       searchState.matchCount = 0;
+      searchState.resultVirtualIds = new Set();
       updateSearchCountLabel();
       clearSearchHighlight();
       rerenderSearchSidebarPreservingInputFocus();
+      deps.onResultsChanged?.();
       return;
     }
 
@@ -174,6 +195,11 @@ export function createSearchFeature({
     searchState.activeIndex = results.length ? 0 : -1;
     searchState.indexedTotal = state.stats.totalMessages;
     searchState.matchCount = matchCount;
+    searchState.resultVirtualIds = new Set(
+      results
+        .map((result) => result && result.id)
+        .filter(Boolean)
+    );
 
     updateSearchCountLabel();
     if (!results.length) {
@@ -183,6 +209,7 @@ export function createSearchFeature({
     if (deps.isSidebarOpen() && deps.getActiveSidebarTab() !== "search") {
       deps.refreshSidebarTab();
     }
+    deps.onResultsChanged?.();
   }
 
   function scheduleSearch(query) {
@@ -294,6 +321,7 @@ export function createSearchFeature({
     setSearchHighlight,
     updateSearchCountLabel,
     collectSearchTargets,
+    getSearchResultVirtualIds,
     getSearchResultSummary,
     focusSearchResult,
     rerenderSearchSidebarPreservingInputFocus,

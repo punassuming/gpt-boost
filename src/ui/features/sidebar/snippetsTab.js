@@ -1,5 +1,10 @@
 import hljs from "highlight.js/lib/common";
-import { extractCodeSnippetText, inferCodeLanguage, stripSnippetLeadingHeaderLines } from "../snippets/codeSnippets.js";
+import {
+  extractCodeSnippetText,
+  getCodeSnippetPreElements,
+  inferCodeLanguage,
+  stripSnippetLeadingHeaderLines
+} from "../snippets/codeSnippets.js";
 
 function ensureHighlightJsStyles() {
   if (document.getElementById("gpt-boost-hljs-style")) return;
@@ -68,7 +73,7 @@ export function renderSidebarSnippetsTab({
     .sort((a, b) => Number(a[0]) - Number(b[0]));
 
   sortedEntries.forEach(([id, node]) => {
-    const pres = node.querySelectorAll("pre");
+    const pres = getCodeSnippetPreElements(node);
     pres.forEach((pre, i) => {
       const codeEl = pre.querySelector("code");
       const source = codeEl || pre;

@@ -7,6 +7,7 @@ import {
   buildMinimapItems as buildItems,
   computeMarkerGeometry
 } from './minimapModel.js';
+import { createSvgIcon } from '../../shell/icons.js';
 
 export function createMinimapFeature({
   refs,
@@ -18,6 +19,10 @@ export function createMinimapFeature({
   const EDGE_FEATHER_MASK = "radial-gradient(160% 128% at 50% 50%, black 42%, rgba(0,0,0,0.95) 58%, rgba(0,0,0,0.55) 76%, transparent 100%)";
   const TRACK_FEATHER_MASK = "radial-gradient(160% 128% at 50% 50%, black 46%, rgba(0,0,0,0.95) 62%, rgba(0,0,0,0.6) 78%, transparent 100%)";
   const MIN_VIEWPORT_HEIGHT_PX = 24;
+  const minimapModelCache = new Map();
+  const markerRegistry = new Map();
+  let trackElement = null;
+  let viewportThumbElement = null;
 
   function applyEdgeFeatherMask(el, maskValue) {
     if (!(el instanceof HTMLElement)) return;
@@ -25,21 +30,42 @@ export function createMinimapFeature({
     el.style.WebkitMaskImage = maskValue;
   }
 
-  function hideMinimapPanel() {
-    if (refs.minimapPanel) refs.minimapPanel.style.display = "none";
-    refs.activeStandaloneMinimapVirtualId = null;
+  function isPanelOpen() {
+    return !!(
+      refs.minimapPanel &&
+      refs.minimapPanel.isConnected &&
+      refs.minimapPanel.style.display !== "none"
+    );
   }
 
-  function hideMinimapUi() {
-    if (refs.minimapButton) refs.minimapButton.style.display = "none";
-    hideMinimapPanel();
+  function getTrack(panel = refs.minimapPanel) {
+    if (trackElement instanceof HTMLElement && trackElement.isConnected) {
+      return trackElement;
+    }
+    if (!(panel instanceof HTMLElement)) return null;
+    const track = panel.querySelector('[data-chatgpt-minimap="track"]');
+    trackElement = track instanceof HTMLElement ? track : null;
+    return trackElement;
+  }
+
+  function getViewportThumb(track = getTrack()) {
+    if (viewportThumbElement instanceof HTMLElement && viewportThumbElement.isConnected) {
+      return viewportThumbElement;
+    }
+    if (!(track instanceof HTMLElement)) return null;
+    const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
+    viewportThumbElement = viewportThumb instanceof HTMLElement ? viewportThumb : null;
+    return viewportThumbElement;
   }
 
   function buildMinimapItems() {
     return buildItems({
       ensureVirtualIds: deps.ensureVirtualIds,
       articleMap: state.articleMap,
-      getMessageRole: deps.getMessageRole
+      getMessageRole: deps.getMessageRole,
+      getCodeSnippetVirtualIds: deps.getCodeSnippetVirtualIds,
+      getSearchHitVirtualIds: deps.getSearchHitVirtualIds,
+      cache: minimapModelCache
     });
   }
 
@@ -55,23 +81,53 @@ export function createMinimapFeature({
     scrollTarget.scrollTo({ top: targetTop, behavior });
   }
 
+  function ensureMarkerRefs(marker) {
+    if (!(marker instanceof HTMLElement)) return null;
+    if (marker._gptBoostMinimapRefs) return marker._gptBoostMinimapRefs;
+    const refsObject = {
+      lineNodes: [],
+      overlays: null,
+      searchOverlay: null,
+      codeOverlay: null
+    };
+    marker._gptBoostMinimapRefs = refsObject;
+    return refsObject;
+  }
+
   function applyStandaloneMinimapMarkerStyle(marker, isActive) {
     if (!(marker instanceof HTMLElement)) return;
     const theme = deps.getThemeTokens();
     const role = marker.dataset.role || "unknown";
     const isUser = role === "user";
-    const isDark = deps.getThemeMode() === "dark";
-    const baseColor = isUser
-      ? (isDark ? (getUiSettings().userColorDark || "#303030") : (getUiSettings().userColorLight || "#F4F4F4"))
-      : (isDark ? (getUiSettings().assistantColorDark || "#202020") : (getUiSettings().assistantColorLight || "#FFFFFF"));
     const hovered = marker.dataset.gptBoostHovered === "1";
-    const baseHeight = Math.max(1, Number(marker.dataset.baseHeightPx || "2"));
-    const baseOpacity = isUser ? 0.75 : 0.55;
+    const isDark = deps.getThemeMode() === "dark";
+    const markerRefs = ensureMarkerRefs(marker);
+    const lineNodes = markerRefs?.lineNodes || [];
+    const overlayNodes = [markerRefs?.searchOverlay, markerRefs?.codeOverlay].filter((node) => node instanceof HTMLElement);
 
-    marker.style.background = baseColor;
-    marker.style.opacity = isActive ? "1" : hovered ? String(Math.min(1, baseOpacity + 0.18)) : String(baseOpacity);
-    marker.style.height = `${isActive ? Math.max(baseHeight, 4) : baseHeight}px`;
+    marker.style.opacity = isActive ? "1" : hovered ? "0.92" : "0.76";
     marker.style.boxShadow = isActive ? `0 0 0 1px ${theme.panelBorder}` : "none";
+    marker.style.background = "transparent";
+
+    lineNodes.forEach((line) => {
+      const baseColor = isDark
+        ? (isUser ? "rgba(226, 232, 240, 0.42)" : "rgba(148, 163, 184, 0.38)")
+        : (isUser ? "rgba(51, 65, 85, 0.24)" : "rgba(51, 65, 85, 0.18)");
+      const activeColor = isDark
+        ? "rgba(226, 232, 240, 0.7)"
+        : "rgba(15, 23, 42, 0.4)";
+      line.style.background = isActive ? activeColor : baseColor;
+    });
+
+    overlayNodes.forEach((overlay) => {
+      if (overlay.dataset.overlayType === "search") {
+        overlay.style.background = "rgba(251, 191, 36, 0.92)";
+        overlay.style.boxShadow = "0 0 0 1px rgba(251, 191, 36, 0.2)";
+      } else if (overlay.dataset.overlayType === "code") {
+        overlay.style.background = "rgba(59, 130, 246, 0.9)";
+        overlay.style.boxShadow = "0 0 0 1px rgba(59, 130, 246, 0.2)";
+      }
+    });
   }
 
   function applyStandaloneMinimapViewportThumbTheme(viewportThumb) {
@@ -88,9 +144,9 @@ export function createMinimapFeature({
       : "0 1px 2px rgba(0,0,0,0.22)";
   }
 
-  function updateStandaloneMinimapViewportRect(track) {
+  function updateStandaloneMinimapViewportRect(track = getTrack()) {
     if (!(track instanceof HTMLElement)) return;
-    const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
+    const viewportThumb = getViewportThumb(track);
     if (!(viewportThumb instanceof HTMLElement)) return;
 
     const scrollTarget = deps.getScrollTarget();
@@ -113,9 +169,9 @@ export function createMinimapFeature({
   }
 
   function updateStandaloneMinimapViewportState(force = false) {
-    if (!refs.minimapPanel || refs.minimapPanel.style.display === "none") return;
+    if (!isPanelOpen()) return;
 
-    const track = refs.minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
+    const track = getTrack();
     if (!(track instanceof HTMLElement)) return;
     updateStandaloneMinimapViewportRect(track);
 
@@ -126,75 +182,248 @@ export function createMinimapFeature({
     const prevId = refs.activeStandaloneMinimapVirtualId;
     refs.activeStandaloneMinimapVirtualId = nextId;
 
-    const prevMarker = prevId
-      ? track.querySelector(`[data-gpt-boost-minimap-marker][data-virtual-id="${deps.escapeSelectorValue(prevId)}"]`)
-      : null;
-    if (prevMarker instanceof HTMLElement) {
-      applyStandaloneMinimapMarkerStyle(prevMarker, false);
+    const prevEntry = prevId ? markerRegistry.get(prevId) : null;
+    if (prevEntry?.marker instanceof HTMLElement) {
+      applyStandaloneMinimapMarkerStyle(prevEntry.marker, false);
     }
 
-    const nextMarker = track.querySelector(
-      `[data-gpt-boost-minimap-marker][data-virtual-id="${deps.escapeSelectorValue(nextId)}"]`
-    );
-    if (!(nextMarker instanceof HTMLElement)) return;
-    applyStandaloneMinimapMarkerStyle(nextMarker, true);
+    const nextEntry = markerRegistry.get(nextId);
+    if (!(nextEntry?.marker instanceof HTMLElement)) return;
+    applyStandaloneMinimapMarkerStyle(nextEntry.marker, true);
   }
 
-  function populateMinimapPanel(panel) {
-    const track = panel.querySelector('[data-chatgpt-minimap="track"]');
+  function createMarkerEntry(item) {
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.setAttribute("data-gpt-boost-minimap-marker", "1");
+    marker.style.position = "absolute";
+    marker.style.transform = "none";
+    marker.style.border = "none";
+    marker.style.borderRadius = "5px";
+    marker.style.padding = "0";
+    marker.style.cursor = "pointer";
+    marker.style.zIndex = "2";
+    marker.style.display = "flex";
+    marker.style.flexDirection = "column";
+    marker.style.justifyContent = "center";
+    marker.style.gap = "2px";
+    marker.style.overflow = "visible";
+    marker.style.transition = "opacity 120ms ease, box-shadow 120ms ease";
+    marker.style.background = "transparent";
+    marker.style.boxSizing = "border-box";
+    marker.addEventListener("mouseenter", () => {
+      marker.dataset.gptBoostHovered = "1";
+      applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
+    });
+    marker.addEventListener("mouseleave", () => {
+      delete marker.dataset.gptBoostHovered;
+      applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
+    });
+    marker.addEventListener("click", () => scrollToMinimapItem(marker.dataset.virtualId || item.id));
+    ensureMarkerRefs(marker);
+    return { marker, item: null };
+  }
+
+  function syncMarkerLines(entry, item, baseHeightPx) {
+    const markerRefs = ensureMarkerRefs(entry.marker);
+    const desiredCount = item.lineRatios.length;
+
+    while (markerRefs.lineNodes.length > desiredCount) {
+      const line = markerRefs.lineNodes.pop();
+      line?.remove();
+    }
+
+    while (markerRefs.lineNodes.length < desiredCount) {
+      const line = document.createElement("div");
+      line.setAttribute("data-gpt-boost-minimap-line", "1");
+      line.style.borderRadius = "999px";
+      line.style.maxWidth = "100%";
+      markerRefs.lineNodes.push(line);
+      entry.marker.appendChild(line);
+    }
+
+    const lineHeightPx = Math.max(1, Math.min(3, Math.floor(baseHeightPx / Math.max(2, item.lineCount || 1))));
+    markerRefs.lineNodes.forEach((line, lineIndex) => {
+      const ratio = item.lineRatios[lineIndex] || 0.6;
+      line.style.height = `${lineHeightPx}px`;
+      line.style.width = `${Math.round(ratio * 100)}%`;
+      line.style.minWidth = `${lineIndex === desiredCount - 1 ? 28 : 34}%`;
+    });
+  }
+
+  function ensureOverlayContainer(entry, isUser) {
+    const markerRefs = ensureMarkerRefs(entry.marker);
+    if (markerRefs.overlays instanceof HTMLElement) {
+      markerRefs.overlays.style.left = isUser ? "-8px" : "";
+      markerRefs.overlays.style.right = isUser ? "" : "-8px";
+      return markerRefs.overlays;
+    }
+    const overlays = document.createElement("div");
+    overlays.style.position = "absolute";
+    overlays.style.top = "50%";
+    overlays.style.transform = "translateY(-50%)";
+    overlays.style.display = "flex";
+    overlays.style.flexDirection = "column";
+    overlays.style.gap = "3px";
+    overlays.style.alignItems = "center";
+    overlays.style.pointerEvents = "none";
+    overlays.style.left = isUser ? "-8px" : "";
+    overlays.style.right = isUser ? "" : "-8px";
+    markerRefs.overlays = overlays;
+    entry.marker.appendChild(overlays);
+    return overlays;
+  }
+
+  function ensureOverlayNode(entry, overlayType) {
+    const markerRefs = ensureMarkerRefs(entry.marker);
+    const existing = overlayType === "search" ? markerRefs.searchOverlay : markerRefs.codeOverlay;
+    if (existing instanceof HTMLElement) return existing;
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-gpt-boost-minimap-overlay", "1");
+    overlay.dataset.overlayType = overlayType;
+    overlay.style.width = overlayType === "search" ? "4px" : "6px";
+    overlay.style.height = overlayType === "search" ? "10px" : "6px";
+    overlay.style.borderRadius = overlayType === "search" ? "999px" : "2px";
+    if (overlayType === "search") {
+      markerRefs.searchOverlay = overlay;
+    } else {
+      markerRefs.codeOverlay = overlay;
+    }
+    return overlay;
+  }
+
+  function syncMarkerSignals(entry, item) {
+    const markerRefs = ensureMarkerRefs(entry.marker);
+    const isUser = item.role === "user";
+    const shouldHaveOverlays = item.hasSearchHit || item.hasCodeSnippet;
+    const overlayContainer = shouldHaveOverlays
+      ? ensureOverlayContainer(entry, isUser)
+      : markerRefs.overlays;
+
+    if (item.hasSearchHit) {
+      const searchOverlay = ensureOverlayNode(entry, "search");
+      if (overlayContainer && !searchOverlay.isConnected) overlayContainer.appendChild(searchOverlay);
+    } else if (markerRefs.searchOverlay instanceof HTMLElement) {
+      markerRefs.searchOverlay.remove();
+      markerRefs.searchOverlay = null;
+    }
+
+    if (item.hasCodeSnippet) {
+      const codeOverlay = ensureOverlayNode(entry, "code");
+      if (overlayContainer && !codeOverlay.isConnected) overlayContainer.appendChild(codeOverlay);
+    } else if (markerRefs.codeOverlay instanceof HTMLElement) {
+      markerRefs.codeOverlay.remove();
+      markerRefs.codeOverlay = null;
+    }
+
+    if (
+      markerRefs.overlays instanceof HTMLElement &&
+      !markerRefs.searchOverlay &&
+      !markerRefs.codeOverlay
+    ) {
+      markerRefs.overlays.remove();
+      markerRefs.overlays = null;
+    }
+  }
+
+  function syncMarkerStructure(entry, item, trackHeight) {
+    const { marker } = entry;
+    const isUser = item.role === "user";
+    const { baseHeightPx, topPx } = computeMarkerGeometry({
+      trackHeight,
+      topRatio: item.topRatio,
+      heightRatio: item.heightRatio,
+      lineCount: item.lineCount
+    });
+
+    marker.dataset.virtualId = item.id;
+    marker.dataset.role = item.role;
+    marker.dataset.position = String(item.position);
+    marker.dataset.total = String(item.total);
+    marker.dataset.baseHeightPx = String(baseHeightPx);
+    marker.style.left = isUser ? "30%" : "8%";
+    marker.style.right = isUser ? "8%" : "20%";
+    marker.style.top = `${topPx}px`;
+    marker.style.height = `${baseHeightPx}px`;
+    marker.style.minHeight = `${baseHeightPx}px`;
+    marker.style.alignItems = isUser ? "flex-end" : "flex-start";
+
+    syncMarkerLines(entry, item, baseHeightPx);
+    syncMarkerSignals(entry, item);
+    entry.item = item;
+  }
+
+  function removeStaleMarkers(validIds) {
+    Array.from(markerRegistry.entries()).forEach(([id, entry]) => {
+      if (validIds.has(id)) return;
+      entry.marker?.remove();
+      markerRegistry.delete(id);
+    });
+  }
+
+  function populateMinimapPanel(panel = refs.minimapPanel) {
+    if (!(panel instanceof HTMLElement)) return;
+    const track = getTrack(panel);
     if (!(track instanceof HTMLElement)) return;
 
-    track.querySelectorAll('[data-gpt-boost-minimap-marker="1"]').forEach((marker) => marker.remove());
     const items = buildMinimapItems();
-
     if (!items.length) {
+      removeStaleMarkers(new Set());
       refs.activeStandaloneMinimapVirtualId = null;
       return;
     }
 
-    const trackHeight = Math.max(1, track.clientHeight);
+    const validIds = new Set(items.map(({ id }) => id));
+    removeStaleMarkers(validIds);
 
-    items.forEach(({ id, role, position, total, topRatio, heightRatio }) => {
-      const marker = document.createElement("button");
-      marker.type = "button";
-      marker.setAttribute("data-gpt-boost-minimap-marker", "1");
-      marker.dataset.virtualId = id;
-      marker.dataset.role = role;
-      marker.dataset.position = String(position);
-      marker.dataset.total = String(total);
-      const { baseHeightPx, topPx } = computeMarkerGeometry({
-        trackHeight,
-        topRatio,
-        heightRatio
-      });
-      marker.dataset.baseHeightPx = String(baseHeightPx);
-      marker.style.position = "absolute";
-      const isUser = role === "user";
-      marker.style.left = isUser ? "26%" : "6%";
-      marker.style.right = isUser ? "6%" : "6%";
-      marker.style.top = `${topPx}px`;
-      marker.style.transform = "none";
-      marker.style.border = "none";
-      marker.style.borderRadius = "1px";
-      marker.style.padding = "0";
-      marker.style.cursor = "pointer";
-      marker.style.zIndex = "2";
-      marker.style.transition = "height 120ms ease, opacity 120ms ease, box-shadow 120ms ease";
-      applyStandaloneMinimapMarkerStyle(marker, false);
-      marker.addEventListener("mouseenter", () => {
-        marker.dataset.gptBoostHovered = "1";
-        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
-      });
-      marker.addEventListener("mouseleave", () => {
-        delete marker.dataset.gptBoostHovered;
-        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
-      });
-      marker.addEventListener("click", () => scrollToMinimapItem(id));
-      track.appendChild(marker);
+    const trackHeight = Math.max(1, track.clientHeight);
+    const markerFragment = document.createDocumentFragment();
+    items.forEach((item) => {
+      let entry = markerRegistry.get(item.id);
+      if (!entry) {
+        entry = createMarkerEntry(item);
+        markerRegistry.set(item.id, entry);
+      }
+      syncMarkerStructure(entry, item, trackHeight);
+      markerFragment.appendChild(entry.marker);
     });
+
+    track.appendChild(markerFragment);
+    const viewportThumb = getViewportThumb(track);
+    if (viewportThumb instanceof HTMLElement) {
+      track.appendChild(viewportThumb);
+    }
 
     refs.activeStandaloneMinimapVirtualId = null;
     updateStandaloneMinimapViewportState(true);
+  }
+
+  function refreshMinimapSignals() {
+    if (!isPanelOpen() || !markerRegistry.size) return;
+    const searchHitIds = typeof deps.getSearchHitVirtualIds === "function"
+      ? deps.getSearchHitVirtualIds()
+      : new Set();
+    const codeSnippetIds = typeof deps.getCodeSnippetVirtualIds === "function"
+      ? deps.getCodeSnippetVirtualIds()
+      : new Set();
+
+    markerRegistry.forEach((entry, id) => {
+      if (!entry.item) return;
+      const nextItem = {
+        ...entry.item,
+        hasSearchHit: searchHitIds instanceof Set ? searchHitIds.has(id) : false,
+        hasCodeSnippet: codeSnippetIds instanceof Set ? codeSnippetIds.has(id) : false
+      };
+      if (
+        nextItem.hasSearchHit === entry.item.hasSearchHit &&
+        nextItem.hasCodeSnippet === entry.item.hasCodeSnippet
+      ) {
+        return;
+      }
+      syncMarkerSignals(entry, nextItem);
+      entry.item = nextItem;
+      applyStandaloneMinimapMarkerStyle(entry.marker, id === refs.activeStandaloneMinimapVirtualId);
+    });
   }
 
   function showMinimapPanel() {
@@ -203,6 +432,16 @@ export function createMinimapFeature({
     panel.style.display = "block";
     populateMinimapPanel(panel);
     deps.applyFloatingUiOffsets();
+  }
+
+  function hideMinimapPanel() {
+    if (refs.minimapPanel) refs.minimapPanel.style.display = "none";
+    refs.activeStandaloneMinimapVirtualId = null;
+  }
+
+  function hideMinimapUi() {
+    if (refs.minimapButton) refs.minimapButton.style.display = "none";
+    hideMinimapPanel();
   }
 
   function toggleMinimapPanel() {
@@ -231,23 +470,7 @@ export function createMinimapFeature({
     button.style.zIndex = "10002";
     button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
 
-    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.setAttribute("aria-hidden", "true");
-    icon.style.width = "14px";
-    icon.style.height = "14px";
-    icon.style.fill = "currentColor";
-
-    const lines = [
-      "M3 6h18v2H3zm0 5h18v2H3zm0 5h12v2H3z"
-    ];
-    lines.forEach((d) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", d);
-      icon.appendChild(path);
-    });
-
-    button.appendChild(icon);
+    button.appendChild(createSvgIcon("text", 15));
     button.setAttribute("aria-label", "Toggle conversation map");
     deps.styleSearchButton(button, constants.minimapButtonSizePx);
     button.style.display = "none";
@@ -265,6 +488,11 @@ export function createMinimapFeature({
       return refs.minimapPanel;
     }
     if (!document.body) return null;
+
+    markerRegistry.clear();
+    minimapModelCache.clear();
+    trackElement = null;
+    viewportThumbElement = null;
 
     const panel = document.createElement("div");
     panel.setAttribute("data-chatgpt-minimap", "panel");
@@ -291,6 +519,7 @@ export function createMinimapFeature({
     track.style.width = "100%";
     track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))";
     applyEdgeFeatherMask(track, TRACK_FEATHER_MASK);
+    trackElement = track;
 
     const viewportThumb = document.createElement("div");
     viewportThumb.setAttribute("data-chatgpt-minimap", "viewport");
@@ -307,6 +536,7 @@ export function createMinimapFeature({
     viewportThumb.style.pointerEvents = "auto";
     viewportThumb.style.zIndex = "4";
     applyStandaloneMinimapViewportThumbTheme(viewportThumb);
+    viewportThumbElement = viewportThumb;
 
     let isDraggingViewport = false;
     let dragOffsetY = 0;
@@ -380,8 +610,11 @@ export function createMinimapFeature({
       return;
     }
     panel.style.display = "block";
-    if (!panel.querySelector("[data-gpt-boost-minimap-marker]")) {
+    if (!markerRegistry.size) {
       populateMinimapPanel(panel);
+    } else {
+      refreshMinimapSignals();
+      updateStandaloneMinimapViewportState(true);
     }
     deps.applyFloatingUiOffsets();
   }
@@ -390,22 +623,24 @@ export function createMinimapFeature({
     if (!refs.minimapPanel) return;
     refs.minimapPanel.style.background =
       deps.getThemeMode() === "dark"
-        ? "rgba(15, 23, 42, 0.28)"
-        : "rgba(255, 255, 255, 0.22)";
+        ? "rgba(15, 23, 42, 0.18)"
+        : "rgba(255, 255, 255, 0.18)";
     refs.minimapPanel.style.boxShadow = "none";
     refs.minimapPanel.style.border = "none";
     refs.minimapPanel.style.color = theme.text;
     applyEdgeFeatherMask(refs.minimapPanel, EDGE_FEATHER_MASK);
 
-    const track = refs.minimapPanel.querySelector('[data-chatgpt-minimap="track"]');
+    const track = getTrack();
     if (track instanceof HTMLElement) {
       track.style.background =
         deps.getThemeMode() === "dark"
-          ? "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))"
-          : "linear-gradient(to bottom, rgba(32,33,35,0.12), rgba(32,33,35,0.03))";
+          ? "linear-gradient(to bottom, rgba(148,163,184,0.09), rgba(148,163,184,0.025))"
+          : "linear-gradient(to bottom, rgba(32,33,35,0.08), rgba(32,33,35,0.02))";
       applyEdgeFeatherMask(track, TRACK_FEATHER_MASK);
-      const viewportThumb = track.querySelector('[data-chatgpt-minimap="viewport"]');
-      applyStandaloneMinimapViewportThumbTheme(viewportThumb);
+      applyStandaloneMinimapViewportThumbTheme(getViewportThumb(track));
+      markerRegistry.forEach(({ marker }) => {
+        applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
+      });
     }
   }
 
@@ -432,6 +667,7 @@ export function createMinimapFeature({
     updateStandaloneMinimapViewportRect,
     updateStandaloneMinimapViewportState,
     populateMinimapPanel,
+    refreshMinimapSignals,
     showMinimapPanel,
     toggleMinimapPanel,
     ensureMinimapButton,

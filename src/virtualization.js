@@ -1,5 +1,26 @@
 import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
-import { currentConversationKey, persistedPinnedMessageKeys, persistedBookmarkedMessageKeys, scheduleFlagsSave, loadPersistedFlagsForConversation, getArticleMessageKey, setCurrentConversationKey, getConversationStorageKey, loadFlagsStore, loadKnownConversationsStore, summarizeConversationCaches, updateConversationMessageCount } from './core/storage.js';
+import {
+  currentConversationKey,
+  persistedPinnedMessageKeys,
+  persistedBookmarkedMessageKeys,
+  scheduleFlagsSave,
+  loadPersistedFlagsForConversation,
+  getArticleMessageKey,
+  setCurrentConversationKey,
+  getConversationStorageKey,
+  loadFlagsStore,
+  loadKnownConversationsStore,
+  loadConversationDocumentsStore,
+  summarizeConversationCaches,
+  updateConversationMessageCount,
+  syncConversationDocumentFromArticles,
+  searchConversationDocuments,
+  listWorkspaceConversations,
+  buildCrossConversationMarksIndex,
+  saveConversationNote,
+  getConversationDisplayTitle,
+  getConversationUrlFromKey
+} from './core/storage.js';
 import { createVirtualizerStore } from './core/virtualizer/store.ts';
 import { setupScrollTracking, createDebouncedObserver } from './core/virtualizer/observer.ts';
 import { createFeatureRegistry } from './core/runtime/featureRegistry.ts';
@@ -23,11 +44,15 @@ import { createArticleActionsFeature } from './ui/features/articleActions/articl
 import { createPinnedBarFeature } from './ui/features/pinned/pinnedBarFeature.js';
 import { createScrollUiFeature } from './ui/features/scroll/scrollUiFeature.js';
 import { createMarkdownExportFeature } from './ui/features/snippets/markdownExport.js';
+import { hasCodeSnippetCandidateInElement } from './ui/features/snippets/codeSnippets.js';
 import { createDownloadFeature } from './ui/features/download/downloadFeature.js';
 import { createTokenGaugeFeature } from './ui/features/tokenGauge/tokenGaugeFeature.js';
 import { createSearchFeature } from './ui/features/search/searchFeature.js';
 import { createMinimapFeature } from './ui/features/minimap/minimapFeature.js';
 import { createMapFeature } from './ui/features/map/mapFeature.js';
+import { createMemoryFeature } from './ui/features/memory/memoryFeature.js';
+import { createMarksFeature } from './ui/features/marks/marksFeature.js';
+import { createInspectorFeature } from './ui/features/inspector/inspectorFeature.js';
 import {
   DEFAULT_EXTENSION_SETTINGS,
   ROLE_THEME_PRESETS,
@@ -94,7 +119,8 @@ import {
     results: [],
     activeIndex: -1,
     indexedTotal: 0,
-    matchCount: 0
+    matchCount: 0,
+    resultVirtualIds: new Set()
   };
   let downloadButton = null;
   // codePanelButton/codePanelPanel were refactored into the sidebar snippets tab
@@ -105,6 +131,11 @@ import {
   let tokenGaugeElement = null;
   let pinnedBarElement = null;
   let deferredVirtualizationTimer = null;
+  let conversationDocumentSyncTimer = null;
+  let minimapStructureRefreshTimer = null;
+  let minimapSignalRefreshTimer = null;
+  let codeSnippetVirtualIds = new Set();
+  let codeSnippetSignalsReady = false;
   let hotkeyListenerBound = false;
   const SCROLL_BUTTON_SIZE_PX = 30;
   const SCROLL_BUTTON_OFFSET_PX = 12;
@@ -162,6 +193,8 @@ import {
   const SEARCH_PANEL_TOP_OFFSET_PX = SEARCH_BUTTON_TOP_OFFSET_PX;
   const SEARCH_PANEL_WIDTH_PX = 280;
   const SEARCH_DEBOUNCE_MS = 200;
+  const CONVERSATION_DOCUMENT_SYNC_DEBOUNCE_MS = 320;
+  const PENDING_CONVERSATION_JUMP_SESSION_KEY = "gptBoostPendingConversationJump";
   const MESSAGE_RAIL_OUTSIDE_LEFT_PX = -36;
   const MESSAGE_RAIL_INSIDE_LEFT_PX = 6;
   const MESSAGE_RAIL_INSIDE_PADDING_PX = 34;
@@ -393,7 +426,8 @@ import {
       applyFloatingUiOffsets,
       applyThemeToUi,
       getThemeTokens,
-      escapeSelectorValue
+      escapeSelectorValue,
+      onResultsChanged: scheduleMinimapSignalRefresh
     }
   });
 
@@ -449,6 +483,8 @@ import {
       getScrollTarget,
       getMaxScrollTop,
       scrollToVirtualId,
+      getCodeSnippetVirtualIds,
+      getSearchHitVirtualIds: () => searchFeature.getSearchResultVirtualIds(),
       applyFloatingUiOffsets,
       applyThemeToUi
     }
@@ -554,6 +590,36 @@ import {
       renderSidebarTab
     }
   });
+  const memoryFeature = createMemoryFeature({
+    deps: {
+      getThemeTokens,
+      loadWorkspaceMemory,
+      openConversation,
+      jumpToConversationMessage,
+      getRoleSurfaceStyle,
+      createRoleChip
+    }
+  });
+  const marksFeature = createMarksFeature({
+    deps: {
+      getThemeTokens,
+      loadCrossChatMarks,
+      jumpToConversationMessage,
+      getRoleSurfaceStyle,
+      createRoleChip,
+      renderSidebarTab
+    }
+  });
+  const inspectorFeature = createInspectorFeature({
+    state,
+    deps: {
+      getThemeTokens,
+      getMessageRole,
+      renderSidebarTab,
+      loadConversationInspector,
+      saveConversationNote: saveCurrentConversationNote
+    }
+  });
   const downloadFeature = createDownloadFeature({
     refs: downloadRefs,
     state,
@@ -591,7 +657,8 @@ import {
     deps: {
       togglePin,
       toggleBookmark,
-      refreshSidebarTab
+      refreshSidebarTab,
+      getThemeTokens
     }
   });
   const layoutSettingsManager = createLayoutSettingsManager({
@@ -692,6 +759,8 @@ import {
       applyScrollTheme: (theme) => scrollUiFeature.applyTheme(theme),
       applyMinimapTheme: (theme) => minimapFeature.applyTheme(theme),
       applyPinnedTheme: (theme) => pinnedBarFeature.applyTheme(theme),
+      applySidebarTheme: (theme) => sidebarShellFeature.applyTheme(theme),
+      applyArticleActionsTheme: (theme) => articleActionsFeature.applyTheme(theme),
       dispatchThemeChanged: () => featureRegistry.dispatchThemeChanged(getRuntimeContext())
     }
   });
@@ -737,20 +806,29 @@ import {
       }
     });
     featureRegistry.register({
-      id: "sidebar-tab-bookmarks",
+      id: "sidebar-tab-memory",
       priority: 20,
       onSidebarTabRender: (tabId, container) => {
-        if (tabId !== "bookmarks") return false;
+        if (tabId !== "memory") return false;
+        renderMemoryTabContent(container);
+        return true;
+      }
+    });
+    featureRegistry.register({
+      id: "sidebar-tab-marks",
+      priority: 30,
+      onSidebarTabRender: (tabId, container) => {
+        if (tabId !== "marks") return false;
         renderBookmarksTabContent(container);
         return true;
       }
     });
     featureRegistry.register({
-      id: "sidebar-tab-map",
-      priority: 30,
+      id: "sidebar-tab-inspector",
+      priority: 40,
       onSidebarTabRender: (tabId, container) => {
-        if (tabId !== "map") return false;
-        renderMapTabContent(container);
+        if (tabId !== "inspector") return false;
+        renderInspectorTabContent(container);
         return true;
       }
     });
@@ -853,6 +931,10 @@ import {
         if (currentConversationKey && state.stats.totalMessages > 0) {
           updateConversationMessageCount(currentConversationKey, state.stats.totalMessages).catch(() => {});
         }
+        scheduleConversationDocumentSync();
+        refreshCodeSnippetVirtualIds();
+        scheduleMinimapStructureRefresh();
+        tryFulfillPendingConversationJump();
         featureRegistry.dispatchStatsUpdated(getRuntimeContext());
       },
       dispatchVirtualizeTick: () => featureRegistry.dispatchVirtualizeTick(getRuntimeContext())
@@ -924,6 +1006,244 @@ import {
   function applySidebarLayoutOffset(offsetPx, transitionMs = SIDEBAR_TRANSITION_MS) {
     if (!layoutOffsetsManager) return;
     layoutOffsetsManager.applySidebarLayoutOffset(offsetPx, transitionMs);
+  }
+
+  function clearMinimapStructureRefreshTimer() {
+    if (minimapStructureRefreshTimer === null) return;
+    clearTimeout(minimapStructureRefreshTimer);
+    minimapStructureRefreshTimer = null;
+  }
+
+  function clearMinimapSignalRefreshTimer() {
+    if (minimapSignalRefreshTimer === null) return;
+    clearTimeout(minimapSignalRefreshTimer);
+    minimapSignalRefreshTimer = null;
+  }
+
+  function refreshCodeSnippetVirtualIds() {
+    ensureVirtualIds();
+    const nextIds = new Set();
+    state.articleMap.forEach((node, id) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (hasCodeSnippetCandidateInElement(node)) {
+        nextIds.add(id);
+      }
+    });
+    codeSnippetVirtualIds = nextIds;
+    codeSnippetSignalsReady = true;
+  }
+
+  function getCodeSnippetVirtualIds() {
+    if (!codeSnippetSignalsReady && state.articleMap.size) {
+      refreshCodeSnippetVirtualIds();
+    }
+    return codeSnippetVirtualIds;
+  }
+
+  function refreshVisibleMinimapStructure() {
+    if (!minimapPanel || minimapPanel.style.display === "none") return;
+    refreshCodeSnippetVirtualIds();
+    populateMinimapPanel(minimapPanel);
+  }
+
+  function refreshVisibleMinimapSignals() {
+    if (!minimapPanel || minimapPanel.style.display === "none") return;
+    minimapFeature.refreshMinimapSignals();
+  }
+
+  function scheduleMinimapStructureRefresh() {
+    clearMinimapStructureRefreshTimer();
+    minimapStructureRefreshTimer = setTimeout(() => {
+      minimapStructureRefreshTimer = null;
+      refreshVisibleMinimapStructure();
+    }, 90);
+  }
+
+  function scheduleMinimapSignalRefresh() {
+    clearMinimapSignalRefreshTimer();
+    minimapSignalRefreshTimer = setTimeout(() => {
+      minimapSignalRefreshTimer = null;
+      refreshVisibleMinimapSignals();
+    }, 90);
+  }
+
+  function getActiveConversationTitle() {
+    return String(document.title || "").trim();
+  }
+
+  function clearConversationDocumentSyncTimer() {
+    if (conversationDocumentSyncTimer === null) return;
+    clearTimeout(conversationDocumentSyncTimer);
+    conversationDocumentSyncTimer = null;
+  }
+
+  async function syncCurrentConversationDocument() {
+    if (!currentConversationKey) return null;
+    ensureVirtualIds();
+    if (!state.articleMap.size) return null;
+    return syncConversationDocumentFromArticles({
+      key: currentConversationKey,
+      articleMap: state.articleMap,
+      getArticleMessageKey,
+      getMessageRole,
+      title: getActiveConversationTitle(),
+      origin: window.location.origin
+    }).catch(() => null);
+  }
+
+  function scheduleConversationDocumentSync() {
+    clearConversationDocumentSyncTimer();
+    conversationDocumentSyncTimer = setTimeout(() => {
+      conversationDocumentSyncTimer = null;
+      void syncCurrentConversationDocument();
+    }, CONVERSATION_DOCUMENT_SYNC_DEBOUNCE_MS);
+  }
+
+  function readPendingConversationJump() {
+    try {
+      const raw = sessionStorage.getItem(PENDING_CONVERSATION_JUMP_SESSION_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function savePendingConversationJump(conversationKey, messageKey = "") {
+    try {
+      sessionStorage.setItem(
+        PENDING_CONVERSATION_JUMP_SESSION_KEY,
+        JSON.stringify({
+          conversationKey,
+          messageKey,
+          createdAt: Date.now()
+        })
+      );
+    } catch (_error) {
+      // Ignore session storage failures and fall back to conversation-level navigation.
+    }
+  }
+
+  function clearPendingConversationJump() {
+    try {
+      sessionStorage.removeItem(PENDING_CONVERSATION_JUMP_SESSION_KEY);
+    } catch (_error) {
+      // Ignore session storage failures.
+    }
+  }
+
+  function tryFulfillPendingConversationJump() {
+    const pending = readPendingConversationJump();
+    if (!pending || pending.conversationKey !== currentConversationKey) return false;
+    if (!pending.messageKey) {
+      clearPendingConversationJump();
+      return false;
+    }
+    ensureVirtualIds();
+    let targetVirtualId = "";
+    state.articleMap.forEach((article, virtualId) => {
+      if (targetVirtualId || !(article instanceof HTMLElement)) return;
+      if (getArticleMessageKey(article, virtualId) === pending.messageKey) {
+        targetVirtualId = virtualId;
+      }
+    });
+    if (!targetVirtualId) return false;
+    clearPendingConversationJump();
+    scrollToVirtualId(targetVirtualId);
+    return true;
+  }
+
+  function openConversation(conversationKey, messageKey = "") {
+    const url = getConversationUrlFromKey(conversationKey, window.location.origin);
+    if (!url) return;
+    if (messageKey) {
+      savePendingConversationJump(conversationKey, messageKey);
+    } else {
+      clearPendingConversationJump();
+    }
+    window.location.assign(url);
+  }
+
+  function jumpToConversationMessage(conversationKey, messageKey = "") {
+    if (!conversationKey) return;
+    if (conversationKey !== currentConversationKey) {
+      openConversation(conversationKey, messageKey);
+      return;
+    }
+    ensureVirtualIds();
+    if (!messageKey) return;
+    let targetVirtualId = "";
+    state.articleMap.forEach((article, virtualId) => {
+      if (targetVirtualId || !(article instanceof HTMLElement)) return;
+      if (getArticleMessageKey(article, virtualId) === messageKey) {
+        targetVirtualId = virtualId;
+      }
+    });
+    if (targetVirtualId) {
+      scrollToVirtualId(targetVirtualId);
+    }
+  }
+
+  async function loadWorkspaceMemory(query = "") {
+    const [flagsStore, knownStore, documentsStore] = await Promise.all([
+      loadFlagsStore(),
+      loadKnownConversationsStore(),
+      loadConversationDocumentsStore()
+    ]);
+    return {
+      conversations: listWorkspaceConversations({
+        knownStore,
+        documentsStore,
+        flagsStore,
+        currentConversationKey
+      }),
+      results: query
+        ? searchConversationDocuments({
+          documentsStore,
+          knownStore,
+          query,
+          currentConversationKey
+        })
+        : []
+    };
+  }
+
+  async function loadCrossChatMarks() {
+    const [flagsStore, knownStore, documentsStore] = await Promise.all([
+      loadFlagsStore(),
+      loadKnownConversationsStore(),
+      loadConversationDocumentsStore()
+    ]);
+    return buildCrossConversationMarksIndex({
+      flagsStore,
+      knownStore,
+      documentsStore,
+      currentConversationKey
+    });
+  }
+
+  async function loadConversationInspector() {
+    const [knownStore, documentsStore] = await Promise.all([
+      loadKnownConversationsStore(),
+      loadConversationDocumentsStore()
+    ]);
+    const knownEntry = knownStore[currentConversationKey] || {};
+    const documentEntry = documentsStore[currentConversationKey] || {};
+    return {
+      title: getConversationDisplayTitle(currentConversationKey, documentEntry, knownEntry),
+      note: knownEntry.note || "",
+      visits: Number(knownEntry.visits || 0),
+      lastSeenAt: knownEntry.lastSeenAt || documentEntry.updatedAt || "",
+      messageCount: Number(knownEntry.messageCount || documentEntry.messageCount || 0),
+      url: documentEntry.url || getConversationUrlFromKey(currentConversationKey, window.location.origin)
+    };
+  }
+
+  async function saveCurrentConversationNote(note) {
+    if (!currentConversationKey) return;
+    await saveConversationNote(currentConversationKey, note);
+    refreshSidebarMeta();
   }
 
 
@@ -1180,12 +1500,20 @@ import {
     searchFeature.renderSearchTabContent(container);
   }
 
+  function renderMemoryTabContent(container) {
+    memoryFeature.render(container);
+  }
+
   function renderBookmarksTabContent(container) {
-    outlineFeature.renderMarksTabContent(container);
+    marksFeature.render(container);
   }
 
   function renderMapTabContent(container) {
     mapFeature.renderMapTabContent(container);
+  }
+
+  function renderInspectorTabContent(container) {
+    inspectorFeature.render(container);
   }
 
   function renderSettingsTabContent(container) {
@@ -1652,6 +1980,11 @@ import {
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = null;
     }
+    clearConversationDocumentSyncTimer();
+    clearMinimapStructureRefreshTimer();
+    clearMinimapSignalRefreshTimer();
+    codeSnippetVirtualIds = new Set();
+    codeSnippetSignalsReady = false;
     searchButton = null;
     searchPanel = null;
     searchInput = null;

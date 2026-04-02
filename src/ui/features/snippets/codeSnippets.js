@@ -181,6 +181,21 @@ export function extractCodeSnippetText(pre) {
   return text.trim() ? text : "";
 }
 
+export function getCodeSnippetPreElements(root) {
+  if (!(root instanceof HTMLElement)) return [];
+  return Array.from(root.querySelectorAll("pre"));
+}
+
+export function hasCodeSnippetCandidateInElement(root) {
+  return getCodeSnippetPreElements(root).length > 0;
+}
+
+export function hasCodeSnippetInElement(root) {
+  return getCodeSnippetPreElements(root).some((pre) => {
+    return !!extractCodeSnippetText(pre);
+  });
+}
+
 export function inferCodeLanguage(el, preEl) {
   let lang = "";
   const classCandidates = [];

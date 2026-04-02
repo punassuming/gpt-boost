@@ -1,3 +1,5 @@
+import { createSvgIcon } from '../../shell/icons.js';
+
 export function createArticleActionsFeature({
   state,
   constants,
@@ -18,53 +20,59 @@ export function createArticleActionsFeature({
   }
 
   function setArticleActionIcon(btn, iconName) {
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    svg.style.width = "13px";
-    svg.style.height = "13px";
-    svg.style.fill = "none";
-    svg.style.stroke = "currentColor";
-    svg.style.strokeWidth = "2";
-    svg.style.strokeLinecap = "round";
-    svg.style.strokeLinejoin = "round";
-
-    const path = document.createElementNS(ns, "path");
-    if (iconName === "collapse") {
-      path.setAttribute("d", "M6 9l6 6 6-6");
-    } else if (iconName === "expand") {
-      path.setAttribute("d", "M6 15l6-6 6 6");
-    } else if (iconName === "pin") {
-      path.setAttribute("d", "M12 17v5M8 3l8 8M6 5l5 5-6 4 4-6 5 5");
-    } else if (iconName === "bookmark") {
-      path.setAttribute("d", "M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z");
-    }
-    svg.appendChild(path);
-    btn.replaceChildren(svg);
+    const iconMap = {
+      collapse: 'chevronDown',
+      expand: 'chevronUp',
+      pin: 'pin',
+      bookmark: 'bookmark'
+    };
+    btn.replaceChildren(createSvgIcon(iconMap[iconName] || 'spark', 13));
   }
 
-  function createArticleActionButton(iconName, label) {
+  function styleActionButton(button, iconName, isActive, theme) {
+    if (!(button instanceof HTMLElement)) return;
+    const baseBorder = theme.inputBorder || theme.panelBorder;
+    const activeBackground = iconName === 'pin'
+      ? 'rgba(234,179,8,0.68)'
+      : iconName === 'bookmark'
+        ? 'rgba(59,130,246,0.65)'
+        : theme.buttonMutedBg;
+    const activeBorder = iconName === 'pin'
+      ? 'rgba(234,179,8,0.92)'
+      : iconName === 'bookmark'
+        ? 'rgba(59,130,246,0.9)'
+        : theme.panelBorder;
+    button.dataset.gptBoostActive = isActive ? '1' : '0';
+    button.style.opacity = isActive ? '1' : '0.92';
+    button.style.background = isActive ? activeBackground : theme.inputBg;
+    button.style.color = isActive ? theme.buttonText : theme.text;
+    button.style.border = `1px solid ${isActive ? activeBorder : baseBorder}`;
+    button.style.boxShadow = isActive ? '0 4px 10px rgba(15,23,42,0.14)' : 'none';
+  }
+
+  function createArticleActionButton(iconName, label, theme) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.setAttribute("aria-label", label);
-    btn.style.width = "24px";
-    btn.style.height = "24px";
-    btn.style.borderRadius = "6px";
-    btn.style.border = "none";
+    btn.style.width = "26px";
+    btn.style.height = "26px";
+    btn.style.borderRadius = "8px";
     btn.style.cursor = "pointer";
     btn.style.display = "flex";
     btn.style.alignItems = "center";
     btn.style.justifyContent = "center";
     btn.style.padding = "0";
-    btn.style.opacity = "0.85";
-    btn.style.background = "rgba(17,24,39,0.7)";
-    btn.style.color = "#f9fafb";
-    btn.style.border = "1px solid rgba(148,163,184,0.45)";
-    btn.style.transition = "opacity 0.15s, background 0.15s";
+    btn.style.transition = "transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease";
     setArticleActionIcon(btn, iconName);
-    btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
-    btn.addEventListener("mouseleave", () => { btn.style.opacity = "0.85"; });
+    styleActionButton(btn, iconName, false, theme);
+    btn.addEventListener("mouseenter", () => {
+      btn.style.transform = "translateY(-1px)";
+      btn.style.opacity = "1";
+    });
+    btn.addEventListener("mouseleave", () => {
+      btn.style.transform = "translateY(0)";
+      btn.style.opacity = btn.dataset.gptBoostActive === '1' ? '1' : '0.92';
+    });
     return btn;
   }
 
@@ -115,6 +123,7 @@ export function createArticleActionsFeature({
     const virtualId = article.dataset.virtualId;
     const isCollapsed = !!(virtualId && state.collapsedMessages.has(virtualId));
     const hoverTarget = getArticleHoverTarget(article);
+    const theme = deps.getThemeTokens();
 
     if (isCollapsed) {
       if (hoverTarget instanceof HTMLElement) {
@@ -151,8 +160,8 @@ export function createArticleActionsFeature({
     sideRail.style.flexDirection = "column";
     sideRail.style.gap = "4px";
     sideRail.style.padding = "2px";
-    sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
-    sideRail.style.background = "rgba(15,23,42,0.35)";
+    sideRail.style.border = `1px solid ${theme.panelBorder}`;
+    sideRail.style.background = theme.panelBg;
     if (sideRail.parentElement !== article) {
       article.appendChild(sideRail);
     }
@@ -171,6 +180,12 @@ export function createArticleActionsFeature({
         updateArticleSideRailLayout(el, sideRail);
       }
     });
+  }
+
+  function updateCollapseButtonAppearance(article, virtualId) {
+    const collapseBtn = article.querySelector("[data-gpt-boost-collapse-btn]");
+    if (!(collapseBtn instanceof HTMLElement)) return;
+    styleActionButton(collapseBtn, 'collapse', state.collapsedMessages.has(virtualId), deps.getThemeTokens());
   }
 
   function applyCollapseState(article, virtualId) {
@@ -195,18 +210,14 @@ export function createArticleActionsFeature({
     }
     if (sideRail instanceof HTMLElement) {
       updateArticleSideRailLayout(article, sideRail);
-      if (isCollapsed) {
-        sideRail.style.opacity = "1";
-        sideRail.style.pointerEvents = "auto";
-      } else {
-        sideRail.style.opacity = "0";
-        sideRail.style.pointerEvents = "none";
-      }
+      sideRail.style.opacity = "1";
+      sideRail.style.pointerEvents = "auto";
     }
     if (collapseBtn) {
       setArticleActionIcon(collapseBtn, isCollapsed ? "expand" : "collapse");
       collapseBtn.setAttribute("aria-label", isCollapsed ? "Expand message" : "Collapse message");
     }
+    updateCollapseButtonAppearance(article, virtualId);
     article.style.borderLeft = isCollapsed ? "3px solid rgba(148,163,184,0.55)" : "";
     article.style.background = isCollapsed ? "rgba(148,163,184,0.08)" : "";
     article.style.borderRadius = isCollapsed ? "10px" : "";
@@ -227,8 +238,7 @@ export function createArticleActionsFeature({
     const pinBtn = article.querySelector("[data-gpt-boost-pin-btn]");
     if (!pinBtn) return;
     const isPinned = state.pinnedMessages.has(virtualId);
-    pinBtn.style.opacity = isPinned ? "1" : "0.85";
-    pinBtn.style.background = isPinned ? "rgba(234,179,8,0.75)" : "rgba(17,24,39,0.7)";
+    styleActionButton(pinBtn, 'pin', isPinned, deps.getThemeTokens());
     pinBtn.setAttribute("aria-label", isPinned ? "Unpin message" : "Pin message to top");
   }
 
@@ -236,9 +246,30 @@ export function createArticleActionsFeature({
     const bookmarkBtn = article.querySelector("[data-gpt-boost-bookmark-btn]");
     if (!bookmarkBtn) return;
     const isBookmarked = state.bookmarkedMessages.has(virtualId);
-    bookmarkBtn.style.opacity = isBookmarked ? "1" : "0.85";
-    bookmarkBtn.style.background = isBookmarked ? "rgba(59,130,246,0.75)" : "rgba(17,24,39,0.7)";
+    styleActionButton(bookmarkBtn, 'bookmark', isBookmarked, deps.getThemeTokens());
     bookmarkBtn.setAttribute("aria-label", isBookmarked ? "Remove bookmark" : "Bookmark message");
+  }
+
+  function applyTheme(theme = deps.getThemeTokens()) {
+    document.querySelectorAll("[data-gpt-boost-ui-injected='1']").forEach((article) => {
+      if (!(article instanceof HTMLElement)) return;
+      const virtualId = article.dataset.virtualId || "";
+      const sideRail = article.querySelector("[data-gpt-boost-side-rail]");
+      const snippet = article.querySelector("[data-gpt-boost-snippet]");
+      if (sideRail instanceof HTMLElement) {
+        sideRail.style.background = theme.panelBg;
+        sideRail.style.border = `1px solid ${theme.panelBorder}`;
+        sideRail.style.boxShadow = theme.panelShadow;
+      }
+      if (snippet instanceof HTMLElement) {
+        snippet.style.border = `1px solid ${theme.panelBorder}`;
+        snippet.style.background = theme.inputBg;
+        snippet.style.color = theme.mutedText;
+      }
+      updateCollapseButtonAppearance(article, virtualId);
+      updatePinButtonAppearance(article, virtualId);
+      updateBookmarkButtonAppearance(article, virtualId);
+    });
   }
 
   function injectArticleUi(article, virtualId) {
@@ -280,27 +311,26 @@ export function createArticleActionsFeature({
     sideRail.style.alignItems = "center";
     sideRail.style.padding = "2px";
     sideRail.style.borderRadius = "8px";
-    sideRail.style.background = "rgba(15,23,42,0.35)";
-    sideRail.style.opacity = "0";
-    sideRail.style.pointerEvents = "none";
-    sideRail.style.border = "1px solid rgba(148,163,184,0.35)";
-    sideRail.style.transition = "background 0.15s ease, opacity 0.15s ease";
+    sideRail.style.opacity = "1";
+    sideRail.style.pointerEvents = "auto";
+    sideRail.style.transition = "background 0.15s ease, opacity 0.15s ease, border-color 0.15s ease";
 
-    const collapseBtn = createArticleActionButton("collapse", "Collapse message");
+    const theme = deps.getThemeTokens();
+    const collapseBtn = createArticleActionButton("collapse", "Collapse message", theme);
     collapseBtn.setAttribute("data-gpt-boost-collapse-btn", "1");
     collapseBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleCollapse(virtualId);
     });
 
-    const pinBtn = createArticleActionButton("pin", "Pin message to top");
+    const pinBtn = createArticleActionButton("pin", "Pin message to top", theme);
     pinBtn.setAttribute("data-gpt-boost-pin-btn", "1");
     pinBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       deps.togglePin(virtualId);
     });
 
-    const bookmarkBtn = createArticleActionButton("bookmark", "Bookmark message");
+    const bookmarkBtn = createArticleActionButton("bookmark", "Bookmark message", theme);
     bookmarkBtn.setAttribute("data-gpt-boost-bookmark-btn", "1");
     bookmarkBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -322,9 +352,7 @@ export function createArticleActionsFeature({
         hoverTarget.style.outlineOffset = "3px";
       }
       if (!isCollapsed) {
-        sideRail.style.background = "rgba(59,130,246,0.2)";
-        sideRail.style.opacity = "1";
-        sideRail.style.pointerEvents = "auto";
+        sideRail.style.background = deps.getThemeTokens().buttonMutedBg;
       }
     });
     article.addEventListener("mouseleave", () => {
@@ -336,9 +364,7 @@ export function createArticleActionsFeature({
         hoverTarget.style.outlineOffset = "";
       }
       if (!isCollapsed) {
-        sideRail.style.background = "rgba(15,23,42,0.35)";
-        sideRail.style.opacity = "0";
-        sideRail.style.pointerEvents = "none";
+        sideRail.style.background = deps.getThemeTokens().panelBg;
       }
     });
 
@@ -365,6 +391,7 @@ export function createArticleActionsFeature({
       : rawText;
 
     article.appendChild(snippet);
+    applyTheme(theme);
   }
 
   function cleanupInjectedUi() {
@@ -417,6 +444,7 @@ export function createArticleActionsFeature({
     injectArticleUi,
     updateArticleSideRailLayout,
     refreshArticleSideRailLayout,
+    applyTheme,
     cleanupInjectedUi
   };
 }

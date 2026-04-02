@@ -1,62 +1,51 @@
+import { createSvgIcon } from '../../shell/icons.js';
+
 export function createSidebarShellFeature({
   refs,
   constants,
   deps
 }) {
-  const ns = "http://www.w3.org/2000/svg";
   let headerDetailsLabel = null;
   let footerVersionLabel = null;
+  const TAB_META = [
+    { id: "memory", label: "Memory", icon: "memory" },
+    { id: "search", label: "Search", icon: "search" },
+    { id: "marks", label: "Marks", icon: "marks" },
+    { id: "inspector", label: "Inspect", icon: "inspector" },
+    { id: "snippets", label: "Code", icon: "code" },
+    { id: "settings", label: "Settings", icon: "settings" }
+  ];
 
-  function makeSvgIcon(specs, size = 14) {
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("width", String(size));
-    svg.setAttribute("height", String(size));
-    svg.style.fill = "none";
-    svg.style.stroke = "currentColor";
-    svg.style.strokeWidth = "2";
-    svg.style.strokeLinecap = "round";
-    svg.style.strokeLinejoin = "round";
-    svg.style.display = "block";
-    svg.style.flexShrink = "0";
-    const specList = Array.isArray(specs) ? specs : [{ tag: "path", d: specs }];
-    specList.forEach((spec) => {
-      const el = document.createElementNS(ns, spec.tag);
-      Object.entries(spec).forEach(([k, v]) => { if (k !== "tag") el.setAttribute(k, v); });
-      svg.appendChild(el);
-    });
-    return svg;
+  function getTabMeta(tabId) {
+    return TAB_META.find((entry) => entry.id === tabId) || TAB_META[0];
   }
 
-  const TAB_ICONS = {
-    search: [
-      { tag: "circle", cx: "11", cy: "11", r: "8" },
-      { tag: "path", d: "m21 21-4.35-4.35" }
-    ],
-    bookmarks: { tag: "path", d: "m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" },
-    snippets: [
-      { tag: "path", d: "m18 16 4-4-4-4" },
-      { tag: "path", d: "m6 8-4 4 4 4" },
-      { tag: "path", d: "m14.5 4-5 16" }
-    ],
-    map: { tag: "path", d: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
-    outline: { tag: "path", d: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
-    settings: [
-      { tag: "path", d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" },
-      { tag: "circle", cx: "12", cy: "12", r: "3" }
-    ]
-  };
+  function applySidebarTheme(theme) {
+    if (!(refs.sidebarPanel instanceof HTMLElement)) return;
+    const header = refs.sidebarPanel.querySelector('[data-gpt-boost-sidebar-header="1"]');
+    const context = refs.sidebarPanel.querySelector('[data-gpt-boost-sidebar-context="1"]');
+    const nav = refs.sidebarPanel.querySelector('[data-gpt-boost-sidebar-nav="1"]');
+    const footer = refs.sidebarPanel.querySelector('[data-gpt-boost-sidebar-footer="1"]');
 
-  const CLOSE_ICON = [
-    { tag: "path", d: "M18 6 6 18" },
-    { tag: "path", d: "m6 6 12 12" }
-  ];
-
-  const PANEL_RIGHT_ICON = [
-    { tag: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" },
-    { tag: "path", d: "M15 3v18" }
-  ];
+    if (header instanceof HTMLElement) {
+      header.style.background = `linear-gradient(145deg, ${theme.inputBg}, ${theme.panelBg})`;
+      header.style.border = `1px solid ${theme.panelBorder}`;
+      header.style.boxShadow = theme.panelShadow;
+    }
+    if (context instanceof HTMLElement) {
+      context.style.background = theme.buttonMutedBg;
+      context.style.border = `1px solid ${theme.panelBorder}`;
+      context.style.color = theme.text;
+    }
+    if (nav instanceof HTMLElement) {
+      nav.style.background = theme.inputBg;
+      nav.style.border = `1px solid ${theme.panelBorder}`;
+    }
+    if (footer instanceof HTMLElement) {
+      footer.style.borderTop = `1px solid ${theme.panelBorder}`;
+      footer.style.color = theme.mutedText;
+    }
+  }
 
   function isSidebarOpen() {
     return !!(refs.sidebarPanel && refs.sidebarPanel.getAttribute("data-open") === "true");
@@ -67,41 +56,51 @@ export function createSidebarShellFeature({
     btn.type = "button";
     btn.title = label;
     btn.setAttribute("aria-label", label);
-    btn.style.border = "none";
-    btn.style.borderRadius = "8px";
-    btn.style.padding = "6px 0";
-    btn.style.width = "auto";
-    btn.style.flex = "1 1 0";
+    btn.style.border = "1px solid transparent";
+    btn.style.borderRadius = "12px";
+    btn.style.padding = "10px 8px";
+    btn.style.width = "100%";
     btn.style.minWidth = "0";
-    btn.style.height = "30px";
+    btn.style.minHeight = "58px";
     btn.style.fontSize = "11px";
     btn.style.cursor = "pointer";
     btn.style.fontFamily = "inherit";
-    btn.style.fontWeight = "500";
+    btn.style.fontWeight = "600";
     btn.style.display = "inline-flex";
+    btn.style.flexDirection = "column";
     btn.style.alignItems = "center";
     btn.style.justifyContent = "center";
-    btn.style.lineHeight = "1";
+    btn.style.gap = "6px";
+    btn.style.lineHeight = "1.1";
     btn.style.background = "transparent";
     btn.style.color = "inherit";
-    btn.style.transition = "background 0.15s ease, color 0.15s ease";
-    btn.style.flexShrink = "0";
+    btn.style.transition = "background 0.15s ease, color 0.15s ease, border-color 0.15s ease";
+    btn.style.boxSizing = "border-box";
     btn.dataset.gptBoostSidebarTab = tabId;
     btn.dataset.gptBoostSidebarActive = "0";
 
-    const iconEl = makeSvgIcon(TAB_ICONS[tabId] || TAB_ICONS.settings, 13);
+    const iconName = TAB_META.find((entry) => entry.id === tabId)?.icon || "settings";
+    const iconEl = createSvgIcon(iconName, 15);
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    labelEl.style.display = "block";
+    labelEl.style.fontSize = "11px";
+    labelEl.style.fontWeight = "600";
     btn.appendChild(iconEl);
+    btn.appendChild(labelEl);
     btn.addEventListener("mouseenter", () => {
       if (btn.dataset.gptBoostSidebarActive === "1") return;
       const theme = deps.getThemeTokens();
       btn.style.background = theme.buttonMutedBg;
       btn.style.color = theme.text;
+      btn.style.borderColor = theme.panelBorder;
     });
     btn.addEventListener("mouseleave", () => {
       if (btn.dataset.gptBoostSidebarActive === "1") return;
       const theme = deps.getThemeTokens();
       btn.style.background = "transparent";
       btn.style.color = theme.mutedText;
+      btn.style.borderColor = "transparent";
     });
     btn.addEventListener("click", () => {
       if (isSidebarOpen()) {
@@ -128,6 +127,12 @@ export function createSidebarShellFeature({
         footerVersionLabel.textContent = deps.getSidebarVersionLabel();
       }
     }
+    const context = refs.sidebarPanel instanceof HTMLElement
+      ? refs.sidebarPanel.querySelector('[data-gpt-boost-sidebar-context="1"]')
+      : null;
+    if (context instanceof HTMLElement) {
+      context.textContent = getTabMeta(refs.activeSidebarTab).label;
+    }
   }
 
   function renderSidebarTab(tabId) {
@@ -145,6 +150,7 @@ export function createSidebarShellFeature({
       tab.style.background = isActive ? theme.buttonMutedBg : "transparent";
       tab.style.color = isActive ? theme.text : theme.mutedText;
       tab.style.fontWeight = isActive ? "600" : "500";
+      tab.style.borderColor = isActive ? theme.panelBorder : "transparent";
       tab.style.boxShadow = "none";
     });
 
@@ -238,7 +244,7 @@ export function createSidebarShellFeature({
     button.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.2)";
     deps.styleSearchButton(button, constants.sidebarToggleSizePx);
     button.style.display = "none";
-    button.appendChild(makeSvgIcon(PANEL_RIGHT_ICON, 16));
+    button.appendChild(createSvgIcon("panelRight", 16));
     button.addEventListener("click", () => toggleSidebar(refs.activeSidebarTab));
 
     document.body.appendChild(button);
@@ -313,34 +319,51 @@ export function createSidebarShellFeature({
     panel.appendChild(resizer);
 
     const header = document.createElement("div");
+    header.setAttribute("data-gpt-boost-sidebar-header", "1");
     header.style.display = "flex";
-    header.style.alignItems = "flex-start";
+    header.style.flexDirection = "column";
+    header.style.alignItems = "stretch";
     header.style.justifyContent = "space-between";
-    header.style.gap = "8px";
-    header.style.marginBottom = "6px";
-    header.style.padding = "4px 2px 8px";
-    header.style.borderBottom = `1px solid ${theme.panelBorder}`;
+    header.style.gap = "10px";
+    header.style.marginBottom = "10px";
+    header.style.padding = "12px";
+    header.style.borderRadius = "18px";
+    header.style.border = `1px solid ${theme.panelBorder}`;
+
+    const topRow = document.createElement("div");
+    topRow.style.display = "flex";
+    topRow.style.alignItems = "flex-start";
+    topRow.style.justifyContent = "space-between";
+    topRow.style.gap = "10px";
 
     const titleWrap = document.createElement("div");
     titleWrap.style.display = "flex";
     titleWrap.style.flexDirection = "column";
-    titleWrap.style.gap = "3px";
+    titleWrap.style.gap = "4px";
     titleWrap.style.minWidth = "0";
 
+    const eyebrow = document.createElement("div");
+    eyebrow.textContent = "Workspace";
+    eyebrow.style.fontSize = "10px";
+    eyebrow.style.letterSpacing = "0.14em";
+    eyebrow.style.textTransform = "uppercase";
+    eyebrow.style.color = theme.mutedText;
+
     const title = document.createElement("div");
-    title.textContent = "GPT Boost";
-    title.style.fontSize = "13px";
-    title.style.fontWeight = "600";
+    title.textContent = "GPT Boost Workspace";
+    title.style.fontSize = "14px";
+    title.style.fontWeight = "700";
     title.style.letterSpacing = "0.01em";
     title.style.lineHeight = "1.1";
 
     const details = document.createElement("div");
-    details.style.fontSize = "10px";
+    details.style.fontSize = "11px";
     details.style.lineHeight = "1.2";
     details.style.color = theme.mutedText;
     details.style.opacity = "0.82";
     details.textContent = deps.getSidebarStatsSummary();
     headerDetailsLabel = details;
+    titleWrap.appendChild(eyebrow);
     titleWrap.appendChild(title);
     titleWrap.appendChild(details);
 
@@ -348,26 +371,6 @@ export function createSidebarShellFeature({
     headerActions.style.display = "flex";
     headerActions.style.alignItems = "center";
     headerActions.style.gap = "4px";
-
-    const settingsBtn = document.createElement("button");
-    settingsBtn.type = "button";
-    settingsBtn.setAttribute("aria-label", "Open sidebar settings");
-    deps.styleSearchButton(settingsBtn, 28);
-    settingsBtn.style.display = "flex";
-    settingsBtn.style.background = "transparent";
-    settingsBtn.style.color = theme.mutedText;
-    settingsBtn.style.border = "none";
-    settingsBtn.style.borderRadius = "6px";
-    settingsBtn.appendChild(makeSvgIcon(TAB_ICONS.settings, 15));
-    settingsBtn.addEventListener("mouseenter", () => { settingsBtn.style.background = theme.buttonMutedBg; settingsBtn.style.color = theme.text; });
-    settingsBtn.addEventListener("mouseleave", () => { settingsBtn.style.background = "transparent"; settingsBtn.style.color = theme.mutedText; });
-    settingsBtn.addEventListener("click", () => {
-      if (isSidebarOpen()) {
-        renderSidebarTab("settings");
-      } else {
-        openSidebar("settings");
-      }
-    });
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
@@ -378,41 +381,71 @@ export function createSidebarShellFeature({
     closeBtn.style.color = theme.mutedText;
     closeBtn.style.border = "none";
     closeBtn.style.borderRadius = "6px";
-    closeBtn.appendChild(makeSvgIcon(CLOSE_ICON, 15));
+    closeBtn.appendChild(createSvgIcon("close", 15));
     closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = theme.buttonMutedBg; closeBtn.style.color = theme.text; });
     closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "transparent"; closeBtn.style.color = theme.mutedText; });
     closeBtn.addEventListener("click", hideSidebar);
 
-    headerActions.appendChild(settingsBtn);
     headerActions.appendChild(closeBtn);
-    header.appendChild(titleWrap);
-    header.appendChild(headerActions);
+    topRow.appendChild(titleWrap);
+    topRow.appendChild(headerActions);
+
+    const metaRow = document.createElement("div");
+    metaRow.style.display = "flex";
+    metaRow.style.alignItems = "center";
+    metaRow.style.justifyContent = "space-between";
+    metaRow.style.gap = "8px";
+
+    const context = document.createElement("div");
+    context.setAttribute("data-gpt-boost-sidebar-context", "1");
+    context.style.display = "inline-flex";
+    context.style.alignItems = "center";
+    context.style.width = "fit-content";
+    context.style.padding = "4px 8px";
+    context.style.borderRadius = "999px";
+    context.style.fontSize = "10px";
+    context.style.fontWeight = "700";
+    context.style.letterSpacing = "0.06em";
+    context.style.textTransform = "uppercase";
+    context.textContent = getTabMeta(refs.activeSidebarTab).label;
+
+    const metaHint = document.createElement("div");
+    metaHint.textContent = "Integrated tools for reading, searching, and saving";
+    metaHint.style.fontSize = "10px";
+    metaHint.style.opacity = "0.74";
+    metaHint.style.color = theme.mutedText;
+    metaHint.style.textAlign = "right";
+
+    metaRow.appendChild(context);
+    metaRow.appendChild(metaHint);
+
+    header.appendChild(topRow);
+    header.appendChild(metaRow);
 
     const tabs = document.createElement("div");
-    tabs.style.display = "flex";
-    tabs.style.flexWrap = "nowrap";
-    tabs.style.gap = "4px";
-    tabs.style.marginBottom = "8px";
-    tabs.style.padding = "3px";
-    tabs.style.borderRadius = "10px";
+    tabs.setAttribute("data-gpt-boost-sidebar-nav", "1");
+    tabs.style.display = "grid";
+    tabs.style.gridTemplateColumns = "repeat(3, minmax(0, 1fr))";
+    tabs.style.gap = "6px";
+    tabs.style.marginBottom = "10px";
+    tabs.style.padding = "4px";
+    tabs.style.borderRadius = "14px";
     tabs.style.background = theme.inputBg;
     tabs.style.border = `1px solid ${theme.panelBorder}`;
-    tabs.style.overflowX = "hidden";
-    tabs.style.alignItems = "center";
-
-    tabs.appendChild(createSidebarTabButton("search", "Search"));
-    tabs.appendChild(createSidebarTabButton("bookmarks", "Marks"));
-    tabs.appendChild(createSidebarTabButton("snippets", "Code"));
+    TAB_META.forEach((entry) => {
+      tabs.appendChild(createSidebarTabButton(entry.id, entry.label));
+    });
 
     const content = document.createElement("div");
     content.style.display = "flex";
     content.style.flexDirection = "column";
-    content.style.gap = "8px";
+    content.style.gap = "10px";
     content.style.flex = "1";
     content.style.minHeight = "0";
     content.style.overflow = "hidden";
 
     const footer = document.createElement("div");
+    footer.setAttribute("data-gpt-boost-sidebar-footer", "1");
     footer.style.marginTop = "8px";
     footer.style.padding = "8px 2px 2px";
     footer.style.borderTop = `1px solid ${theme.panelBorder}`;
@@ -431,6 +464,7 @@ export function createSidebarShellFeature({
     refs.sidebarPanel = panel;
     refs.sidebarContentContainer = content;
     refreshSidebarMeta();
+    applySidebarTheme(theme);
     deps.applyFloatingUiOffsets();
     return panel;
   }
@@ -454,6 +488,7 @@ export function createSidebarShellFeature({
     ensureSidebarToggleButton,
     ensureSidebarPanel,
     updateSidebarVisibility,
-    refreshSidebarMeta
+    refreshSidebarMeta,
+    applyTheme: applySidebarTheme
   };
 }

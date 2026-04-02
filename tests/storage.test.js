@@ -1,6 +1,9 @@
 import {
   updateConversationMessageCount,
   saveConversationNote,
+  saveConversationDocument,
+  searchConversationDocuments,
+  buildCrossConversationMarksIndex,
   _resetStorageCacheForTesting
 } from '../src/core/storage.js';
 
@@ -99,6 +102,69 @@ describe('storage helpers', () => {
       await saveConversationNote('chat:abc', '  trimmed  ');
       const saved = mockStore['knownConversations']['chat:abc'];
       expect(saved.note).toBe('trimmed');
+    });
+  });
+
+  describe('conversation documents', () => {
+    it('persists conversation documents for cached search', async () => {
+      await saveConversationDocument({
+        key: 'chat:abc',
+        title: 'Alpha Thread',
+        messageCount: 1,
+        messages: [
+          { order: 1, messageKey: 'm1', role: 'assistant', text: 'hello from the archive' }
+        ]
+      });
+
+      expect(mockStore.conversationDocuments['chat:abc']).toBeDefined();
+      expect(mockStore.conversationDocuments['chat:abc'].messages).toHaveLength(1);
+    });
+
+    it('returns per-match cross-conversation results', () => {
+      const results = searchConversationDocuments({
+        documentsStore: {
+          'chat:abc': {
+            title: 'Alpha Thread',
+            messages: [
+              { order: 1, messageKey: 'm1', role: 'assistant', text: 'archive alpha archive' }
+            ]
+          }
+        },
+        knownStore: {},
+        query: 'archive'
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results[0].messageKey).toBe('m1');
+      expect(results[0].field).toBe('message');
+    });
+
+    it('aggregates pinned and bookmarked items across conversations', () => {
+      const items = buildCrossConversationMarksIndex({
+        flagsStore: {
+          'chat:abc': {
+            pinned: ['m1'],
+            bookmarked: ['m1', 'm2']
+          }
+        },
+        documentsStore: {
+          'chat:abc': {
+            title: 'Alpha Thread',
+            messages: [
+              { order: 1, messageKey: 'm1', role: 'assistant', text: 'first item' },
+              { order: 2, messageKey: 'm2', role: 'user', text: 'second item' }
+            ]
+          }
+        },
+        knownStore: {}
+      });
+
+      expect(items).toHaveLength(2);
+      expect(items[0].messageKey).toBe('m1');
+      expect(items[0].pinned).toBe(true);
+      expect(items[0].bookmarked).toBe(true);
+      expect(items[1].messageKey).toBe('m2');
+      expect(items[1].bookmarked).toBe(true);
     });
   });
 });

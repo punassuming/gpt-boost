@@ -69,6 +69,8 @@ export function createThemeApplier({
     }
 
     deps.applyPinnedTheme(theme);
+    deps.applySidebarTheme(theme);
+    deps.applyArticleActionsTheme(theme);
     deps.dispatchThemeChanged();
   }
 

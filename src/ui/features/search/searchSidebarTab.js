@@ -1,3 +1,5 @@
+import { createSvgIcon } from '../../shell/icons.js';
+
 export function renderSearchSidebarTab({
   container,
   theme,
@@ -13,23 +15,8 @@ export function renderSearchSidebarTab({
   renderSidebarTab,
   getSidebarContentContainer
 }) {
-  const ns = "http://www.w3.org/2000/svg";
   function makeChevron(direction) {
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("width", "12");
-    svg.setAttribute("height", "12");
-    svg.style.fill = "none";
-    svg.style.stroke = "currentColor";
-    svg.style.strokeWidth = "2.5";
-    svg.style.strokeLinecap = "round";
-    svg.style.strokeLinejoin = "round";
-    svg.style.display = "block";
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", direction === "up" ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6");
-    svg.appendChild(path);
-    return svg;
+    return createSvgIcon(direction === "up" ? "chevronUp" : "chevronDown", 12);
   }
   const row = document.createElement("div");
   row.style.display = "flex";
@@ -90,9 +77,9 @@ export function renderSearchSidebarTab({
   count.style.opacity = "0.8";
   count.style.padding = "2px 2px 6px";
 
-  const totalSections = searchState.results.length;
-  const active = totalSections && searchState.activeIndex >= 0 ? searchState.activeIndex + 1 : 0;
-  count.textContent = `${active}/${totalSections} sections • ${searchState.matchCount} matches`;
+  const totalResults = searchState.results.length;
+  const active = totalResults && searchState.activeIndex >= 0 ? searchState.activeIndex + 1 : 0;
+  count.textContent = `${active}/${totalResults} matches`;
 
   container.appendChild(row);
   container.appendChild(count);
@@ -115,8 +102,8 @@ export function renderSearchSidebarTab({
     resultsList.appendChild(empty);
   } else {
     const total = searchState.results.length;
-    searchState.results.forEach((id, idx) => {
-      const summary = getSearchResultSummary(id, idx, total);
+    searchState.results.forEach((result, idx) => {
+      const summary = getSearchResultSummary(result, idx, total);
       const roleStyle = getRoleSurfaceStyle(summary.role, theme);
       const item = document.createElement("button");
       item.type = "button";
@@ -137,7 +124,7 @@ export function renderSearchSidebarTab({
         const previousScrollTop = resultsList.scrollTop;
         searchState.activeIndex = idx;
         updateSearchCountLabel();
-        focusSearchResult(id);
+        focusSearchResult(result);
         renderSidebarTab("search");
         setTimeout(() => {
           const sidebarContentContainer = getSidebarContentContainer();

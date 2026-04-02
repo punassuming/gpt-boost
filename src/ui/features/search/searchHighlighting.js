@@ -11,9 +11,9 @@ export function clearSearchTextHighlights(element) {
 }
 
 export function highlightMatchesInElement(element, query) {
-  if (!(element instanceof HTMLElement)) return;
+  if (!(element instanceof HTMLElement)) return [];
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return;
+  if (!normalized) return [];
 
   clearSearchTextHighlights(element);
 
@@ -42,6 +42,7 @@ export function highlightMatchesInElement(element, query) {
     textNodes.push(walker.currentNode);
   }
 
+  let matchIndex = 0;
   textNodes.forEach((node) => {
     const text = node.nodeValue || "";
     const lower = text.toLowerCase();
@@ -61,11 +62,13 @@ export function highlightMatchesInElement(element, query) {
       const matchText = text.slice(index, index + normalized.length);
       const mark = document.createElement("mark");
       mark.dataset.chatgptVirtualSearch = "hit";
+      mark.dataset.gptBoostSearchHitIndex = String(matchIndex++);
       mark.textContent = matchText;
       mark.style.background = "rgba(251, 191, 36, 0.35)";
       mark.style.color = "inherit";
       mark.style.padding = "0 2px";
       mark.style.borderRadius = "4px";
+      mark.style.scrollMargin = "96px";
       fragment.appendChild(mark);
 
       lastIndex = index + normalized.length;
@@ -80,4 +83,22 @@ export function highlightMatchesInElement(element, query) {
 
     node.replaceWith(fragment);
   });
+
+  return Array.from(element.querySelectorAll('mark[data-chatgpt-virtual-search="hit"]'));
+}
+
+export function setActiveSearchMatch(element, matchIndex) {
+  if (!(element instanceof HTMLElement)) return null;
+  const marks = Array.from(element.querySelectorAll('mark[data-chatgpt-virtual-search="hit"]'));
+  marks.forEach((mark) => {
+    if (!(mark instanceof HTMLElement)) return;
+    mark.style.background = "rgba(251, 191, 36, 0.35)";
+    mark.style.boxShadow = "none";
+  });
+
+  const active = marks.find((mark) => mark.dataset.gptBoostSearchHitIndex === String(matchIndex));
+  if (!(active instanceof HTMLElement)) return null;
+  active.style.background = "rgba(251, 191, 36, 0.7)";
+  active.style.boxShadow = "0 0 0 1px rgba(251, 191, 36, 0.85)";
+  return active;
 }

@@ -1,3 +1,13 @@
+function createSnippet(text, start, length, radius = 48) {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  if (!source) return "";
+  const snippetStart = Math.max(0, start - radius);
+  const snippetEnd = Math.min(source.length, start + length + radius);
+  const prefix = snippetStart > 0 ? "…" : "";
+  const suffix = snippetEnd < source.length ? "…" : "";
+  return `${prefix}${source.slice(snippetStart, snippetEnd)}${suffix}`;
+}
+
 export function collectSearchTargets({
   ensureVirtualIds,
   getActiveConversationNodes,
@@ -22,39 +32,26 @@ export function collectSearchTargets({
 }
 
 export function summarizeSearchResult({
-  id,
+  result,
   index,
   total,
   articleMap,
-  getMessageRole,
-  articleSnippetLength
+  getMessageRole
 }) {
+  const id = result?.id;
   const node = articleMap.get(id);
-  if (!(node instanceof HTMLElement)) {
-    return {
-      title: `Result ${index + 1}`,
-      subtitle: `#${id} • ${index + 1}/${total}`,
-      role: "message"
-    };
-  }
-
-  const role = getMessageRole(node);
-  const textSource = node.querySelector("[data-message-author-role]") || node;
-  const raw = (textSource.textContent || "").trim().replace(/\s+/g, " ");
-  const snippet =
-    raw.length > articleSnippetLength
-      ? raw.slice(0, articleSnippetLength) + "…"
-      : raw;
+  const role = node instanceof HTMLElement ? getMessageRole(node) : "message";
+  const matchNumber = Number(result?.matchIndexWithinMessage || 0) + 1;
 
   return {
-    title: snippet || `Message ${id}`,
-    subtitle: `#${id} • ${index + 1}/${total}`,
+    title: result?.snippet || `Match ${index + 1}`,
+    subtitle: `#${id} • hit ${matchNumber} • ${index + 1}/${total}`,
     role
   };
 }
 
 export function findSearchMatches(entries, query) {
-  const normalized = query.trim().toLowerCase();
+  const normalized = String(query || "").trim().toLowerCase();
   if (!normalized) {
     return {
       normalized,
@@ -64,25 +61,34 @@ export function findSearchMatches(entries, query) {
   }
 
   const results = [];
-  let matchCount = 0;
+  Array.from(entries.entries())
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .forEach(([id, node]) => {
+      const textSource = node instanceof HTMLElement
+        ? (node.querySelector("[data-message-author-role]") || node)
+        : null;
+      const rawText = String(textSource?.textContent || "").replace(/\s+/g, " ").trim();
+      const lowerText = rawText.toLowerCase();
+      if (!lowerText) return;
 
-  entries.forEach((node, id) => {
-    const text = (node.textContent || "").toLowerCase();
-    if (!text) return;
-
-    let index = text.indexOf(normalized);
-    if (index === -1) return;
-
-    results.push(id);
-    while (index !== -1) {
-      matchCount += 1;
-      index = text.indexOf(normalized, index + normalized.length);
-    }
-  });
+      let start = lowerText.indexOf(normalized);
+      let matchIndexWithinMessage = 0;
+      while (start !== -1) {
+        results.push({
+          id,
+          matchIndexWithinMessage,
+          start,
+          length: normalized.length,
+          snippet: createSnippet(rawText, start, normalized.length)
+        });
+        matchIndexWithinMessage += 1;
+        start = lowerText.indexOf(normalized, start + normalized.length);
+      }
+    });
 
   return {
     normalized,
     results,
-    matchCount
+    matchCount: results.length
   };
 }
