@@ -24,6 +24,20 @@ export function createMinimapFeature({
   let trackElement = null;
   let viewportThumbElement = null;
 
+  function computeTrackVerticalLayout(trackHeight) {
+    const safeTrackHeight = Math.max(1, Number(trackHeight) || 1);
+    const preferredInset = Math.max(4, Math.round(safeTrackHeight * 0.06));
+    const insetPx = Math.min(14, preferredInset);
+    const effectiveHeight = safeTrackHeight - insetPx * 2;
+    if (effectiveHeight < 24) {
+      return {
+        insetPx: 0,
+        effectiveHeight: safeTrackHeight
+      };
+    }
+    return { insetPx, effectiveHeight };
+  }
+
   function applyEdgeFeatherMask(el, maskValue) {
     if (!(el instanceof HTMLElement)) return;
     el.style.maskImage = maskValue;
@@ -69,7 +83,29 @@ export function createMinimapFeature({
     });
   }
 
-  function scrollToMinimapItem(virtualId) {
+  function scrollToMinimapItem(virtualId, marker, clientY = null) {
+    const entry = markerRegistry.get(virtualId);
+    const item = entry?.item;
+    if (marker instanceof HTMLElement && typeof clientY === "number") {
+      const track = getTrack();
+      if (track instanceof HTMLElement) {
+        const markerRect = marker.getBoundingClientRect();
+        const trackRect = track.getBoundingClientRect();
+        const { insetPx, effectiveHeight } = computeTrackVerticalLayout(trackRect.height);
+        const markerTopInTrack = markerRect.top - trackRect.top;
+        const markerHeight = Math.max(1, markerRect.height);
+        const localY = Math.min(markerHeight, Math.max(0, clientY - markerRect.top));
+        const absoluteY = markerTopInTrack + localY;
+        const ratio = clampRatio((absoluteY - insetPx) / Math.max(1, effectiveHeight));
+        scrollToMinimapRatio(ratio, "auto");
+        return;
+      }
+    }
+    if (item) {
+      const centerRatio = clampRatio(item.topRatio + (item.heightRatio / 2));
+      scrollToMinimapRatio(centerRatio, "auto");
+      return;
+    }
     deps.scrollToVirtualId(virtualId);
   }
 
@@ -102,30 +138,31 @@ export function createMinimapFeature({
     const hovered = marker.dataset.gptBoostHovered === "1";
     const isDark = deps.getThemeMode() === "dark";
     const markerRefs = ensureMarkerRefs(marker);
-    const lineNodes = markerRefs?.lineNodes || [];
     const overlayNodes = [markerRefs?.searchOverlay, markerRefs?.codeOverlay].filter((node) => node instanceof HTMLElement);
 
-    marker.style.opacity = isActive ? "1" : hovered ? "0.92" : "0.76";
+    marker.style.opacity = isActive ? "0.98" : hovered ? "0.8" : "0.66";
     marker.style.boxShadow = isActive ? `0 0 0 1px ${theme.panelBorder}` : "none";
-    marker.style.background = "transparent";
-
-    lineNodes.forEach((line) => {
-      const baseColor = isDark
-        ? (isUser ? "rgba(226, 232, 240, 0.42)" : "rgba(148, 163, 184, 0.38)")
-        : (isUser ? "rgba(51, 65, 85, 0.24)" : "rgba(51, 65, 85, 0.18)");
-      const activeColor = isDark
-        ? "rgba(226, 232, 240, 0.7)"
-        : "rgba(15, 23, 42, 0.4)";
-      line.style.background = isActive ? activeColor : baseColor;
-    });
+    const stripeColor = isActive
+      ? (isDark ? "rgba(226, 232, 240, 0.42)" : "rgba(15, 23, 42, 0.32)")
+      : (isDark
+        ? (isUser ? "rgba(226, 232, 240, 0.24)" : "rgba(148, 163, 184, 0.2)")
+        : (isUser ? "rgba(51, 65, 85, 0.16)" : "rgba(51, 65, 85, 0.12)"));
+    const surfaceColor = isDark
+      ? (isUser ? "rgba(148, 163, 184, 0.12)" : "rgba(100, 116, 139, 0.1)")
+      : (isUser ? "rgba(51, 65, 85, 0.08)" : "rgba(71, 85, 105, 0.06)");
+    marker.style.backgroundColor = surfaceColor;
+    marker.style.backgroundImage = `repeating-linear-gradient(180deg, ${stripeColor} 0 1px, transparent 1px 4px)`;
+    marker.style.backgroundRepeat = "repeat";
+    marker.style.backgroundSize = "100% 4px";
+    marker.style.backgroundPosition = "0 0";
 
     overlayNodes.forEach((overlay) => {
       if (overlay.dataset.overlayType === "search") {
-        overlay.style.background = "rgba(251, 191, 36, 0.92)";
-        overlay.style.boxShadow = "0 0 0 1px rgba(251, 191, 36, 0.2)";
+        overlay.style.background = "rgba(251, 191, 36, 0.78)";
+        overlay.style.boxShadow = "0 0 0 1px rgba(251, 191, 36, 0.14)";
       } else if (overlay.dataset.overlayType === "code") {
-        overlay.style.background = "rgba(59, 130, 246, 0.9)";
-        overlay.style.boxShadow = "0 0 0 1px rgba(59, 130, 246, 0.2)";
+        overlay.style.background = "rgba(59, 130, 246, 0.76)";
+        overlay.style.boxShadow = "0 0 0 1px rgba(59, 130, 246, 0.14)";
       }
     });
   }
@@ -155,8 +192,9 @@ export function createMinimapFeature({
     const trackHeight = track.clientHeight;
     if (trackHeight <= 0) return;
 
+    const { insetPx, effectiveHeight } = computeTrackVerticalLayout(trackHeight);
     const { viewportHeight, viewportTop } = computeViewportThumbLayout({
-      trackHeight,
+      trackHeight: effectiveHeight,
       visibleHeight: scrollTarget.clientHeight || 1,
       contentHeight: scrollTarget.scrollHeight || scrollTarget.clientHeight || 1,
       scrollTop: scrollTarget.scrollTop,
@@ -165,7 +203,7 @@ export function createMinimapFeature({
     });
 
     viewportThumb.style.height = `${viewportHeight}px`;
-    viewportThumb.style.top = `${viewportTop}px`;
+    viewportThumb.style.top = `${insetPx + viewportTop}px`;
   }
 
   function updateStandaloneMinimapViewportState(force = false) {
@@ -205,8 +243,8 @@ export function createMinimapFeature({
     marker.style.zIndex = "2";
     marker.style.display = "flex";
     marker.style.flexDirection = "column";
-    marker.style.justifyContent = "center";
-    marker.style.gap = "2px";
+    marker.style.justifyContent = "space-between";
+    marker.style.gap = "1px";
     marker.style.overflow = "visible";
     marker.style.transition = "opacity 120ms ease, box-shadow 120ms ease";
     marker.style.background = "transparent";
@@ -219,43 +257,32 @@ export function createMinimapFeature({
       delete marker.dataset.gptBoostHovered;
       applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
     });
-    marker.addEventListener("click", () => scrollToMinimapItem(marker.dataset.virtualId || item.id));
+    marker.addEventListener("click", (event) => {
+      scrollToMinimapItem(
+        marker.dataset.virtualId || item.id,
+        marker,
+        event.clientY
+      );
+    });
     ensureMarkerRefs(marker);
     return { marker, item: null };
   }
 
   function syncMarkerLines(entry, item, baseHeightPx) {
     const markerRefs = ensureMarkerRefs(entry.marker);
-    const desiredCount = item.lineRatios.length;
-
-    while (markerRefs.lineNodes.length > desiredCount) {
+    void item;
+    void baseHeightPx;
+    while (markerRefs.lineNodes.length > 0) {
       const line = markerRefs.lineNodes.pop();
       line?.remove();
     }
-
-    while (markerRefs.lineNodes.length < desiredCount) {
-      const line = document.createElement("div");
-      line.setAttribute("data-gpt-boost-minimap-line", "1");
-      line.style.borderRadius = "999px";
-      line.style.maxWidth = "100%";
-      markerRefs.lineNodes.push(line);
-      entry.marker.appendChild(line);
-    }
-
-    const lineHeightPx = Math.max(1, Math.min(3, Math.floor(baseHeightPx / Math.max(2, item.lineCount || 1))));
-    markerRefs.lineNodes.forEach((line, lineIndex) => {
-      const ratio = item.lineRatios[lineIndex] || 0.6;
-      line.style.height = `${lineHeightPx}px`;
-      line.style.width = `${Math.round(ratio * 100)}%`;
-      line.style.minWidth = `${lineIndex === desiredCount - 1 ? 28 : 34}%`;
-    });
   }
 
   function ensureOverlayContainer(entry, isUser) {
     const markerRefs = ensureMarkerRefs(entry.marker);
     if (markerRefs.overlays instanceof HTMLElement) {
-      markerRefs.overlays.style.left = isUser ? "-8px" : "";
-      markerRefs.overlays.style.right = isUser ? "" : "-8px";
+      markerRefs.overlays.style.left = isUser ? "-7px" : "";
+      markerRefs.overlays.style.right = isUser ? "" : "-7px";
       return markerRefs.overlays;
     }
     const overlays = document.createElement("div");
@@ -264,11 +291,11 @@ export function createMinimapFeature({
     overlays.style.transform = "translateY(-50%)";
     overlays.style.display = "flex";
     overlays.style.flexDirection = "column";
-    overlays.style.gap = "3px";
+    overlays.style.gap = "2px";
     overlays.style.alignItems = "center";
     overlays.style.pointerEvents = "none";
-    overlays.style.left = isUser ? "-8px" : "";
-    overlays.style.right = isUser ? "" : "-8px";
+    overlays.style.left = isUser ? "-7px" : "";
+    overlays.style.right = isUser ? "" : "-7px";
     markerRefs.overlays = overlays;
     entry.marker.appendChild(overlays);
     return overlays;
@@ -281,8 +308,8 @@ export function createMinimapFeature({
     const overlay = document.createElement("div");
     overlay.setAttribute("data-gpt-boost-minimap-overlay", "1");
     overlay.dataset.overlayType = overlayType;
-    overlay.style.width = overlayType === "search" ? "4px" : "6px";
-    overlay.style.height = overlayType === "search" ? "10px" : "6px";
+    overlay.style.width = overlayType === "search" ? "3px" : "4px";
+    overlay.style.height = overlayType === "search" ? "8px" : "4px";
     overlay.style.borderRadius = overlayType === "search" ? "999px" : "2px";
     if (overlayType === "search") {
       markerRefs.searchOverlay = overlay;
@@ -351,6 +378,7 @@ export function createMinimapFeature({
     syncMarkerLines(entry, item, baseHeightPx);
     syncMarkerSignals(entry, item);
     entry.item = item;
+    applyStandaloneMinimapMarkerStyle(marker, marker.dataset.virtualId === refs.activeStandaloneMinimapVirtualId);
   }
 
   function removeStaleMarkers(validIds) {
@@ -501,7 +529,7 @@ export function createMinimapFeature({
     panel.style.right = `${constants.minimapPanelRightOffsetPx}px`;
     panel.style.zIndex = "10001";
     panel.style.width = `${constants.minimapPanelWidthPx}px`;
-    panel.style.height = `${constants.minimapTrackHeightPx}px`;
+    panel.style.height = `${Math.max(window.innerHeight, constants.minimapTrackHeightPx)}px`;
     panel.style.marginRight = `${constants.minimapPanelNegativeMarginRightPx || 0}px`;
     panel.style.display = "none";
     panel.style.padding = "0";
@@ -543,11 +571,15 @@ export function createMinimapFeature({
 
     const pointerToRatio = (clientY, centerOnPointer = false) => {
       const rect = track.getBoundingClientRect();
-      const thumbHeight = viewportThumb.getBoundingClientRect().height || MIN_VIEWPORT_HEIGHT_PX;
+      const { insetPx, effectiveHeight } = computeTrackVerticalLayout(rect.height);
+      const thumbHeight = Math.min(
+        viewportThumb.getBoundingClientRect().height || MIN_VIEWPORT_HEIGHT_PX,
+        effectiveHeight
+      );
       const rawTop = centerOnPointer
-        ? (clientY - rect.top - thumbHeight / 2)
-        : (clientY - rect.top - dragOffsetY);
-      const maxTop = Math.max(1, rect.height - thumbHeight);
+        ? (clientY - rect.top - insetPx - thumbHeight / 2)
+        : (clientY - rect.top - insetPx - dragOffsetY);
+      const maxTop = Math.max(1, effectiveHeight - thumbHeight);
       const clampedTop = Math.min(maxTop, Math.max(0, rawTop));
       return maxTop > 0 ? clampRatio(clampedTop / maxTop) : 0;
     };
@@ -646,14 +678,12 @@ export function createMinimapFeature({
 
   function applyFloatingLayout(offsetPx, topButtonTopPx, bottomButtonTopPx) {
     if (!refs.minimapPanel) return;
-    const minimapTop = topButtonTopPx + constants.scrollButtonSizePx + constants.minimapButtonGapPx;
-    const minimapBottom = Math.max(minimapTop + 80, bottomButtonTopPx - constants.minimapButtonGapPx);
-    const minimapHeight = Math.max(80, minimapBottom - minimapTop);
-
-    refs.minimapPanel.style.top = `${Math.round(minimapTop)}px`;
+    void topButtonTopPx;
+    void bottomButtonTopPx;
+    refs.minimapPanel.style.top = "0px";
     refs.minimapPanel.style.right = `${constants.minimapPanelRightOffsetPx + offsetPx}px`;
     refs.minimapPanel.style.width = `${constants.minimapPanelWidthPx}px`;
-    refs.minimapPanel.style.height = `${Math.round(minimapHeight)}px`;
+    refs.minimapPanel.style.height = `${Math.max(1, Math.round(window.innerHeight))}px`;
   }
 
   return {

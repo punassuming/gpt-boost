@@ -26,22 +26,6 @@ function createStatCard(theme, label, value) {
   return card;
 }
 
-function createActionButton(theme, label, onClick) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.style.border = `1px solid ${theme.panelBorder}`;
-  button.style.borderRadius = "10px";
-  button.style.padding = "8px 10px";
-  button.style.fontSize = "11px";
-  button.style.cursor = "pointer";
-  button.style.background = theme.buttonMutedBg;
-  button.style.color = theme.buttonMutedText;
-  button.style.fontFamily = "inherit";
-  button.addEventListener("click", onClick);
-  return button;
-}
-
 export function createInspectorFeature({
   state,
   deps
@@ -106,16 +90,6 @@ export function createInspectorFeature({
     statsGrid.appendChild(createStatCard(theme, "Agents / Users", `${roleCounts.assistant}/${roleCounts.user}`));
     container.appendChild(statsGrid);
 
-    const actions = document.createElement("div");
-    actions.style.display = "flex";
-    actions.style.flexWrap = "wrap";
-    actions.style.gap = "6px";
-    actions.appendChild(createActionButton(theme, "Open Search", () => deps.renderSidebarTab("search")));
-    actions.appendChild(createActionButton(theme, "Workspace Memory", () => deps.renderSidebarTab("memory")));
-    actions.appendChild(createActionButton(theme, "Saved Marks", () => deps.renderSidebarTab("marks")));
-    actions.appendChild(createActionButton(theme, "Code", () => deps.renderSidebarTab("snippets")));
-    container.appendChild(actions);
-
     const noteSection = document.createElement("div");
     noteSection.style.display = "flex";
     noteSection.style.flexDirection = "column";
@@ -162,7 +136,18 @@ export function createInspectorFeature({
     noteMeta.style.opacity = "0.72";
     noteMeta.textContent = "";
 
-    const saveButton = createActionButton(theme, "Save Note", async () => {
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.textContent = "Save Note";
+    saveButton.style.border = `1px solid ${theme.panelBorder}`;
+    saveButton.style.borderRadius = "10px";
+    saveButton.style.padding = "8px 10px";
+    saveButton.style.fontSize = "11px";
+    saveButton.style.cursor = "pointer";
+    saveButton.style.background = theme.buttonMutedBg;
+    saveButton.style.color = theme.buttonMutedText;
+    saveButton.style.fontFamily = "inherit";
+    saveButton.addEventListener("click", async () => {
       saveButton.disabled = true;
       saveMeta.textContent = "Saving...";
       try {

@@ -119,6 +119,58 @@ describe('minimap edge feathering', () => {
 });
 
 describe('minimap viewport drag behavior', () => {
+  it('applies viewport top inset for feathered track bounds', () => {
+    document.body.innerHTML = '';
+    const scrollTarget = {
+      clientHeight: 200,
+      scrollHeight: 1200,
+      scrollTop: 0,
+      scrollTo: jest.fn()
+    };
+    const refs = {
+      minimapPanel: null,
+      minimapButton: null,
+      activeStandaloneMinimapVirtualId: null
+    };
+    const feature = createMinimapFeature({
+      refs,
+      state: { articleMap: new Map() },
+      constants: {
+        minimapPanelTopOffsetPx: 100,
+        minimapPanelRightOffsetPx: 20,
+        minimapPanelWidthPx: 18,
+        minimapTrackHeightPx: 200,
+        scrollButtonSizePx: 32,
+        minimapButtonGapPx: 10
+      },
+      getUiSettings: () => ({ minimapVisible: true }),
+      deps: {
+        ensureVirtualIds: () => {},
+        getMessageRole: () => 'assistant',
+        getCodeSnippetVirtualIds: () => new Set(),
+        getSearchHitVirtualIds: () => new Set(),
+        getThemeTokens: () => ({ panelBorder: '#444', text: '#fff' }),
+        getThemeMode: () => 'dark',
+        getScrollTarget: () => scrollTarget,
+        getMaxScrollTop: () => 1000,
+        getViewportAnchorVirtualId: () => null,
+        escapeSelectorValue: (value) => value,
+        scrollToVirtualId: () => {},
+        applyFloatingUiOffsets: () => {},
+        applyThemeToUi: () => {}
+      }
+    });
+
+    const panel = feature.ensureMinimapPanel();
+    panel.style.display = 'block';
+    const track = panel.querySelector('[data-chatgpt-minimap="track"]');
+    const viewport = panel.querySelector('[data-chatgpt-minimap="viewport"]');
+    Object.defineProperty(track, 'clientHeight', { value: 200, configurable: true });
+
+    feature.updateStandaloneMinimapViewportRect(track);
+    expect(parseFloat(viewport.style.top)).toBeGreaterThan(0);
+  });
+
   it('allows click-on-track and continued drag in one gesture', () => {
     document.body.innerHTML = '';
     const scrollTarget = {
@@ -236,7 +288,11 @@ describe('minimap content overlays', () => {
     Object.defineProperty(track, 'clientHeight', { value: 200, configurable: true });
     feature.populateMinimapPanel(panel);
 
-    expect(panel.querySelectorAll('[data-gpt-boost-minimap-line="1"]').length).toBeGreaterThan(0);
+    const lines = panel.querySelectorAll('[data-gpt-boost-minimap-line="1"]');
+    expect(lines.length).toBe(0);
+    const marker = panel.querySelector('[data-gpt-boost-minimap-marker="1"]');
+    expect(marker).not.toBeNull();
+    expect(marker.style.backgroundImage).toContain('repeating-linear-gradient');
     expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"][data-overlay-type="search"]')).not.toBeNull();
     expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"][data-overlay-type="code"]')).not.toBeNull();
   });
@@ -325,5 +381,76 @@ describe('minimap model caching', () => {
 
     expect(first[0].lineRatios).toBe(second[0].lineRatios);
     expect(cache.get('1').lineRatios).toBe(first[0].lineRatios);
+  });
+});
+
+describe('minimap proportional scaling', () => {
+  it('positions markers by cumulative message height instead of message index', () => {
+    document.body.innerHTML = '';
+    const articleOne = document.createElement('article');
+    articleOne.dataset.virtualId = '1';
+    articleOne.innerHTML = '<div data-message-author-role="user">Short user message</div>';
+    Object.defineProperty(articleOne, 'offsetHeight', { value: 100, configurable: true });
+    document.body.appendChild(articleOne);
+
+    const articleTwo = document.createElement('article');
+    articleTwo.dataset.virtualId = '2';
+    articleTwo.innerHTML = '<div data-message-author-role="assistant">Longer assistant response</div>';
+    Object.defineProperty(articleTwo, 'offsetHeight', { value: 400, configurable: true });
+    document.body.appendChild(articleTwo);
+
+    const items = buildMinimapItems({
+      ensureVirtualIds: () => {},
+      articleMap: new Map([
+        ['1', articleOne],
+        ['2', articleTwo]
+      ]),
+      getMessageRole: (node) => (node === articleOne ? 'user' : 'assistant'),
+      getCodeSnippetVirtualIds: () => new Set(),
+      getSearchHitVirtualIds: () => new Set(),
+      cache: new Map()
+    });
+
+    expect(items).toHaveLength(2);
+    expect(items[0].topRatio).toBeCloseTo(0, 6);
+    expect(items[0].heightRatio).toBeCloseTo(0.2, 2);
+    expect(items[1].topRatio).toBeCloseTo(0.2, 2);
+    expect(items[1].heightRatio).toBeCloseTo(0.8, 2);
+    expect(items[1].topRatio).toBeLessThan(0.5);
+  });
+
+  it('uses spacer heights for disconnected virtualized messages', () => {
+    document.body.innerHTML = '';
+    const detachedArticle = document.createElement('article');
+    detachedArticle.dataset.virtualId = '1';
+    detachedArticle.innerHTML = '<div data-message-author-role="assistant">Detached message</div>';
+
+    const connectedArticle = document.createElement('article');
+    connectedArticle.dataset.virtualId = '2';
+    connectedArticle.innerHTML = '<div data-message-author-role="user">Connected message</div>';
+    Object.defineProperty(connectedArticle, 'offsetHeight', { value: 120, configurable: true });
+    document.body.appendChild(connectedArticle);
+
+    const spacer = document.createElement('div');
+    spacer.dataset.chatgptVirtualSpacer = '1';
+    spacer.dataset.virtualId = '1';
+    spacer.style.height = '480px';
+    document.body.appendChild(spacer);
+
+    const items = buildMinimapItems({
+      ensureVirtualIds: () => {},
+      articleMap: new Map([
+        ['1', detachedArticle],
+        ['2', connectedArticle]
+      ]),
+      getMessageRole: (node) => (node === connectedArticle ? 'user' : 'assistant'),
+      getCodeSnippetVirtualIds: () => new Set(),
+      getSearchHitVirtualIds: () => new Set(),
+      cache: new Map()
+    });
+
+    expect(items).toHaveLength(2);
+    expect(items[0].heightRatio).toBeCloseTo(0.8, 2);
+    expect(items[1].topRatio).toBeCloseTo(0.8, 2);
   });
 });

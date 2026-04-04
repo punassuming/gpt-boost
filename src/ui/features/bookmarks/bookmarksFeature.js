@@ -7,8 +7,18 @@ export function createBookmarksFeature({
     if (!deps.getCurrentConversationKey()) {
       deps.setCurrentConversationKey(deps.getConversationStorageKey());
     }
-    const article = state.articleMap.get(virtualId);
-    const key = article instanceof HTMLElement ? deps.getArticleMessageKey(article, virtualId) : "";
+    let article = state.articleMap.get(virtualId);
+    if (!(article instanceof HTMLElement)) {
+      const selectorId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(String(virtualId))
+        : String(virtualId).replace(/["\\]/g, "\\$&");
+      const liveArticle = document.querySelector(`[data-virtual-id="${selectorId}"]`);
+      if (liveArticle instanceof HTMLElement) {
+        article = liveArticle;
+        state.articleMap.set(virtualId, liveArticle);
+      }
+    }
+    const key = article instanceof HTMLElement ? deps.getArticleMessageKey(article, virtualId) : `virtual:${virtualId}`;
     const persistedKeys = deps.getPersistedBookmarkedMessageKeys();
 
     if (state.bookmarkedMessages.has(virtualId)) {
@@ -21,7 +31,13 @@ export function createBookmarksFeature({
 
     deps.scheduleFlagsSave();
     if (article) deps.updateBookmarkButtonAppearance(article, virtualId);
-    deps.refreshSidebarTab();
+    if (deps.isMarksSidebarActive?.()) {
+      void deps.flushFlagsSave?.().finally(() => {
+        deps.refreshSidebarTab();
+      });
+    } else {
+      deps.refreshSidebarTab();
+    }
   }
 
   function populateBookmarksPanel(panel) {

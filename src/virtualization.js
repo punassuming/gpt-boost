@@ -4,6 +4,7 @@ import {
   persistedPinnedMessageKeys,
   persistedBookmarkedMessageKeys,
   scheduleFlagsSave,
+  flushFlagsSave,
   loadPersistedFlagsForConversation,
   getArticleMessageKey,
   setCurrentConversationKey,
@@ -158,13 +159,12 @@ import {
   const MINIMAP_BUTTON_GAP_PX = 8;
   const MINIMAP_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
   const MINIMAP_BUTTON_TOP_OFFSET_PX = TOP_BUTTON_STACK_OFFSET_PX;
-  const MINIMAP_PANEL_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
-  const MINIMAP_PANEL_TOP_OFFSET_PX = MINIMAP_BUTTON_TOP_OFFSET_PX;
-  // Keep the minimap visually wider for stronger feathering while offsetting it
-  // with a negative right margin so it doesn't consume extra horizontal space.
-  const MINIMAP_PANEL_WIDTH_PX = MINIMAP_BUTTON_SIZE_PX + 8;
-  const MINIMAP_PANEL_NEGATIVE_MARGIN_RIGHT_PX = -16;
-  const MINIMAP_TRACK_HEIGHT_PX = 420;
+  const MINIMAP_PANEL_RIGHT_OFFSET_PX = 0;
+  const MINIMAP_PANEL_TOP_OFFSET_PX = 0;
+  const MINIMAP_PANEL_WIDTH_PX = 24;
+  const MINIMAP_PANEL_NEGATIVE_MARGIN_RIGHT_PX = 0;
+  const MINIMAP_TRACK_HEIGHT_PX = window.innerHeight;
+  const MINIMAP_CONTROL_CLEARANCE_PX = MINIMAP_PANEL_WIDTH_PX + 1;
   const MINIMAP_PROMPT_SNIPPET_LENGTH = 60;
   const SEARCH_BUTTON_SIZE_PX = 30;
   const SEARCH_BUTTON_GAP_PX = 8;
@@ -507,6 +507,8 @@ import {
       scrollButtonOffsetPx: SCROLL_BUTTON_OFFSET_PX,
       scrollButtonTopOffsetPx: SCROLL_BUTTON_TOP_OFFSET_PX,
       scrollButtonSizePx: SCROLL_BUTTON_SIZE_PX,
+      minimapPanelWidthPx: MINIMAP_PANEL_WIDTH_PX,
+      minimapControlClearancePx: MINIMAP_CONTROL_CLEARANCE_PX,
       sidebarTransitionMs: SIDEBAR_TRANSITION_MS
     },
     deps: {
@@ -562,8 +564,10 @@ import {
       getArticleMessageKey,
       getPersistedBookmarkedMessageKeys: () => persistedBookmarkedMessageKeys,
       scheduleFlagsSave,
+      flushFlagsSave,
       updateBookmarkButtonAppearance,
       refreshSidebarTab,
+      isMarksSidebarActive: () => isSidebarOpen() && activeSidebarTab === "marks",
       getThemeTokens,
       getMessageRole,
       getRoleSurfaceStyle,
@@ -903,6 +907,7 @@ import {
     persistedBookmarkedMessageKeys,
     deps: {
       getArticleMessageKey,
+      scheduleFlagsSave,
       updatePinnedBar,
       updatePinButtonAppearance,
       updateBookmarkButtonAppearance,
@@ -1742,14 +1747,25 @@ import {
   // Pin to Top
   // ---------------------------------------------------------------------------
 
-  function scrollToVirtualId(virtualId, attempt = 0) {
+  function scrollToVirtualId(virtualId, attemptOrOptions = 0) {
+    const options =
+      typeof attemptOrOptions === "object" && attemptOrOptions !== null
+        ? attemptOrOptions
+        : null;
+    const attempt =
+      typeof attemptOrOptions === "number"
+        ? attemptOrOptions
+        : 0;
+    const allowRetry = options?.allowRetry !== false;
+    const behavior = options?.behavior || "smooth";
+    const block = options?.block || "center";
     const selectorId = escapeSelectorValue(virtualId);
     const target = document.querySelector(`[data-virtual-id="${selectorId}"]`);
     if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.scrollIntoView({ behavior, block });
     scheduleVirtualization();
 
-    if (attempt < MAX_SCROLL_ATTEMPTS) {
+    if (allowRetry && attempt < MAX_SCROLL_ATTEMPTS) {
       setTimeout(() => {
         scrollToVirtualId(virtualId, attempt + 1);
       }, SCROLL_RETRY_DELAY_MS);
@@ -1768,8 +1784,16 @@ import {
     if (!currentConversationKey) {
       setCurrentConversationKey(getConversationStorageKey());
     }
-    const article = state.articleMap.get(virtualId);
-    const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : "";
+    let article = state.articleMap.get(virtualId);
+    if (!(article instanceof HTMLElement)) {
+      const selectorId = escapeSelectorValue(virtualId);
+      const liveArticle = document.querySelector(`[data-virtual-id="${selectorId}"]`);
+      if (liveArticle instanceof HTMLElement) {
+        article = liveArticle;
+        state.articleMap.set(virtualId, liveArticle);
+      }
+    }
+    const key = article instanceof HTMLElement ? getArticleMessageKey(article, virtualId) : `virtual:${virtualId}`;
     if (state.pinnedMessages.has(virtualId)) {
       state.pinnedMessages.delete(virtualId);
       if (key) persistedPinnedMessageKeys.delete(key);
@@ -1780,7 +1804,13 @@ import {
     scheduleFlagsSave();
     updatePinnedBar();
     if (article) updatePinButtonAppearance(article, virtualId);
-    refreshSidebarTab();
+    if (isSidebarOpen() && activeSidebarTab === "marks") {
+      void flushFlagsSave().finally(() => {
+        refreshSidebarTab();
+      });
+    } else {
+      refreshSidebarTab();
+    }
   }
 
   function renderSnippetsTabContent(container) {

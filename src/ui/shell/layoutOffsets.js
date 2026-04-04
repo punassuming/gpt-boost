@@ -126,47 +126,55 @@ export function createLayoutOffsetsManager({
 
   function applyFloatingUiOffsets() {
     const offset = getSidebarUiOffsetPx();
+    const minimapVisible = !!(
+      refs.minimapPanel &&
+      refs.minimapPanel.style.display !== "none"
+    );
+    const minimapLaneOffset = minimapVisible
+      ? (constants.minimapControlClearancePx || constants.minimapPanelWidthPx || 0)
+      : 0;
+    const rightOffset = offset + minimapLaneOffset;
 
     if (refs.indicatorElement) {
-      refs.indicatorElement.style.right = `${constants.indicatorRightOffsetPx + offset}px`;
+      refs.indicatorElement.style.right = `${constants.indicatorRightOffsetPx + rightOffset}px`;
     }
 
     let currentTop = constants.sidebarToggleTopOffsetPx;
 
     if (refs.sidebarToggleButton && refs.sidebarToggleButton.style.display !== "none") {
       refs.sidebarToggleButton.style.top = `${currentTop}px`;
-      refs.sidebarToggleButton.style.right = `${constants.sidebarToggleRightOffsetPx + offset}px`;
+      refs.sidebarToggleButton.style.right = `${constants.sidebarToggleRightOffsetPx + rightOffset}px`;
       currentTop += constants.sidebarToggleSizePx + constants.searchButtonGapPx;
     }
 
     if (refs.searchButton && refs.searchButton.style.display !== "none") {
       refs.searchButton.style.top = `${currentTop}px`;
-      refs.searchButton.style.right = `${constants.searchButtonRightOffsetPx + offset}px`;
+      refs.searchButton.style.right = `${constants.searchButtonRightOffsetPx + rightOffset}px`;
       if (refs.searchPanel) refs.searchPanel.style.top = `${currentTop}px`;
-      if (refs.searchPanel) refs.searchPanel.style.right = `${constants.searchPanelRightOffsetPx + offset}px`;
+      if (refs.searchPanel) refs.searchPanel.style.right = `${constants.searchPanelRightOffsetPx + rightOffset}px`;
       currentTop += constants.searchButtonSizePx + constants.searchButtonGapPx;
     }
 
     if (refs.downloadButton && refs.downloadButton.style.display !== "none") {
       refs.downloadButton.style.top = `${currentTop}px`;
-      refs.downloadButton.style.right = `${constants.downloadButtonRightOffsetPx + offset}px`;
+      refs.downloadButton.style.right = `${constants.downloadButtonRightOffsetPx + rightOffset}px`;
       currentTop += constants.downloadButtonSizePx + constants.downloadButtonGapPx;
     }
 
     if (refs.scrollToTopButton && refs.scrollToTopButton.style.display !== "none") {
       refs.scrollToTopButton.style.top = `${currentTop}px`;
-      refs.scrollToTopButton.style.right = `${constants.scrollButtonOffsetPx + offset}px`;
+      refs.scrollToTopButton.style.right = `${constants.scrollButtonOffsetPx + rightOffset}px`;
     }
 
     if (refs.scrollToBottomButton) {
-      refs.scrollToBottomButton.style.right = `${constants.scrollButtonOffsetPx + offset}px`;
+      refs.scrollToBottomButton.style.right = `${constants.scrollButtonOffsetPx + rightOffset}px`;
     }
 
     if (refs.minimapPanel) {
       const topButtonTop = refs.scrollToTopButton && refs.scrollToTopButton.style.top
         ? parseFloat(refs.scrollToTopButton.style.top) || constants.scrollButtonTopOffsetPx
         : constants.scrollButtonTopOffsetPx;
-      const bottomButtonTop = window.innerHeight - constants.scrollButtonOffsetPx - constants.scrollButtonSizePx;
+      const bottomButtonTop = window.innerHeight - (constants.scrollButtonOffsetPx + rightOffset) - constants.scrollButtonSizePx;
       deps.applyMinimapFloatingLayout(offset, topButtonTop, bottomButtonTop);
     }
   }

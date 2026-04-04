@@ -110,7 +110,11 @@ export function createSearchFeature({
   function focusSearchResult(result) {
     if (!result || !result.id) return;
     const token = ++focusToken;
-    deps.scrollToVirtualId(result.id);
+    deps.scrollToVirtualId(result.id, {
+      allowRetry: false,
+      behavior: "auto",
+      block: "nearest"
+    });
 
     const selectorId = deps.escapeSelectorValue(result.id);
     const applyFocusedMatch = (attempt = 0) => {

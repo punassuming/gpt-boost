@@ -2,6 +2,13 @@ function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function resolveElementHeightPx(node, fallbackHeightPx = 1) {
+  if (!(node instanceof HTMLElement)) return Math.max(1, Number(fallbackHeightPx) || 1);
+  const rectHeight = node.getBoundingClientRect?.().height || 0;
+  const inlineHeight = parseFloat(node.style?.height || "") || 0;
+  return Math.max(1, rectHeight || node.offsetHeight || node.clientHeight || inlineHeight || Number(fallbackHeightPx) || 1);
+}
+
 function buildSilhouetteLineRatios(text) {
   const normalized = normalizeText(text);
   if (!normalized) return [0.64];
@@ -22,7 +29,7 @@ function buildSilhouetteLineRatios(text) {
   });
   if (currentLength > 0) lines.push(currentLength);
 
-  const trimmedLines = lines.slice(0, 5);
+  const trimmedLines = lines.slice(0, 3);
   const longest = Math.max(1, ...trimmedLines);
   const ratios = trimmedLines.map((lineLength, index) => {
     const normalizedRatio = lineLength / longest;
@@ -67,17 +74,30 @@ export function buildMinimapItems({
     });
   }
 
-  return entries.map(([id, node], index) => {
+  const spacerHeightById = new Map();
+  document
+    .querySelectorAll('div[data-chatgpt-virtual-spacer="1"][data-virtual-id]')
+    .forEach((spacer) => {
+      if (!(spacer instanceof HTMLElement)) return;
+      const id = spacer.dataset.virtualId;
+      if (!id) return;
+      spacerHeightById.set(id, resolveElementHeightPx(spacer, parseFloat(spacer.style.height || "") || 1));
+    });
+
+  const itemSkeletons = entries.map(([id, node], index) => {
     const role = getMessageRole(node);
     const textSource = node.querySelector("[data-message-author-role]") || node;
     const text = normalizeText(textSource.textContent || "");
     const cached = cache instanceof Map ? cache.get(id) : null;
-    const heightPx = Math.max(1, node.offsetHeight || node.clientHeight || cached?.heightPx || 1);
-    const heightRatio = total <= 0 ? 0 : Math.min(1, Math.max(0.012, heightPx / Math.max(1, window.innerHeight)));
+    const spacerHeightPx = spacerHeightById.get(id);
+    const measuredHeightPx = node.isConnected
+      ? resolveElementHeightPx(node, cached?.heightPx || spacerHeightPx || 1)
+      : Math.max(1, Number(spacerHeightPx || cached?.heightPx || 1) || 1);
+    const heightPx = Math.max(1, measuredHeightPx);
 
     let nextEntry = cached;
     const textChanged = !cached || cached.node !== node || cached.text !== text || cached.role !== role;
-    const heightChanged = !cached || cached.heightPx !== heightPx || cached.heightRatio !== heightRatio;
+    const heightChanged = !cached || cached.heightPx !== heightPx;
 
     if (textChanged || heightChanged) {
       const lineRatios = textChanged
@@ -88,7 +108,6 @@ export function buildMinimapItems({
         role,
         text,
         heightPx,
-        heightRatio,
         lineRatios,
         lineCount: lineRatios.length
       };
@@ -102,12 +121,36 @@ export function buildMinimapItems({
       role,
       position: index + 1,
       total,
-      topRatio: total <= 1 ? 0 : index / (total - 1),
-      heightRatio: nextEntry?.heightRatio || heightRatio,
+      heightPx: nextEntry?.heightPx || heightPx,
       lineRatios,
       lineCount,
       hasSearchHit: searchHitIds instanceof Set ? searchHitIds.has(id) : false,
       hasCodeSnippet: codeSnippetIds instanceof Set ? codeSnippetIds.has(id) : false
+    };
+  });
+
+  const totalHeightPx = Math.max(
+    1,
+    itemSkeletons.reduce((sum, item) => sum + Math.max(1, Number(item.heightPx) || 1), 0)
+  );
+
+  let cumulativeHeightPx = 0;
+  return itemSkeletons.map((item) => {
+    const safeHeightPx = Math.max(1, Number(item.heightPx) || 1);
+    const topRatio = cumulativeHeightPx / totalHeightPx;
+    const heightRatio = safeHeightPx / totalHeightPx;
+    cumulativeHeightPx += safeHeightPx;
+    return {
+      id: item.id,
+      role: item.role,
+      position: item.position,
+      total: item.total,
+      topRatio,
+      heightRatio: Math.min(1, Math.max(0.006, heightRatio)),
+      lineRatios: item.lineRatios,
+      lineCount: item.lineCount,
+      hasSearchHit: item.hasSearchHit,
+      hasCodeSnippet: item.hasCodeSnippet
     };
   });
 }
@@ -118,11 +161,16 @@ export function computeMarkerGeometry({
   heightRatio,
   lineCount = 1
 }) {
+  const safeTrackHeight = Math.max(1, Number(trackHeight) || 1);
   const baseHeightPx = Math.max(
-    6,
-    Math.min(26, Math.round(trackHeight * Math.max(heightRatio, lineCount * 0.012)))
+    4,
+    Math.min(
+      safeTrackHeight,
+      Math.round(safeTrackHeight * Math.max(heightRatio, lineCount * 0.004))
+    )
   );
-  const topPx = Math.round(Math.max(0, Math.min(trackHeight - 1, topRatio * trackHeight)));
+  const maxTopPx = Math.max(0, safeTrackHeight - baseHeightPx);
+  const topPx = Math.round(Math.max(0, Math.min(maxTopPx, topRatio * safeTrackHeight)));
   return {
     baseHeightPx,
     topPx

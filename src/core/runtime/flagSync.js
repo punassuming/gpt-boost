@@ -7,12 +7,31 @@ export function createFlagSyncManager({
   function syncFlagsFromPersistedKeys() {
     const nextPinned = new Set();
     const nextBookmarked = new Set();
+    let migratedLegacyKeys = false;
 
     state.articleMap.forEach((article, virtualId) => {
       if (!(article instanceof HTMLElement)) return;
       const key = deps.getArticleMessageKey(article, virtualId);
-      if (persistedPinnedMessageKeys.has(key)) nextPinned.add(virtualId);
-      if (persistedBookmarkedMessageKeys.has(key)) nextBookmarked.add(virtualId);
+      const legacyVirtualKey = `virtual:${virtualId}`;
+
+      const hasPinned = persistedPinnedMessageKeys.has(key) || persistedPinnedMessageKeys.has(legacyVirtualKey);
+      const hasBookmarked = persistedBookmarkedMessageKeys.has(key) || persistedBookmarkedMessageKeys.has(legacyVirtualKey);
+
+      if (hasPinned) nextPinned.add(virtualId);
+      if (hasBookmarked) nextBookmarked.add(virtualId);
+
+      if (key !== legacyVirtualKey) {
+        if (persistedPinnedMessageKeys.has(legacyVirtualKey)) {
+          persistedPinnedMessageKeys.delete(legacyVirtualKey);
+          persistedPinnedMessageKeys.add(key);
+          migratedLegacyKeys = true;
+        }
+        if (persistedBookmarkedMessageKeys.has(legacyVirtualKey)) {
+          persistedBookmarkedMessageKeys.delete(legacyVirtualKey);
+          persistedBookmarkedMessageKeys.add(key);
+          migratedLegacyKeys = true;
+        }
+      }
     });
 
     const prevPinned = state.pinnedMessages;
@@ -30,6 +49,7 @@ export function createFlagSyncManager({
       deps.updatePinButtonAppearance(article, virtualId);
       deps.updateBookmarkButtonAppearance(article, virtualId);
     });
+    if (migratedLegacyKeys) deps.scheduleFlagsSave();
     if (flagsChanged) deps.refreshSidebarTab();
   }
 

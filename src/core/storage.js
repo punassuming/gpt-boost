@@ -495,28 +495,73 @@ export function buildCrossConversationMarksIndex({
 }
 
 export function getArticleMessageKey(article, virtualId) {
-  if (article.dataset.gptBoostMessageKey) {
-    return article.dataset.gptBoostMessageKey;
+  const cached = String(article.dataset.gptBoostMessageKey || "").trim();
+  const cachedIsVirtual = cached.startsWith("virtual:");
+  const migratePersistedKey = (nextKey) => {
+    if (!cachedIsVirtual || !cached || !nextKey || nextKey === cached) return;
+    let changed = false;
+    if (persistedPinnedMessageKeys.has(cached)) {
+      persistedPinnedMessageKeys.delete(cached);
+      persistedPinnedMessageKeys.add(nextKey);
+      changed = true;
+    }
+    if (persistedBookmarkedMessageKeys.has(cached)) {
+      persistedBookmarkedMessageKeys.delete(cached);
+      persistedBookmarkedMessageKeys.add(nextKey);
+      changed = true;
+    }
+    if (changed) scheduleFlagsSave();
+  };
+  if (cached && !cachedIsVirtual) {
+    return cached;
   }
 
   const nestedMessageEl = article.querySelector("[data-message-id]");
-  const candidate = (
+  const attrCandidate = (
     article.getAttribute("data-message-id") ||
     article.getAttribute("id") ||
     article.getAttribute("data-testid") ||
     (nestedMessageEl && nestedMessageEl.getAttribute("data-message-id")) ||
-    `virtual:${virtualId}`
+    ""
   ).trim();
+  if (attrCandidate) {
+    migratePersistedKey(attrCandidate);
+    article.dataset.gptBoostMessageKey = attrCandidate;
+    return attrCandidate;
+  }
 
-  article.dataset.gptBoostMessageKey = candidate;
-  return candidate;
+  const messageRoot = article.querySelector("[data-message-author-role]") || article;
+  const role = (
+    messageRoot instanceof HTMLElement
+      ? messageRoot.getAttribute("data-message-author-role")
+      : ""
+  ) || "";
+  const rawText = String(messageRoot instanceof HTMLElement ? messageRoot.textContent || "" : "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (rawText) {
+    const textSample = rawText.slice(0, 220);
+    let hash = 2166136261;
+    for (let index = 0; index < textSample.length; index += 1) {
+      hash ^= textSample.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    const fingerprint = `text:${role}:${rawText.length}:${(hash >>> 0).toString(36)}`;
+    migratePersistedKey(fingerprint);
+    article.dataset.gptBoostMessageKey = fingerprint;
+    return fingerprint;
+  }
+
+  const fallback = `virtual:${virtualId}`;
+  article.dataset.gptBoostMessageKey = fallback;
+  return fallback;
 }
 
 export async function loadPersistedFlagsForConversation(onSync) {
   currentConversationKey = getConversationStorageKey();
   if (!currentConversationKey) {
-    persistedPinnedMessageKeys = new Set();
-    persistedBookmarkedMessageKeys = new Set();
+    persistedPinnedMessageKeys.clear();
+    persistedBookmarkedMessageKeys.clear();
     if (onSync) onSync();
     return;
   }
@@ -525,8 +570,10 @@ export async function loadPersistedFlagsForConversation(onSync) {
   const conversationFlags = store[currentConversationKey] || {};
   const pinned = Array.isArray(conversationFlags.pinned) ? conversationFlags.pinned : [];
   const bookmarked = Array.isArray(conversationFlags.bookmarked) ? conversationFlags.bookmarked : [];
-  persistedPinnedMessageKeys = new Set(pinned);
-  persistedBookmarkedMessageKeys = new Set(bookmarked);
+  persistedPinnedMessageKeys.clear();
+  pinned.forEach((key) => persistedPinnedMessageKeys.add(key));
+  persistedBookmarkedMessageKeys.clear();
+  bookmarked.forEach((key) => persistedBookmarkedMessageKeys.add(key));
   if (onSync) onSync();
 }
 
@@ -553,6 +600,14 @@ export function scheduleFlagsSave() {
     saveFlagsTimer = null;
     saveFlagsToStorage().catch(() => { });
   }, MESSAGE_FLAGS_SAVE_DEBOUNCE_MS);
+}
+
+export async function flushFlagsSave() {
+  if (saveFlagsTimer !== null) {
+    clearTimeout(saveFlagsTimer);
+    saveFlagsTimer = null;
+  }
+  await saveFlagsToStorage();
 }
 
 export function summarizeConversationCaches(flagsStore, knownConversationsStore) {
