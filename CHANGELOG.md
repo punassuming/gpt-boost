@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.22] - 2026-04-04
 ### Changed
 - Release pipeline workflow (`bump-manifest-version.yml`) now supports manual triggering via `workflow_dispatch` with a `bump_type` input (`patch`, `minor`, `major`, defaulting to `patch`).
 
@@ -37,10 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Initial tracked release; changelog introduced from this version onward.
 
-[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.21...HEAD
+[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.22...HEAD
 [1.0.16]: https://github.com/punassuming/gpt-boost/releases/tag/v1.0.16
 [1.0.17]: https://github.com/punassuming/gpt-boost/compare/v1.0.16...v1.0.17
 [1.0.18]: https://github.com/punassuming/gpt-boost/compare/v1.0.17...v1.0.18
 [1.0.19]: https://github.com/punassuming/gpt-boost/compare/v1.0.18...v1.0.19
 [1.0.20]: https://github.com/punassuming/gpt-boost/compare/v1.0.19...v1.0.20
 [1.0.21]: https://github.com/punassuming/gpt-boost/compare/v1.0.20...v1.0.21
+[1.0.22]: https://github.com/punassuming/gpt-boost/compare/v1.0.21...v1.0.22
