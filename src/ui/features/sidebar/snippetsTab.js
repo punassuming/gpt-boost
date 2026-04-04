@@ -35,7 +35,8 @@ export function renderSidebarSnippetsTab({
   theme,
   articleMap,
   snippetMaxHeightPx,
-  onJumpToMessage
+  onJumpToMessage,
+  onJumpToSnippet
 }) {
   ensureHighlightJsStyles();
 
@@ -116,7 +117,7 @@ export function renderSidebarSnippetsTab({
 
   const snippetElements = [];
 
-  snippets.forEach(({ text, messageId, lang, rawLang, titleLine }) => {
+  snippets.forEach(({ text, messageId, lang, rawLang, titleLine, index }) => {
     const wrapper = document.createElement("div");
     wrapper.style.borderRadius = "8px";
     wrapper.style.border = `1px solid ${theme.panelBorder}`;
@@ -187,7 +188,13 @@ export function renderSidebarSnippetsTab({
     jumpBtn.style.cursor = "pointer";
     jumpBtn.style.background = theme.buttonMutedBg;
     jumpBtn.style.color = theme.text;
-    jumpBtn.addEventListener("click", () => onJumpToMessage(messageId));
+    jumpBtn.addEventListener("click", () => {
+      if (typeof onJumpToSnippet === "function") {
+        onJumpToSnippet(messageId, index);
+        return;
+      }
+      onJumpToMessage(messageId);
+    });
 
     actions.appendChild(copyBtn);
     actions.appendChild(jumpBtn);

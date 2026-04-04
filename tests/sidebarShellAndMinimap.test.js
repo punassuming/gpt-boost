@@ -271,6 +271,7 @@ describe('minimap content overlays', () => {
         getMessageRole: () => 'assistant',
         getCodeSnippetVirtualIds: () => new Set(['1']),
         getSearchHitVirtualIds: () => new Set(['1']),
+        getSearchHitRatiosByVirtualId: () => new Map([['1', [0.15, 0.8]]]),
         getThemeTokens: () => ({ panelBorder: '#444', text: '#fff' }),
         getThemeMode: () => 'dark',
         getScrollTarget: () => null,
@@ -293,7 +294,7 @@ describe('minimap content overlays', () => {
     const marker = panel.querySelector('[data-gpt-boost-minimap-marker="1"]');
     expect(marker).not.toBeNull();
     expect(marker.style.backgroundImage).toContain('repeating-linear-gradient');
-    expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"][data-overlay-type="search"]')).not.toBeNull();
+    expect(panel.querySelectorAll('[data-gpt-boost-minimap-search-line="1"]').length).toBeGreaterThan(0);
     expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"][data-overlay-type="code"]')).not.toBeNull();
   });
 
@@ -326,6 +327,7 @@ describe('minimap content overlays', () => {
         getMessageRole: () => 'assistant',
         getCodeSnippetVirtualIds: () => codeSnippetIds,
         getSearchHitVirtualIds: () => searchHitIds,
+        getSearchHitRatiosByVirtualId: () => new Map([['1', [0.2, 0.65]]]),
         getThemeTokens: () => ({ panelBorder: '#444', text: '#fff' }),
         getThemeMode: () => 'dark',
         getScrollTarget: () => null,
@@ -347,6 +349,7 @@ describe('minimap content overlays', () => {
     const markerBefore = panel.querySelector('[data-gpt-boost-minimap-marker="1"]');
     expect(markerBefore).not.toBeNull();
     expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"]')).toBeNull();
+    expect(panel.querySelectorAll('[data-gpt-boost-minimap-search-line="1"]').length).toBe(0);
 
     searchHitIds = new Set(['1']);
     codeSnippetIds = new Set(['1']);
@@ -354,7 +357,7 @@ describe('minimap content overlays', () => {
 
     const markerAfter = panel.querySelector('[data-gpt-boost-minimap-marker="1"]');
     expect(markerAfter).toBe(markerBefore);
-    expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"][data-overlay-type="search"]')).not.toBeNull();
+    expect(panel.querySelectorAll('[data-gpt-boost-minimap-search-line="1"]').length).toBeGreaterThan(0);
     expect(panel.querySelector('[data-gpt-boost-minimap-overlay="1"][data-overlay-type="code"]')).not.toBeNull();
   });
 });
@@ -373,6 +376,7 @@ describe('minimap model caching', () => {
       getMessageRole: () => 'assistant',
       getCodeSnippetVirtualIds: () => new Set(),
       getSearchHitVirtualIds: () => new Set(),
+      getSearchHitRatiosByVirtualId: () => new Map(),
       cache
     };
 

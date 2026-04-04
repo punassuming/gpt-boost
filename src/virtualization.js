@@ -45,7 +45,10 @@ import { createArticleActionsFeature } from './ui/features/articleActions/articl
 import { createPinnedBarFeature } from './ui/features/pinned/pinnedBarFeature.js';
 import { createScrollUiFeature } from './ui/features/scroll/scrollUiFeature.js';
 import { createMarkdownExportFeature } from './ui/features/snippets/markdownExport.js';
-import { hasCodeSnippetCandidateInElement } from './ui/features/snippets/codeSnippets.js';
+import {
+  getCodeSnippetPreElements,
+  hasCodeSnippetCandidateInElement
+} from './ui/features/snippets/codeSnippets.js';
 import { createDownloadFeature } from './ui/features/download/downloadFeature.js';
 import { createTokenGaugeFeature } from './ui/features/tokenGauge/tokenGaugeFeature.js';
 import { createSearchFeature } from './ui/features/search/searchFeature.js';
@@ -121,7 +124,8 @@ import {
     activeIndex: -1,
     indexedTotal: 0,
     matchCount: 0,
-    resultVirtualIds: new Set()
+    resultVirtualIds: new Set(),
+    resultMatchRatiosByVirtualId: new Map()
   };
   let downloadButton = null;
   // codePanelButton/codePanelPanel were refactored into the sidebar snippets tab
@@ -155,6 +159,8 @@ import {
   const SCROLL_RETRY_DELAY_MS = 300;
   // 10px buffer prevents flicker from tiny overflow rounding differences.
   const SCROLL_BUFFER_PX = 10;
+  const CODE_SNIPPET_JUMP_RETRY_MS = 180;
+  const MAX_CODE_SNIPPET_JUMP_ATTEMPTS = 6;
   const MINIMAP_BUTTON_SIZE_PX = 30;
   const MINIMAP_BUTTON_GAP_PX = 8;
   const MINIMAP_BUTTON_RIGHT_OFFSET_PX = SCROLL_BUTTON_OFFSET_PX;
@@ -485,6 +491,7 @@ import {
       scrollToVirtualId,
       getCodeSnippetVirtualIds,
       getSearchHitVirtualIds: () => searchFeature.getSearchResultVirtualIds(),
+      getSearchHitRatiosByVirtualId: () => searchFeature.getSearchMatchRatiosByVirtualId(),
       applyFloatingUiOffsets,
       applyThemeToUi
     }
@@ -932,6 +939,9 @@ import {
       refreshSidebarTab,
       populateMinimapPanel,
       getMinimapPanel: () => minimapPanel,
+      syncSearchHighlightsForRenderedArticles: () => {
+        searchFeature.syncSearchHighlightsForRenderedArticles();
+      },
       dispatchStatsUpdated: () => {
         if (currentConversationKey && state.stats.totalMessages > 0) {
           updateConversationMessageCount(currentConversationKey, state.stats.totalMessages).catch(() => {});
@@ -1772,6 +1782,41 @@ import {
     }
   }
 
+  function findRenderedArticleByVirtualId(virtualId) {
+    const selectorId = escapeSelectorValue(virtualId);
+    const element = document.querySelector(`article[data-virtual-id="${selectorId}"]`);
+    return element instanceof HTMLElement ? element : null;
+  }
+
+  function scrollToCodeSnippet(virtualId, snippetIndex = 0, attempt = 0) {
+    const safeSnippetIndex = Math.max(0, Number(snippetIndex) || 0);
+    const article = findRenderedArticleByVirtualId(virtualId);
+    if (article) {
+      const snippets = getCodeSnippetPreElements(article);
+      const targetSnippet = snippets[safeSnippetIndex] || snippets[0] || null;
+      if (targetSnippet instanceof HTMLElement) {
+        targetSnippet.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest"
+        });
+        scheduleVirtualization();
+        return;
+      }
+    }
+
+    scrollToVirtualId(virtualId, {
+      allowRetry: false,
+      behavior: "auto",
+      block: "nearest"
+    });
+
+    if (attempt >= MAX_CODE_SNIPPET_JUMP_ATTEMPTS) return;
+    setTimeout(() => {
+      scrollToCodeSnippet(virtualId, safeSnippetIndex, attempt + 1);
+    }, CODE_SNIPPET_JUMP_RETRY_MS);
+  }
+
   function ensurePinnedBar() {
     return pinnedBarFeature.ensurePinnedBar();
   }
@@ -1821,6 +1866,9 @@ import {
       snippetMaxHeightPx: SIDEBAR_SNIPPET_MAX_HEIGHT_PX,
       onJumpToMessage: (virtualId) => {
         scrollToVirtualId(virtualId);
+      },
+      onJumpToSnippet: (virtualId, snippetIndex) => {
+        scrollToCodeSnippet(virtualId, snippetIndex);
       }
     });
   }
@@ -2029,6 +2077,8 @@ import {
     searchState.activeIndex = -1;
     searchState.indexedTotal = 0;
     searchState.matchCount = 0;
+    searchState.resultVirtualIds = new Set();
+    searchState.resultMatchRatiosByVirtualId = new Map();
     clearSearchHighlight();
 
     if (minimapButton && minimapButton.isConnected) {

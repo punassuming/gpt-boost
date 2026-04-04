@@ -13,6 +13,7 @@ export interface VirtualizationEngineDeps {
   refreshSidebarTab: () => void;
   populateMinimapPanel: (panel: HTMLElement) => void;
   getMinimapPanel: () => HTMLElement | null;
+  syncSearchHighlightsForRenderedArticles?: () => void;
   dispatchStatsUpdated: () => void;
   dispatchVirtualizeTick: () => void;
 }
@@ -140,6 +141,7 @@ export function createVirtualizationEngine({
     });
 
     updateStats();
+    deps.syncSearchHighlightsForRenderedArticles?.();
     deps.dispatchVirtualizeTick();
     deps.log(
       `virtualize: total=${state.stats.totalMessages}, rendered=${state.stats.renderedMessages}`

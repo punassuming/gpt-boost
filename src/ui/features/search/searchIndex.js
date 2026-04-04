@@ -79,6 +79,7 @@ export function findSearchMatches(entries, query) {
           matchIndexWithinMessage,
           start,
           length: normalized.length,
+          textLength: rawText.length,
           snippet: createSnippet(rawText, start, normalized.length)
         });
         matchIndexWithinMessage += 1;

@@ -47,6 +47,7 @@ export function buildMinimapItems({
   getMessageRole,
   getCodeSnippetVirtualIds,
   getSearchHitVirtualIds,
+  getSearchHitRatiosByVirtualId,
   cache
 }) {
   ensureVirtualIds();
@@ -63,6 +64,9 @@ export function buildMinimapItems({
   const searchHitIds = typeof getSearchHitVirtualIds === "function"
     ? getSearchHitVirtualIds()
     : new Set();
+  const searchHitRatiosByVirtualId = typeof getSearchHitRatiosByVirtualId === "function"
+    ? getSearchHitRatiosByVirtualId()
+    : new Map();
   const codeSnippetIds = typeof getCodeSnippetVirtualIds === "function"
     ? getCodeSnippetVirtualIds()
     : new Set();
@@ -125,6 +129,9 @@ export function buildMinimapItems({
       lineRatios,
       lineCount,
       hasSearchHit: searchHitIds instanceof Set ? searchHitIds.has(id) : false,
+      searchMatchRatios: searchHitRatiosByVirtualId instanceof Map
+        ? (searchHitRatiosByVirtualId.get(id) || [])
+        : [],
       hasCodeSnippet: codeSnippetIds instanceof Set ? codeSnippetIds.has(id) : false
     };
   });
@@ -150,6 +157,7 @@ export function buildMinimapItems({
       lineRatios: item.lineRatios,
       lineCount: item.lineCount,
       hasSearchHit: item.hasSearchHit,
+      searchMatchRatios: item.searchMatchRatios,
       hasCodeSnippet: item.hasCodeSnippet
     };
   });

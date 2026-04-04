@@ -18,6 +18,7 @@ export function createSearchFeature({
   constants,
   deps
 }) {
+  const MIN_SEARCH_QUERY_LENGTH = 3;
   const floatingUi = createSearchFloatingUi({
     refs,
     constants,
@@ -30,6 +31,14 @@ export function createSearchFeature({
     }
   });
   let focusToken = 0;
+
+  function computeResultMatchRatio(result) {
+    const textLength = Math.max(1, Number(result?.textLength || 0) || 1);
+    const start = Math.max(0, Number(result?.start || 0) || 0);
+    const length = Math.max(1, Number(result?.length || 0) || 1);
+    const center = Math.min(textLength - 1, start + (length / 2));
+    return Math.max(0, Math.min(1, center / Math.max(1, textLength - 1)));
+  }
 
   function clearSearchTextHighlights(element) {
     clearHighlightsInElement(element);
@@ -52,15 +61,24 @@ export function createSearchFeature({
   function setSearchHighlight(element, matchIndexWithinMessage = 0) {
     if (!(element instanceof HTMLElement)) return;
     clearSearchHighlight();
-    element.style.outline = "2px solid #fbbf24";
-    element.style.outlineOffset = "2px";
-    element.style.borderRadius = "8px";
     highlightMatchesInElement(element, searchState.query);
     const activeMark = setActiveSearchMatch(element, matchIndexWithinMessage);
     if (activeMark instanceof HTMLElement) {
       activeMark.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
     }
     refs.highlightedSearchElement = element;
+  }
+
+  function clearSearchHighlightFromElement(element) {
+    if (!(element instanceof HTMLElement)) return;
+    if (!element.dataset.gptBoostSearchQuery && refs.highlightedSearchElement !== element) return;
+    clearSearchTextHighlights(element);
+    if (element.dataset.gptBoostSearchQuery) {
+      delete element.dataset.gptBoostSearchQuery;
+    }
+    if (refs.highlightedSearchElement === element) {
+      refs.highlightedSearchElement = null;
+    }
   }
 
   function updateSearchCountLabel() {
@@ -95,6 +113,12 @@ export function createSearchFeature({
     return searchState.resultVirtualIds instanceof Set
       ? searchState.resultVirtualIds
       : new Set();
+  }
+
+  function getSearchMatchRatiosByVirtualId() {
+    return searchState.resultMatchRatiosByVirtualId instanceof Map
+      ? searchState.resultMatchRatiosByVirtualId
+      : new Map();
   }
 
   function getSearchResultSummary(result, index, total) {
@@ -181,15 +205,18 @@ export function createSearchFeature({
     searchState.query = query;
     const entries = collectSearchTargets();
     const { normalized, results, matchCount } = findSearchMatches(entries, query);
+    const isTooShort = normalized && normalized.length < MIN_SEARCH_QUERY_LENGTH;
 
-    if (!normalized) {
+    if (!normalized || isTooShort) {
       searchState.results = [];
       searchState.activeIndex = -1;
       searchState.indexedTotal = state.stats.totalMessages;
       searchState.matchCount = 0;
       searchState.resultVirtualIds = new Set();
+      searchState.resultMatchRatiosByVirtualId = new Map();
       updateSearchCountLabel();
       clearSearchHighlight();
+      syncSearchHighlightsForRenderedArticles();
       rerenderSearchSidebarPreservingInputFocus();
       deps.onResultsChanged?.();
       return;
@@ -199,16 +226,24 @@ export function createSearchFeature({
     searchState.activeIndex = results.length ? 0 : -1;
     searchState.indexedTotal = state.stats.totalMessages;
     searchState.matchCount = matchCount;
-    searchState.resultVirtualIds = new Set(
-      results
-        .map((result) => result && result.id)
-        .filter(Boolean)
-    );
+    const resultVirtualIds = new Set();
+    const resultMatchRatiosByVirtualId = new Map();
+    results.forEach((result) => {
+      const id = result?.id;
+      if (!id) return;
+      resultVirtualIds.add(id);
+      const bucket = resultMatchRatiosByVirtualId.get(id) || [];
+      bucket.push(computeResultMatchRatio(result));
+      resultMatchRatiosByVirtualId.set(id, bucket);
+    });
+    searchState.resultVirtualIds = resultVirtualIds;
+    searchState.resultMatchRatiosByVirtualId = resultMatchRatiosByVirtualId;
 
     updateSearchCountLabel();
     if (!results.length) {
       clearSearchHighlight();
     }
+    syncSearchHighlightsForRenderedArticles();
     rerenderSearchSidebarPreservingInputFocus();
     if (deps.isSidebarOpen() && deps.getActiveSidebarTab() !== "search") {
       deps.refreshSidebarTab();
@@ -230,6 +265,53 @@ export function createSearchFeature({
     if (!searchState.query) return;
     if (searchState.indexedTotal !== state.stats.totalMessages) {
       runSearch(searchState.query);
+    }
+  }
+
+  function syncSearchHighlightsForRenderedArticles() {
+    const renderedNodes = typeof deps.getActiveConversationNodes === "function"
+      ? deps.getActiveConversationNodes()
+      : [];
+    if (!Array.isArray(renderedNodes) || !renderedNodes.length) return;
+
+    const query = String(searchState.query || "").trim();
+    const activeResult = (
+      Array.isArray(searchState.results) &&
+      searchState.activeIndex >= 0 &&
+      searchState.activeIndex < searchState.results.length
+    )
+      ? searchState.results[searchState.activeIndex]
+      : null;
+    const hitIds = getSearchResultVirtualIds();
+    let nextHighlightedElement = null;
+
+    renderedNodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      const id = node.dataset.virtualId;
+      if (!id || !query || !hitIds.has(id)) {
+        clearSearchHighlightFromElement(node);
+        return;
+      }
+
+      const highlightedForSameQuery = node.dataset.gptBoostSearchQuery === query;
+      const hasExistingMarks = node.querySelector('mark[data-chatgpt-virtual-search="hit"]');
+      if (!highlightedForSameQuery || !hasExistingMarks) {
+        highlightMatchesInElement(node, query);
+        node.dataset.gptBoostSearchQuery = query;
+      }
+
+      if (activeResult && activeResult.id === id) {
+        const activeMark = setActiveSearchMatch(node, activeResult.matchIndexWithinMessage || 0);
+        if (activeMark instanceof HTMLElement) {
+          nextHighlightedElement = node;
+        }
+      }
+    });
+
+    if (nextHighlightedElement instanceof HTMLElement) {
+      refs.highlightedSearchElement = nextHighlightedElement;
+    } else if (refs.highlightedSearchElement && !refs.highlightedSearchElement.isConnected) {
+      refs.highlightedSearchElement = null;
     }
   }
 
@@ -326,12 +408,14 @@ export function createSearchFeature({
     updateSearchCountLabel,
     collectSearchTargets,
     getSearchResultVirtualIds,
+    getSearchMatchRatiosByVirtualId,
     getSearchResultSummary,
     focusSearchResult,
     rerenderSearchSidebarPreservingInputFocus,
     runSearch,
     scheduleSearch,
     ensureSearchResultsFresh,
+    syncSearchHighlightsForRenderedArticles,
     navigateSearch,
     showSearchPanel,
     hideSearchPanel,

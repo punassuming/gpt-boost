@@ -23,6 +23,7 @@ export function createMinimapFeature({
   const markerRegistry = new Map();
   let trackElement = null;
   let viewportThumbElement = null;
+  let searchLinesLayerElement = null;
 
   function computeTrackVerticalLayout(trackHeight) {
     const safeTrackHeight = Math.max(1, Number(trackHeight) || 1);
@@ -72,6 +73,26 @@ export function createMinimapFeature({
     return viewportThumbElement;
   }
 
+  function getSearchLinesLayer(track = getTrack()) {
+    if (searchLinesLayerElement instanceof HTMLElement && searchLinesLayerElement.isConnected) {
+      return searchLinesLayerElement;
+    }
+    if (!(track instanceof HTMLElement)) return null;
+    const layer = track.querySelector('[data-chatgpt-minimap="search-lines"]');
+    searchLinesLayerElement = layer instanceof HTMLElement ? layer : null;
+    return searchLinesLayerElement;
+  }
+
+  function areNumberArraysEqual(left, right) {
+    if (left === right) return true;
+    if (!Array.isArray(left) || !Array.isArray(right)) return false;
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) return false;
+    }
+    return true;
+  }
+
   function buildMinimapItems() {
     return buildItems({
       ensureVirtualIds: deps.ensureVirtualIds,
@@ -79,6 +100,7 @@ export function createMinimapFeature({
       getMessageRole: deps.getMessageRole,
       getCodeSnippetVirtualIds: deps.getCodeSnippetVirtualIds,
       getSearchHitVirtualIds: deps.getSearchHitVirtualIds,
+      getSearchHitRatiosByVirtualId: deps.getSearchHitRatiosByVirtualId,
       cache: minimapModelCache
     });
   }
@@ -123,7 +145,6 @@ export function createMinimapFeature({
     const refsObject = {
       lineNodes: [],
       overlays: null,
-      searchOverlay: null,
       codeOverlay: null
     };
     marker._gptBoostMinimapRefs = refsObject;
@@ -132,21 +153,20 @@ export function createMinimapFeature({
 
   function applyStandaloneMinimapMarkerStyle(marker, isActive) {
     if (!(marker instanceof HTMLElement)) return;
+    void isActive;
     const theme = deps.getThemeTokens();
     const role = marker.dataset.role || "unknown";
     const isUser = role === "user";
     const hovered = marker.dataset.gptBoostHovered === "1";
     const isDark = deps.getThemeMode() === "dark";
     const markerRefs = ensureMarkerRefs(marker);
-    const overlayNodes = [markerRefs?.searchOverlay, markerRefs?.codeOverlay].filter((node) => node instanceof HTMLElement);
+    const overlayNodes = [markerRefs?.codeOverlay].filter((node) => node instanceof HTMLElement);
 
-    marker.style.opacity = isActive ? "0.98" : hovered ? "0.8" : "0.66";
-    marker.style.boxShadow = isActive ? `0 0 0 1px ${theme.panelBorder}` : "none";
-    const stripeColor = isActive
-      ? (isDark ? "rgba(226, 232, 240, 0.42)" : "rgba(15, 23, 42, 0.32)")
-      : (isDark
-        ? (isUser ? "rgba(226, 232, 240, 0.24)" : "rgba(148, 163, 184, 0.2)")
-        : (isUser ? "rgba(51, 65, 85, 0.16)" : "rgba(51, 65, 85, 0.12)"));
+    marker.style.opacity = hovered ? "0.8" : "0.66";
+    marker.style.boxShadow = "none";
+    const stripeColor = isDark
+      ? (isUser ? "rgba(226, 232, 240, 0.24)" : "rgba(148, 163, 184, 0.2)")
+      : (isUser ? "rgba(51, 65, 85, 0.16)" : "rgba(51, 65, 85, 0.12)");
     const surfaceColor = isDark
       ? (isUser ? "rgba(148, 163, 184, 0.12)" : "rgba(100, 116, 139, 0.1)")
       : (isUser ? "rgba(51, 65, 85, 0.08)" : "rgba(71, 85, 105, 0.06)");
@@ -157,10 +177,7 @@ export function createMinimapFeature({
     marker.style.backgroundPosition = "0 0";
 
     overlayNodes.forEach((overlay) => {
-      if (overlay.dataset.overlayType === "search") {
-        overlay.style.background = "rgba(251, 191, 36, 0.78)";
-        overlay.style.boxShadow = "0 0 0 1px rgba(251, 191, 36, 0.14)";
-      } else if (overlay.dataset.overlayType === "code") {
+      if (overlay.dataset.overlayType === "code") {
         overlay.style.background = "rgba(59, 130, 246, 0.76)";
         overlay.style.boxShadow = "0 0 0 1px rgba(59, 130, 246, 0.14)";
       }
@@ -303,17 +320,15 @@ export function createMinimapFeature({
 
   function ensureOverlayNode(entry, overlayType) {
     const markerRefs = ensureMarkerRefs(entry.marker);
-    const existing = overlayType === "search" ? markerRefs.searchOverlay : markerRefs.codeOverlay;
+    const existing = overlayType === "code" ? markerRefs.codeOverlay : null;
     if (existing instanceof HTMLElement) return existing;
     const overlay = document.createElement("div");
     overlay.setAttribute("data-gpt-boost-minimap-overlay", "1");
     overlay.dataset.overlayType = overlayType;
-    overlay.style.width = overlayType === "search" ? "3px" : "4px";
-    overlay.style.height = overlayType === "search" ? "8px" : "4px";
-    overlay.style.borderRadius = overlayType === "search" ? "999px" : "2px";
-    if (overlayType === "search") {
-      markerRefs.searchOverlay = overlay;
-    } else {
+    overlay.style.width = "4px";
+    overlay.style.height = "4px";
+    overlay.style.borderRadius = "2px";
+    if (overlayType === "code") {
       markerRefs.codeOverlay = overlay;
     }
     return overlay;
@@ -322,18 +337,10 @@ export function createMinimapFeature({
   function syncMarkerSignals(entry, item) {
     const markerRefs = ensureMarkerRefs(entry.marker);
     const isUser = item.role === "user";
-    const shouldHaveOverlays = item.hasSearchHit || item.hasCodeSnippet;
+    const shouldHaveOverlays = item.hasCodeSnippet;
     const overlayContainer = shouldHaveOverlays
       ? ensureOverlayContainer(entry, isUser)
       : markerRefs.overlays;
-
-    if (item.hasSearchHit) {
-      const searchOverlay = ensureOverlayNode(entry, "search");
-      if (overlayContainer && !searchOverlay.isConnected) overlayContainer.appendChild(searchOverlay);
-    } else if (markerRefs.searchOverlay instanceof HTMLElement) {
-      markerRefs.searchOverlay.remove();
-      markerRefs.searchOverlay = null;
-    }
 
     if (item.hasCodeSnippet) {
       const codeOverlay = ensureOverlayNode(entry, "code");
@@ -345,12 +352,61 @@ export function createMinimapFeature({
 
     if (
       markerRefs.overlays instanceof HTMLElement &&
-      !markerRefs.searchOverlay &&
       !markerRefs.codeOverlay
     ) {
       markerRefs.overlays.remove();
       markerRefs.overlays = null;
     }
+  }
+
+  function renderSearchLines(track, trackHeight, searchHitIds, searchMatchRatiosMap) {
+    const layer = getSearchLinesLayer(track);
+    if (!(layer instanceof HTMLElement)) return;
+    layer.replaceChildren();
+    if (!markerRegistry.size) return;
+
+    const dedupedTopRows = new Set();
+    const fragment = document.createDocumentFragment();
+
+    markerRegistry.forEach((entry, id) => {
+      const item = entry?.item;
+      if (!item) return;
+      const hasSearchHit = searchHitIds instanceof Set ? searchHitIds.has(id) : false;
+      if (!hasSearchHit) return;
+      const mappedRatios = searchMatchRatiosMap instanceof Map
+        ? searchMatchRatiosMap.get(id)
+        : null;
+      const ratios = Array.isArray(mappedRatios) && mappedRatios.length
+        ? mappedRatios
+        : [0.5];
+      const { baseHeightPx, topPx } = computeMarkerGeometry({
+        trackHeight,
+        topRatio: item.topRatio,
+        heightRatio: item.heightRatio,
+        lineCount: item.lineCount
+      });
+
+      ratios.forEach((value) => {
+        const ratio = Math.max(0, Math.min(1, Number(value) || 0));
+        const row = Math.max(0, Math.min(trackHeight - 1, Math.round(topPx + (baseHeightPx * ratio))));
+        if (dedupedTopRows.has(row)) return;
+        dedupedTopRows.add(row);
+        const line = document.createElement("div");
+        line.setAttribute("data-gpt-boost-minimap-search-line", "1");
+        line.style.position = "absolute";
+        line.style.left = "2px";
+        line.style.right = "2px";
+        line.style.height = "1px";
+        line.style.top = `${row}px`;
+        line.style.background = "rgba(251, 191, 36, 0.95)";
+        line.style.boxShadow = "0 0 0 1px rgba(251, 191, 36, 0.18)";
+        line.style.pointerEvents = "none";
+        line.style.zIndex = "3";
+        fragment.appendChild(line);
+      });
+    });
+
+    layer.appendChild(fragment);
   }
 
   function syncMarkerStructure(entry, item, trackHeight) {
@@ -416,6 +472,13 @@ export function createMinimapFeature({
       markerFragment.appendChild(entry.marker);
     });
 
+    const searchHitIds = typeof deps.getSearchHitVirtualIds === "function"
+      ? deps.getSearchHitVirtualIds()
+      : new Set();
+    const searchMatchRatiosMap = typeof deps.getSearchHitRatiosByVirtualId === "function"
+      ? deps.getSearchHitRatiosByVirtualId()
+      : new Map();
+    renderSearchLines(track, trackHeight, searchHitIds, searchMatchRatiosMap);
     track.appendChild(markerFragment);
     const viewportThumb = getViewportThumb(track);
     if (viewportThumb instanceof HTMLElement) {
@@ -431,20 +494,33 @@ export function createMinimapFeature({
     const searchHitIds = typeof deps.getSearchHitVirtualIds === "function"
       ? deps.getSearchHitVirtualIds()
       : new Set();
+    const searchMatchRatiosMap = typeof deps.getSearchHitRatiosByVirtualId === "function"
+      ? deps.getSearchHitRatiosByVirtualId()
+      : new Map();
+    const track = getTrack();
+    if (!(track instanceof HTMLElement)) return;
+    const trackHeight = Math.max(1, track.clientHeight);
+    renderSearchLines(track, trackHeight, searchHitIds, searchMatchRatiosMap);
+
     const codeSnippetIds = typeof deps.getCodeSnippetVirtualIds === "function"
       ? deps.getCodeSnippetVirtualIds()
       : new Set();
 
     markerRegistry.forEach((entry, id) => {
       if (!entry.item) return;
+      const nextSearchRatios = searchMatchRatiosMap instanceof Map
+        ? (searchMatchRatiosMap.get(id) || [])
+        : [];
       const nextItem = {
         ...entry.item,
         hasSearchHit: searchHitIds instanceof Set ? searchHitIds.has(id) : false,
+        searchMatchRatios: nextSearchRatios,
         hasCodeSnippet: codeSnippetIds instanceof Set ? codeSnippetIds.has(id) : false
       };
       if (
         nextItem.hasSearchHit === entry.item.hasSearchHit &&
-        nextItem.hasCodeSnippet === entry.item.hasCodeSnippet
+        nextItem.hasCodeSnippet === entry.item.hasCodeSnippet &&
+        areNumberArraysEqual(nextItem.searchMatchRatios, entry.item.searchMatchRatios)
       ) {
         return;
       }
@@ -521,6 +597,7 @@ export function createMinimapFeature({
     minimapModelCache.clear();
     trackElement = null;
     viewportThumbElement = null;
+    searchLinesLayerElement = null;
 
     const panel = document.createElement("div");
     panel.setAttribute("data-chatgpt-minimap", "panel");
@@ -548,6 +625,17 @@ export function createMinimapFeature({
     track.style.background = "linear-gradient(to bottom, rgba(148,163,184,0.14), rgba(148,163,184,0.04))";
     applyEdgeFeatherMask(track, TRACK_FEATHER_MASK);
     trackElement = track;
+
+    const searchLinesLayer = document.createElement("div");
+    searchLinesLayer.setAttribute("data-chatgpt-minimap", "search-lines");
+    searchLinesLayer.style.position = "absolute";
+    searchLinesLayer.style.top = "0";
+    searchLinesLayer.style.left = "0";
+    searchLinesLayer.style.right = "0";
+    searchLinesLayer.style.bottom = "0";
+    searchLinesLayer.style.pointerEvents = "none";
+    searchLinesLayer.style.zIndex = "3";
+    searchLinesLayerElement = searchLinesLayer;
 
     const viewportThumb = document.createElement("div");
     viewportThumb.setAttribute("data-chatgpt-minimap", "viewport");
@@ -622,6 +710,7 @@ export function createMinimapFeature({
       document.body.style.userSelect = "";
     });
 
+    track.appendChild(searchLinesLayer);
     track.appendChild(viewportThumb);
     panel.appendChild(track);
 
