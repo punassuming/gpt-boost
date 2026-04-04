@@ -6,6 +6,17 @@ on:
       - main
     types:
       - closed
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: Version bump type
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -14,7 +25,8 @@ jobs:
   release-on-merge:
     runs-on: ubuntu-latest
     if: |
-      github.event.pull_request.merged == true
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true)
     concurrency:
       group: release-main-pipeline
       cancel-in-progress: false
@@ -33,6 +45,11 @@ jobs:
         id: bump_type
         shell: bash
         run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "type=${{ inputs.bump_type }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           has_major="${{ contains(github.event.pull_request.labels.*.name, 'semver:major') }}"
           has_minor="${{ contains(github.event.pull_request.labels.*.name, 'semver:minor') }}"
 
@@ -185,8 +202,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json manifest.json manifest_firefox.json CHANGELOG.md
-          git commit -m "chore: bump manifest version to ${NEW_VERSION} after #${PR_NUMBER}"
-          git push origin main
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+              git commit -m "chore: bump manifest version to ${NEW_VERSION}"
+            else
+              git commit -m "chore: bump manifest version to ${NEW_VERSION} after #${PR_NUMBER}"
+            fi
+            git push origin main
+          fi
 
           if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
             echo "Tag ${tag} already exists on origin" >&2

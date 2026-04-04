@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Release pipeline workflow (`bump-manifest-version.yml`) now supports manual triggering via `workflow_dispatch` with a `bump_type` input (`patch`, `minor`, `major`, defaulting to `patch`).
+
 ## [1.0.21] - 2026-03-06
 ### Changed
 - Removed the broken Outline/Map sidebar tab button so the sidebar now shows Search, Marks, and Code tabs only.
