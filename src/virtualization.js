@@ -23,7 +23,7 @@ import {
   getConversationUrlFromKey
 } from './core/storage.js';
 import { createVirtualizerStore } from './core/virtualizer/store.ts';
-import { setupScrollTracking, createDebouncedObserver } from './core/virtualizer/observer.ts';
+import { setupScrollTracking, createDebouncedObserver, createArticleAwareMutationObserver } from './core/virtualizer/observer.ts';
 import { createFeatureRegistry } from './core/runtime/featureRegistry.ts';
 import { createServiceContainer } from './core/services/container.ts';
 import { createVirtualizationEngine } from './core/runtime/virtualizationEngine.ts';
@@ -977,6 +977,7 @@ import {
       applyConversationLayoutSettings,
       findConversationRoot,
       createDebouncedObserver,
+      createArticleAwareMutationObserver,
       setCurrentConversationKey,
       getConversationStorageKey,
       loadPersistedFlagsForConversation,

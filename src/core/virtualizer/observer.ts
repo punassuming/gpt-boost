@@ -49,3 +49,39 @@ export function createDebouncedObserver(
     }, delayMs);
   });
 }
+
+/**
+ * Creates a MutationObserver that distinguishes article-level structural changes
+ * from inner-content noise (e.g. ChatGPT's markdown re-rendering of SPAN/BR nodes).
+ *
+ * - onAnyChange fires immediately on every mutation batch (cheap, for scroll-container re-checks)
+ * - onStructuralChange fires debounced only when article-level nodes are added or removed
+ */
+export function createArticleAwareMutationObserver(
+  articleSelector: string,
+  onStructuralChange: () => void,
+  onAnyChange: () => void,
+  debounceMs: number
+): MutationObserver {
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  return new MutationObserver((records) => {
+    onAnyChange();
+
+    const hasArticleChange = records.some((r) =>
+      [...Array.from(r.addedNodes), ...Array.from(r.removedNodes)].some(
+        (n) =>
+          n instanceof HTMLElement &&
+          (n.matches(articleSelector) || n.querySelector(articleSelector) !== null)
+      )
+    );
+
+    if (!hasArticleChange) return;
+
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      onStructuralChange();
+    }, debounceMs);
+  });
+}

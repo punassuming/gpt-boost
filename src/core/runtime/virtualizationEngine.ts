@@ -29,6 +29,12 @@ export function createVirtualizationEngine({
   config,
   deps
 }: VirtualizationEngineOptions) {
+  // ChatGPT marks in-progress markdown streaming with data-start on content nodes.
+  // Virtualizing while streaming is active captures stale/incomplete content.
+  function isArticleStreaming(el: HTMLElement): boolean {
+    return el.querySelector("[data-start]") !== null;
+  }
+
   function convertArticleToSpacer(articleElement: HTMLElement) {
     const id = articleElement.dataset.virtualId;
     if (!id || !articleElement.isConnected) return;
@@ -135,7 +141,7 @@ export function createVirtualizationEngine({
 
       if (deps.isVirtualSpacerNode(node)) {
         if (!isOutside) convertSpacerToArticle(node);
-      } else if (isOutside) {
+      } else if (isOutside && !isArticleStreaming(node)) {
         convertArticleToSpacer(node);
       }
     });
