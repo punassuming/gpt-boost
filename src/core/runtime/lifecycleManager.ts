@@ -21,6 +21,12 @@ export interface LifecycleManagerDeps {
   applyConversationLayoutSettings: () => void;
   findConversationRoot: () => HTMLElement;
   createDebouncedObserver: (onMutation: () => void, delayMs: number) => MutationObserver;
+  createArticleAwareMutationObserver: (
+    articleSelector: string,
+    onStructuralChange: () => void,
+    onAnyChange: () => void,
+    debounceMs: number
+  ) => MutationObserver;
   setCurrentConversationKey: (key: string) => void;
   getConversationStorageKey: () => string;
   loadPersistedFlagsForConversation: (
@@ -144,10 +150,18 @@ export function createLifecycleManager({
     const root = deps.findConversationRoot();
     state.conversationRoot = root;
 
-    const mutationObserver = deps.createDebouncedObserver(() => {
-      attachOrUpdateScrollListener();
-      deps.scheduleVirtualization();
-    }, getMutationDebounceMs());
+    const articleSelector = String((config as any).ARTICLE_SELECTOR || "article");
+    const mutationObserver = deps.createArticleAwareMutationObserver(
+      articleSelector,
+      () => {
+        attachOrUpdateScrollListener();
+        deps.scheduleVirtualization();
+      },
+      () => {
+        attachOrUpdateScrollListener();
+      },
+      getMutationDebounceMs()
+    );
     mutationObserver.observe(root, {
       childList: true,
       subtree: true
