@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- Mutation observer now ignores ChatGPT's in-place markdown content swaps (SPAN/BR/H4 node replacements used for progressive rendering), preventing constant `scheduleVirtualization` thrashing that occurred whenever ChatGPT updated rendered content inside articles.
+- Articles that still have active ChatGPT streaming markers (`data-start` attributes) are no longer converted to spacers mid-stream, preventing incomplete/stale content from being frozen into the spacer cache.
 
 ## [1.0.22] - 2026-04-04
 ### Changed
