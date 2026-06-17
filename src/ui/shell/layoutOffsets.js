@@ -133,10 +133,7 @@ export function createLayoutOffsetsManager({
     const minimapLaneOffset = minimapVisible
       ? (constants.minimapControlClearancePx || constants.minimapPanelWidthPx || 0)
       : 0;
-    const tocOffset = typeof deps.getChatGPTTocOffsetPx === "function"
-      ? deps.getChatGPTTocOffsetPx()
-      : 0;
-    const rightOffset = offset + minimapLaneOffset + tocOffset;
+    const rightOffset = offset + minimapLaneOffset;
 
     if (refs.indicatorElement) {
       refs.indicatorElement.style.right = `${constants.indicatorRightOffsetPx + rightOffset}px`;

@@ -67,7 +67,11 @@ export function findSearchMatches(entries, query) {
       const textSource = node instanceof HTMLElement
         ? (node.querySelector("[data-message-author-role]") || node)
         : null;
-      const rawText = String(textSource?.textContent || "").replace(/\s+/g, " ").trim();
+      // Prefer the text captured at first-seen time (full content before ChatGPT lightens
+      // off-screen articles), fall back to live textContent for articles still in the DOM.
+      const rawText = String(
+        node?.dataset?.gptBoostCachedText || textSource?.textContent || ""
+      ).replace(/\s+/g, " ").trim();
       const lowerText = rawText.toLowerCase();
       if (!lowerText) return;
 

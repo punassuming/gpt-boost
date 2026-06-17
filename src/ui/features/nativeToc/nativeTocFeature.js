@@ -19,9 +19,11 @@ export function createNativeTocFeature({ state, deps }) {
 
   function getArticlePreview(article) {
     if (!(article instanceof HTMLElement)) return '';
-    const textEl = article.querySelector('[data-message-author-role]') || article;
-    const raw = (textEl.textContent || '').trim().replace(/\s+/g, ' ');
-    return raw.length > 120 ? raw.slice(0, 120) + '…' : raw;
+    const raw = article.dataset.gptBoostCachedText ||
+      (article.querySelector('[data-message-author-role]') || article).textContent ||
+      '';
+    const trimmed = raw.trim().replace(/\s+/g, ' ');
+    return trimmed.length > 120 ? trimmed.slice(0, 120) + '…' : trimmed;
   }
 
   function applyTooltipTheme(tip) {
@@ -37,13 +39,12 @@ export function createNativeTocFeature({ state, deps }) {
     const tip = document.createElement('div');
     tip.setAttribute('data-gpt-boost-toc-tip', '1');
     tip.style.position = 'fixed';
-    tip.style.right = '52px';
     tip.style.zIndex = '10010';
-    tip.style.maxWidth = '260px';
-    tip.style.padding = '7px 11px';
-    tip.style.borderRadius = '8px';
-    tip.style.fontSize = '12px';
-    tip.style.lineHeight = '1.55';
+    tip.style.maxWidth = '220px';
+    tip.style.padding = '5px 9px';
+    tip.style.borderRadius = '7px';
+    tip.style.fontSize = '11px';
+    tip.style.lineHeight = '1.5';
     tip.style.pointerEvents = 'none';
     tip.style.opacity = '0';
     tip.style.transition = 'opacity 120ms ease';
@@ -56,7 +57,12 @@ export function createNativeTocFeature({ state, deps }) {
 
   function positionTooltip(tip, button) {
     const rect = button.getBoundingClientRect();
-    const tipH = tip.offsetHeight || 32;
+    // Anchor to the left edge of the TOC button with an 8px gap
+    const rightEdge = window.innerWidth - rect.left + 8;
+    tip.style.right = `${rightEdge}px`;
+    tip.style.left = 'auto';
+
+    const tipH = tip.offsetHeight || 28;
     const top = Math.min(
       window.innerHeight - tipH - 8,
       Math.max(8, rect.top + rect.height / 2 - tipH / 2)

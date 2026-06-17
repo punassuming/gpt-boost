@@ -12,12 +12,23 @@ export function createArticleRegistry({
         const newId = String(state.nextVirtualId++);
         node.dataset.virtualId = newId;
         state.articleMap.set(newId, node);
+        // Capture full text now, before ChatGPT may lighten this article's content
+        if (!node.dataset.gptBoostCachedText) {
+          const textEl = node.querySelector('[data-message-author-role]') || node;
+          const text = (textEl.textContent || '').trim().replace(/\s+/g, ' ');
+          if (text) node.dataset.gptBoostCachedText = text.slice(0, 8000);
+        }
         deps.getArticleMessageKey(node, newId);
         deps.injectArticleUi(node, newId);
       } else {
         const id = node.dataset.virtualId;
         if (id && !state.articleMap.has(id)) {
           state.articleMap.set(id, node);
+          if (!node.dataset.gptBoostCachedText) {
+            const textEl = node.querySelector('[data-message-author-role]') || node;
+            const text = (textEl.textContent || '').trim().replace(/\s+/g, ' ');
+            if (text) node.dataset.gptBoostCachedText = text.slice(0, 8000);
+          }
           deps.getArticleMessageKey(node, id);
           deps.injectArticleUi(node, id);
         }

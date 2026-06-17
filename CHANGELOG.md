@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- Removed spurious right-side gap: extension floating controls (search, download, scroll buttons) no longer shift left when ChatGPT's native TOC is present, since the two are at different vertical positions and do not overlap.
+- Native TOC hover tooltips now anchor to the left edge of the hovered button instead of a fixed viewport offset, preventing them from overlapping the virtualization indicator or the TOC dash lines. Font size reduced to 11px.
+- Search now finds matches across all messages, including those ChatGPT has content-lightened off-screen. Text is captured on each article's dataset at the moment of first virtualId assignment (while the article still has full content), and the search index uses this cache as its primary text source instead of the potentially-stripped live DOM.
+
 ### Changed
 - Extension minimap panel is now suppressed when ChatGPT's native TOC sidebar is detected, deferring scroll navigation to the native control instead of overlapping it.
 - ChatGPT's native TOC prompt buttons are enhanced with hover tooltips showing a preview of each user message, pulled from the extension's article map.
