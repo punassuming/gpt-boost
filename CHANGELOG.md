@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.0.23] - 2026-06-17
 ### Changed
 - Extension minimap panel is now suppressed when ChatGPT's native TOC sidebar is detected, deferring scroll navigation to the native control instead of overlapping it.
 - ChatGPT's native TOC prompt buttons are enhanced with hover tooltips showing a preview of each user message, pulled from the extension's article map.
@@ -46,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Initial tracked release; changelog introduced from this version onward.
 
-[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.22...HEAD
+[Unreleased]: https://github.com/punassuming/gpt-boost/compare/v1.0.23...HEAD
 [1.0.16]: https://github.com/punassuming/gpt-boost/releases/tag/v1.0.16
 [1.0.17]: https://github.com/punassuming/gpt-boost/compare/v1.0.16...v1.0.17
 [1.0.18]: https://github.com/punassuming/gpt-boost/compare/v1.0.17...v1.0.18
@@ -54,3 +56,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.0.20]: https://github.com/punassuming/gpt-boost/compare/v1.0.19...v1.0.20
 [1.0.21]: https://github.com/punassuming/gpt-boost/compare/v1.0.20...v1.0.21
 [1.0.22]: https://github.com/punassuming/gpt-boost/compare/v1.0.21...v1.0.22
+[1.0.23]: https://github.com/punassuming/gpt-boost/compare/v1.0.22...v1.0.23
