@@ -1,4 +1,5 @@
-import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer } from './utils/dom.js';
+import { isVirtualSpacerNode, getMessageRole, findConversationRoot, hasAnyMessages, isElementVisibleForConversation, getActiveConversationNodes, findScrollContainer, findChatGPTToc, getChatGPTTocOffsetPx } from './utils/dom.js';
+import { createNativeTocFeature } from './ui/features/nativeToc/nativeTocFeature.js';
 import {
   currentConversationKey,
   persistedPinnedMessageKeys,
@@ -520,6 +521,7 @@ import {
     },
     deps: {
       isSidebarOpen,
+      getChatGPTTocOffsetPx,
       applyMinimapFloatingLayout: (offset, topButtonTop, bottomButtonTop) =>
         minimapFeature.applyFloatingLayout(offset, topButtonTop, bottomButtonTop)
     }
@@ -875,6 +877,10 @@ import {
         updateMinimapVisibility(totalMessages);
       }
     });
+    featureRegistry.register(createNativeTocFeature({
+      state,
+      deps: { getMessageRole, getThemeMode }
+    }));
     featureRegistry.register({
       id: "visibility-code-panel-legacy",
       priority: 90,
@@ -1687,6 +1693,10 @@ import {
   }
 
   function updateMinimapVisibility(totalMessages) {
+    if (findChatGPTToc()) {
+      minimapFeature.hideMinimapUi();
+      return;
+    }
     minimapFeature.updateMinimapVisibility(totalMessages);
   }
 

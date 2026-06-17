@@ -71,10 +71,26 @@ export function getActiveConversationNodes() {
 }
 
 /**
- * Find the scrollable container for the conversation.
- *
- * @returns {HTMLElement | Window}
+ * Detect ChatGPT's native TOC sidebar (the dash-button scrollspy added in mid-2026).
+ * Returns the container div, or null if not present.
  */
+export function findChatGPTToc() {
+    const btn = document.querySelector('button[aria-label^="Prompt "]');
+    return btn ? btn.closest('div') : null;
+}
+
+/**
+ * Returns the horizontal space (px) that ChatGPT's native TOC occupies at the
+ * right edge of the viewport, so extension floating controls can be shifted left
+ * to avoid overlapping it.  Returns 0 when no native TOC is detected.
+ */
+export function getChatGPTTocOffsetPx() {
+    const toc = findChatGPTToc();
+    if (!toc) return 0;
+    const width = toc.offsetWidth;
+    return width > 0 ? width + 4 : 0;
+}
+
 export function findScrollContainer() {
     const firstMessage = getActiveConversationNodes()[0];
 
