@@ -65,16 +65,35 @@ export function createArticleAwareMutationObserver(
 ): MutationObserver {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  function isOwnSpacer(n: Node): boolean {
+    return n instanceof HTMLElement && (n as HTMLElement).dataset.chatgptVirtualSpacer === "1";
+  }
+
+  function isArticleNode(n: Node, selector: string): boolean {
+    return (
+      n instanceof HTMLElement &&
+      (n.matches(selector) || n.querySelector(selector) !== null)
+    );
+  }
+
   return new MutationObserver((records) => {
     onAnyChange();
 
-    const hasArticleChange = records.some((r) =>
-      [...Array.from(r.addedNodes), ...Array.from(r.removedNodes)].some(
-        (n) =>
-          n instanceof HTMLElement &&
-          (n.matches(articleSelector) || n.querySelector(articleSelector) !== null)
-      )
-    );
+    const hasArticleChange = records.some((r) => {
+      const added = Array.from(r.addedNodes);
+      const removed = Array.from(r.removedNodes);
+
+      const addedHasSpacer = added.some(isOwnSpacer);
+      const removedHasSpacer = removed.some(isOwnSpacer);
+      const addedHasArticle = added.some((n) => isArticleNode(n, articleSelector));
+      const removedHasArticle = removed.some((n) => isArticleNode(n, articleSelector));
+
+      // Filter out the extension's own article↔spacer conversions to prevent oscillation
+      if (removedHasArticle && addedHasSpacer) return false;
+      if (removedHasSpacer && addedHasArticle) return false;
+
+      return addedHasArticle || removedHasArticle;
+    });
 
     if (!hasArticleChange) return;
 

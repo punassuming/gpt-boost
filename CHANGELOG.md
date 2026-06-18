@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Fixed
+- Fixed infinite oscillation between adjacent virtualization boundary counts (e.g. rendered=10 ↔ rendered=11): the mutation observer now ignores the extension's own article↔spacer DOM swaps, so converting an article to a spacer (or vice versa) no longer re-triggers `scheduleVirtualization` and causes a feedback loop.
 - Removed spurious right-side gap: extension floating controls (search, download, scroll buttons) no longer shift left when ChatGPT's native TOC is present, since the two are at different vertical positions and do not overlap.
 - Native TOC hover tooltips now anchor to the left edge of the hovered button instead of a fixed viewport offset, preventing them from overlapping the virtualization indicator or the TOC dash lines. Font size reduced to 11px.
 - Search now finds matches across all messages, including those ChatGPT has content-lightened off-screen. Text is captured on each article's dataset at the moment of first virtualId assignment (while the article still has full content), and the search index uses this cache as its primary text source instead of the potentially-stripped live DOM.
